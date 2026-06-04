@@ -985,6 +985,7 @@ def build_mcp(state: State) -> FastMCP:
         model: str = "gpt-image-2",
         caption: str | None = None,
         overwrite: bool = False,
+        apply_style: bool = True,
     ) -> dict[str, Any]:
         """Generate an image via the configured ImageGenerator (local or cloud-fn).
 
@@ -999,11 +1000,16 @@ def build_mcp(state: State) -> FastMCP:
         Pass `overwrite=True` to replace an existing figure at that number
         instead of erroring. Otherwise stores as an asset under
         papers/{slug}/assets/.
+
+        The project's image style (set in the dashboard under Memory → Image
+        style) is prepended to the prompt automatically. Pass
+        `apply_style=False` to generate without it for a one-off image.
         """
         return _images.generate_image(
             state, slug, prompt=prompt, figure_number=figure_number,
             asset_filename=asset_filename, aspect_ratio=aspect_ratio,
             model=model, caption=caption, overwrite=overwrite,
+            apply_style=apply_style,
         )
 
     @mcp.tool()

@@ -24,6 +24,20 @@ from . import figures as _figures
 from .papers import _paper_path
 
 
+def _project_image_style(state: State) -> str:
+    """Project-wide image style defined in the web dashboard, stored at
+    `projects/{pid}/settings/image_style` as a composed `style_text` string
+    (preset phrase + the user's free text). Empty when unset.
+
+    Applied automatically so every generated figure shares one look without
+    the agent having to remember it on each call.
+    """
+    doc = state.backend.get_doc(state.project_path("settings", "image_style"))
+    if not doc:
+        return ""
+    return (doc.get("style_text") or "").strip()
+
+
 def generate_image(
     state: State,
     slug: str,
@@ -35,20 +49,27 @@ def generate_image(
     model: str = "gpt-image-2",
     caption: str | None = None,
     overwrite: bool = False,
+    apply_style: bool = True,
 ) -> dict:
     """Generate an image; either register it as a figure or store as an asset.
 
+    The project's dashboard-defined image style (if any) is prepended to the
+    prompt unless `apply_style=False`.
+
     Returns:
-        - figure mode: the figure doc + {prompt, model}
-        - asset mode: {asset_id, blob_path, size_bytes, prompt, model}
+        - figure mode: the figure doc + {prompt, model, style_applied}
+        - asset mode: {asset_id, blob_path, size_bytes, prompt, model, style_applied}
     """
     if state.backend.get_doc(_paper_path(state, slug)) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
     if not prompt or not prompt.strip():
         raise ValueError("prompt is required")
 
+    style = _project_image_style(state) if apply_style else ""
+    final_prompt = f"{prompt.strip()}\n\nVisual style: {style}" if style else prompt
+
     gen = state.require_image_gen()
-    png = gen.generate(prompt=prompt, aspect_ratio=aspect_ratio, model=model)
+    png = gen.generate(prompt=final_prompt, aspect_ratio=aspect_ratio, model=model)
 
     if figure_number is not None:
         # Spill to a temp file so add_figure's existing local_path path works.
@@ -70,6 +91,7 @@ def generate_image(
             "mode": "figure", "figure_number": figure_number,
             "blob_path": fig["blob_path"], "size_bytes": len(png),
             "prompt": prompt, "model": model,
+            "style_applied": style or None,
             "dashboard_url": state.dashboard_url("papers", slug),
         }
 
@@ -87,11 +109,13 @@ def generate_image(
         "prompt": prompt,
         "model": model,
         "aspect_ratio": aspect_ratio,
+        "style_applied": style or None,
         "created_at": now_iso(),
     })
     return {
         "mode": "asset", "asset_id": asset_id, "blob_path": blob_path,
         "size_bytes": len(png), "prompt": prompt, "model": model,
+        "style_applied": style or None,
         "dashboard_url": state.dashboard_url("papers", slug),
     }
 
