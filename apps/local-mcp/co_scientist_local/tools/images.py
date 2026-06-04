@@ -84,6 +84,8 @@ def generate_image(
                 caption=caption or prompt[:200],
                 local_path=tmp_path,
                 overwrite=overwrite,
+                prompt=prompt,
+                style_applied=style or None,
             )
         finally:
             os.unlink(tmp_path)

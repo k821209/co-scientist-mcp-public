@@ -51,11 +51,18 @@ def add_figure(
     local_path: str | None = None,
     status: str = "pending",
     overwrite: bool = False,
+    prompt: str | None = None,
+    style_applied: str | None = None,
 ) -> dict:
     """Register a figure. If `local_path` is provided, upload the file bytes.
 
     With `overwrite=True`, an existing figure at the same `figure_number` is
     replaced in place (created_at preserved) instead of raising.
+
+    `prompt`/`style_applied` record how a generated figure was produced so the
+    dashboard can show (and let the user edit) the generation prompt. They are
+    preserved across an overwrite when not supplied. Writing a figure always
+    clears `rerender_pending` — a fresh render satisfies any pending web edit.
     """
     _ensure_paper(state, slug)
     path = _figure_path(state, slug, figure_number)
@@ -80,6 +87,11 @@ def add_figure(
         "legend": legend,
         "blob_path": blob_path,
         "status": status,
+        "prompt": prompt if prompt is not None
+        else (existing.get("prompt") if existing else None),
+        "style_applied": style_applied if style_applied is not None
+        else (existing.get("style_applied") if existing else None),
+        "rerender_pending": False,
         "created_at": existing.get("created_at", now) if existing else now,
         "updated_at": now,
     }
