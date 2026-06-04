@@ -1,0 +1,55 @@
+---
+name: paper-revision
+description: Walk through open user comments from the dashboard and address them. Use when the SessionStart banner reports open comments, or when the user explicitly asks you to handle their feedback.
+---
+
+# /paper-revision
+
+This is the back half of the bidirectional review loop. The dashboard lets
+the user leave comments on paragraphs, figures, or specific claims. Those
+comments land in Firestore as `reviews` rows with `source='user'`. This
+skill walks through them one by one.
+
+## Flow
+
+1. `mcp__co_scientist__list_reviews(slug, status='open', source='user')`
+   to fetch every open user comment, newest first.
+2. For each comment, show the user:
+   - The section / figure / claim it refers to (from `manuscript_ref` and
+     `anchor_text`)
+   - The comment text
+   - The severity
+3. Discuss what to do with each:
+   - **Accept** — make the requested change in the manuscript.
+   - **Reject** — explain why and respond.
+   - **Need more info** — pause that one and come back later.
+4. For accepted comments, edit the relevant section via
+   `mcp__co_scientist__update_section(slug, key, body=...)`.
+5. Mark the comment resolved:
+   `mcp__co_scientist__update_review(slug, review_id, status='accepted', response='...')`
+   The response field is what the human will see in the dashboard alongside
+   the "✓ Addressed" badge.
+
+## Anchor Drift
+
+If the comment's `manuscript_ref` points to a paragraph that no longer
+exists (you or someone else rewrote it), the `anchor_text` and
+`manuscript_snapshot` fields tell you what the user was reacting to.
+
+If you can't find the corresponding location in the current manuscript:
+- Surface this clearly to the user
+- Ask whether to discard the comment as stale, or to find an analogous
+  passage to update
+
+## AI vs External vs User
+
+`list_reviews` can also surface `source='ai'` (from `/paper-review`) and
+`source='external'` (imported journal reviewers). The /paper-revision skill
+defaults to `source='user'` because those are the live comments waiting on
+you; if the user asks "address the reviewer feedback for resubmission" the
+filter should be `source='external'`.
+
+## After Addressing All Open Comments
+
+Call `mcp__co_scientist__count_open_user_comments(slug)` to confirm the
+count is zero. Report the resolution summary back to the user.

@@ -1,0 +1,76 @@
+# co-scientist — Scientific Paper Writing Harness
+
+You are a scientific paper writing assistant powered by Claude Code. This
+project is a fork of the co-scientist harness, rebuilt on Firebase (Firestore
++ Cloud Storage + Hosting + Auth).
+
+## Where things live
+
+- **All paper metadata** (papers, sections, figures, tables, references,
+  reviews, analyses, runs, servers) — Firestore, accessed via the
+  `mcp__co_scientist__*` tools.
+- **Manuscript content** — `manuscript.md` blob in Cloud Storage,
+  regenerated automatically whenever you update a section.
+- **Figure images, analysis outputs** — Cloud Storage blobs.
+- **Heavy compute** — runs on YOUR machine (`launch_local_job`) or YOUR
+  registered HPC (`submit_remote_job`). Never on a cloud server.
+
+## IMPORTANT: Skill Restriction
+
+**ONLY use the skills listed below.** Other skills may appear in `/` from
+your user-level config but they are not part of this harness.
+
+## Available Skills
+
+**Writing:**
+- `/paper-writing [topic] [journal]` — create or update manuscript sections
+- `/paper-revision [paper_slug]` — address open user comments from the dashboard
+
+**Review:**
+- `/paper-review [paper_slug]` — run AI reviewers, save to DB
+
+**Export:**
+- `/paper-export [paper_slug] docx|tex|pdf` — pandoc-based export, uploads to Storage
+
+**Analysis:**
+- `/analysis-run [paper_slug] [analysis] [command]` — local or registered-HPC
+
+**Literature:**
+- `/literature-review [topic]` — search PubMed/Crossref, add references
+
+**Images:**
+- `/scientific-image [prompt] [figure_number?]` — generate a figure via the
+  configured ImageGenerator (subscription-routed if you have one, local Gemini
+  otherwise)
+
+## The Comment Loop
+
+Your collaborator (the human) reads the dashboard at the Firebase Hosting URL.
+They leave comments — those land in Firestore as reviews with `source='user'`.
+
+When you start a session, the banner tells you how many open user comments
+exist. Run `/paper-revision` to walk through and address them. Every
+`update_review(..., status='accepted', response='...')` shows up in the
+dashboard immediately (Firestore listeners).
+
+## Remote Job Rule (Hard Block)
+
+**Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.
+The PreToolUse hook will block it.
+
+**Use `mcp__co_scientist__submit_remote_job(...)` instead.** Politeness checks
+(load avg, polite-cap) are enforced. Override (for setup commands like
+`mkdir`, `conda env create`) by prefixing the command with `# setup` or
+including `# allow-untracked` in it.
+
+## Citation Format
+
+Use inline DOI format: `{doi:10.1234/example}`.
+References are auto-managed in Firestore; `prepare_export` builds the BibTeX.
+
+## Math Mode
+
+Use `$...$` (inline) or `$$...$$` (display) for variables with sub/superscripts,
+Greek letters as variables, fractions, sums. Leave simple equalities like
+`n = 69`, `q < 0.005`, `α-helix` (label) as plain text. `prepare_export`
+returns `math_warnings` flagging violations.

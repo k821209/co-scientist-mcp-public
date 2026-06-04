@@ -1,0 +1,32 @@
+# co-scientist-local config — copy to ~/.co-scientist/config.toml and fill in.
+#
+# Web API key + project info are PUBLIC (they identify the project to clients,
+# not authenticate). Refresh tokens ARE sensitive — keep ~/.co-scientist/
+# readable only by you (chmod 700).
+#
+# Get the refresh_token by running `co-scientist init` once it's built (item 9),
+# or by manually using Firebase Auth REST API with email/password / Google
+# sign-in and copying the result.
+
+uid             = "REPLACE_WITH_YOUR_FIREBASE_UID"
+web_api_key     = "AIzaSyCap5WxY6br-vo-D0l6mIS7uohPxuROz4E"
+refresh_token   = "REPLACE_WITH_REFRESH_TOKEN_FROM_SIGN_IN"
+project_id      = "co-scientist-5af1a"
+storage_bucket  = "co-scientist-5af1a.firebasestorage.app"
+
+# Service account credentials for backend Admin SDK access (Firestore + Storage
+# writes). Generate at:
+#   Firebase Console → Project Settings → Service Accounts → Generate new key
+# Then set this path. Or leave empty to use Application Default Credentials
+# (gcloud auth application-default login).
+credentials_path = ""
+
+# image_gen_mode controls how the generate_image MCP tool routes:
+#   "cloud"    — calls the Cloud Function (subscription-gated, server bills)
+#   "local"    — calls Gemini directly with your gemini_api_key (free tier)
+#   "disabled" — no image generation (generate_image errors out)
+image_gen_mode  = "disabled"
+gemini_api_key  = ""
+
+[function_urls]
+generate_image  = "https://us-central1-co-scientist-5af1a.cloudfunctions.net/generate_image"

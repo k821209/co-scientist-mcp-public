@@ -1,0 +1,20 @@
+.venv/
+venv/
+**/venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.env
+.env.local
+node_modules/
+.DS_Store
+
+# service account keys (NEVER commit) — broad patterns to catch any naming
+*serviceAccount*
+*service-account*
+*service_account*

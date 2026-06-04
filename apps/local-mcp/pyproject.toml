@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "co-scientist-local"
+version = "0.0.1"
+description = "Local MCP server for co-scientist-cloud (Claude Code <-> Firestore)"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "pydantic>=2.6",
+    # API-key mode (the production path) talks to Firestore via the
+    # google-cloud SDK with a user-token credential.
+    "google-cloud-firestore>=2.16",
+    # Service-account / developer fallback mode.
+    "firebase-admin>=6.5",
+    "google-cloud-storage>=2.16",
+    # paper-deck Phase 3 — PPTX export.
+    "python-pptx>=1.0",
+    # paper-import — PDF text extraction (docx goes through pandoc).
+    "pypdf>=4.0",
+    # paper-deck Phase 4 (todo 004 §A) — per-slide PNG render from the
+    # sibling PDF so the agent can run a vision critique on the deck.
+    "pymupdf>=1.24",
+]
+
+[project.optional-dependencies]
+# Dev-only. Everything an END USER needs is in `dependencies` above —
+# `pip install -e apps/local-mcp` is all it takes.
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+co-scientist-local = "co_scientist_local.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["co_scientist_local*"]
+
+[tool.pytest.ini_options]
+testpaths = ["../../tests"]
+asyncio_mode = "auto"

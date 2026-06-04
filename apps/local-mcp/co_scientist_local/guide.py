@@ -1,0 +1,237 @@
+"""Canonical agent-facing guide for the co-scientist MCP.
+
+Returned by the `project_guide()` MCP tool. Update HERE (not in the
+dashboard's CLAUDE.md template) so changes flow to all users on
+`pip install --upgrade co-scientist-local` — even those whose CLAUDE.md
+on disk was downloaded months ago.
+
+CLAUDE.md on the user's project directory stays tiny (project identity
+only) and refers the agent here on every session start.
+"""
+from __future__ import annotations
+
+GUIDE_VERSION = "2026-05-31a"
+
+
+def render_guide() -> str:
+    """The canonical session-start guide, rendered as markdown."""
+    return f"""# co-scientist MCP — session guide (v{GUIDE_VERSION})
+
+## How this project works
+
+A human collaborator views the dashboard and can leave inline comments on
+specific passages by drag-selecting in the manuscript. Each comment lands
+in Firestore as a `review` with `source='user'`, `status='open'`, plus an
+`anchor_text` field containing the exact selected passage and a
+`manuscript_ref` like `section:<key>`. The dashboard renders the anchor
+as a yellow highlight in the rendered manuscript; clicking the highlight
+opens a popover with the comment.
+
+On every session start:
+
+1. Call `mcp__co_scientist__whoami()` once — verifies the MCP is bound to
+   the project_id your CLAUDE.md mentions. If they differ, STOP and tell
+   the user — they likely mixed `.mcp.json` and `CLAUDE.md` from two
+   different dashboard projects. (The MCP also prints a stderr warning
+   banner on startup when this mismatch is detected.)
+2. Call `mcp__co_scientist__get_project_memory()` — the project's durable
+   knowledge (user preferences, decisions, gotchas). Treat it as standing
+   context for the whole session. See "## Project memory" below.
+3. Call `mcp__co_scientist__list_papers()` then, for each paper,
+   `mcp__co_scientist__count_open_user_comments(slug)`. If non-zero,
+   call `mcp__co_scientist__list_reviews(slug, status="open")` to get
+   the open comments with their `anchor_text` — use that quoted passage
+   to locate the exact place in the manuscript the user is pointing at,
+   then offer `/paper-revision`.
+   For any deck on the paper, also call
+   `mcp__co_scientist__list_deck_comments(slug, deck_id)` — open slide
+   comments are the deck's revision to-do list; revise the slide, then
+   `resolve_deck_comment`.
+4. For each paper, call `mcp__co_scientist__check_requirements(slug)`.
+   If `configured` is true and `violations` is non-empty, surface them
+   (e.g. "abstract 178/150 words — over the Short Communication limit")
+   and offer to fix. If `configured` is false and the paper has a
+   target `journal` set, suggest `/journal-requirements` so the
+   journal's word/figure/section limits get tracked.
+
+## Available skills
+
+- `/paper-writing [title]` — create or update manuscript sections
+- `/paper-import [file]` — import an existing .docx/.pdf/.odt/.tex
+  manuscript: `import_document` converts to markdown, the agent splits
+  it into canonical sections, registers figures + references.
+- `/paper-revision` — address open user comments (anchor_text-anchored)
+- `/journal-requirements` — capture a target journal's submission spec
+  for a paper type (Article / Short Communication / Letter / Review …):
+  the agent reads the journal's live author guidelines and stores word
+  limits, figure/table caps, structured-abstract + required-section
+  rules; `check_requirements` then measures the manuscript against them.
+- `/paper-export [docx|tex|pdf|md]` — pandoc-based export with placeholder/
+  unresolved-DOI pre-flight check; auto-resolves the journal's CSL
+  citation style (in-code map → kebab guess → per-project registry,
+  downloaded from the CSL styles repo); uploads result to Storage so the
+  dashboard's Paper page lists it.
+- `/literature-review [topic] [slug?]` — CrossRef keyword search via
+  `search_works`, candidate-then-pick UX, registers selected via
+  `add_reference_by_doi`, writes a structured synthesis.
+- `/paper-review [slug] [mode?]` — three-persona AI review (methods /
+  stats / domain) + consistency pass; each finding becomes one
+  Firestore review row (`source="ai"`) anchored to the offending
+  passage so the dashboard renders inline highlights.
+- `/analysis-run [name]` — wrap a computation (local or registered HPC)
+  in a tracked run, then `add_figure` / `add_table` selected outputs.
+  Dashboard Runs tab streams logs in real time.
+- `/scientific-image` — staged pipeline (classify → blueprint →
+  generate → critique) around `generate_image` for schematics
+  (pathway, network, workflow, comparison, architecture, tree).
+  Real data plots go through `/analysis-run` instead.
+- `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
+  full presentation pipeline: deck concept + slides + render
+  (`render_deck`) + PPTX export (`export_deck_to_pptx`).
+- `/promote-result [slug] [analysis]` — map an analysis group's
+  output files onto manuscript figures/tables (map mode → promote mode).
+- `/supplementary-material [slug]` — identify + register supplementary
+  figures/tables/text (the +100 figure_number offset convention).
+- `/analysis-audit [slug]` — scan analysis scripts for hardcoded
+  literals + verify cited manuscript numbers against live data.
+- `/release-publish [slug] [analysis]` — audit + publish an analysis
+  release folder as a standalone GitHub repo (git workflow, gated).
+
+## Tool surface (~60 tools under `mcp__co_scientist__*`)
+
+papers · sections · reviews · figures · tables · references · materials
+· analyses · runs · servers (HPC) · exports · journal CSL · requirements
+· project memory · image gen · whoami · project_guide
+
+**Materials** are user-uploaded source files shared across the project
+(PDFs to read, datasets, prior drafts, notes) — distinct from `references`
+(cited works). Call `list_materials()` at session start; pull any you need
+with `get_material(material_id)` (downloads to disk), then read the
+returned path with your file tools.
+
+## Project memory
+
+`get_project_memory()` returns this project's durable knowledge — a
+markdown document stored in the cloud at `/projects/{{pid}}/memory`,
+shared across machines and editable in the dashboard's **Memory** tab.
+It is the **source of truth for soft project knowledge**.
+
+- **Read** it at session start (step 2 above) — standing context.
+- **Record** new durable facts with `append_project_memory(note)`;
+  reorganize/prune with `update_project_memory(content)`.
+
+WHAT belongs here: the user's writing preferences, decisions taken and
+why, approaches tried and rejected, domain gotchas, target-journal
+history — knowledge NOT recoverable from the papers / sections /
+reviews / figures themselves.
+
+WHAT does NOT: anything already in the structured data (section text,
+review comments, figure captions, citations) — never duplicate it.
+Keep entries concrete and short.
+
+This is separate from Claude Code's own local auto-memory (a harness
+feature, machine-local). Project knowledge goes HERE — cloud-backed, so
+it survives a new machine and the user can see it.
+
+## Citation format + hallucination check
+
+Inline DOI: `{{doi:10.1234/example}}`. References auto-managed via
+`mcp__co_scientist__add_reference_by_doi(slug, doi)` — fetches title,
+authors, journal, year from CrossRef so you never invent them. Refuses
+DOIs CrossRef can't find (404 → almost always a hallucinated citation).
+
+Two-axis verification model — and the MCP only owns one of them:
+
+  - **DOI axis** (server-decidable): does CrossRef know this DOI?
+    Browser Sync button and `validate_references` both write this.
+    Deterministic — no LLM needed.
+  - **Context axis** (YOU decide, not the server): does the cited
+    paper's content actually fit the manuscript's claim around its
+    `{{doi:X}}` marker? Word-overlap is too weak a proxy; only you
+    have the manuscript intent loaded.
+
+Workflow YOU follow per session:
+
+1. Call `mcp__co_scientist__validate_references(slug)`. It returns a
+   facts pack:
+     - `unresolved[]` — CrossRef 404s. Almost always fake DOIs.
+     - `missing_doi[]` — references with no DOI to check.
+     - `results[]` — one entry per resolved DOI with:
+         * `crossref`: title, abstract, subjects, authors, year, journal
+         * `manuscript_contexts`: every `{{doi:X}}` occurrence with
+           full sentence + ±240 char context + `stacked_with` peers
+         * `signals`: raw overlap counts (HINTS, not verdicts)
+2. For each `results[]` entry, READ the crossref abstract/title and
+   compare against `manuscript_contexts`. Decide if the citation fits.
+3. Record your decision:
+     `acknowledge_finding(slug, doi, verdict="approved"|"rejected",
+        note="<why>")`
+   - approved → context_verified=true → dashboard ribbon turns green
+   - rejected → context_verified=false → fix the citation (delete or
+     replace via `add_reference_by_doi`) before next session
+
+For unresolved DOIs, just delete the reference (or replace via
+`add_reference_by_doi(slug, real_doi)`) and `acknowledge_finding(slug,
+doi, note="hallucinated, removed")`.
+
+The dashboard shows two ribbons per reference (`✓ DOI` / `✓ Context`).
+`?` Context means you haven't judged it yet. Both green = trusted.
+
+**On every session start, also call**
+`mcp__co_scientist__list_verification_findings(slug)` for each paper.
+Returns unacknowledged problem findings (unresolved hallucinations,
+title mismatches, errors). If non-empty:
+  1. Surface them to the user.
+  2. Fix each (delete bad ref / replace with real citation / re-fetch
+     via `add_reference_by_doi`).
+  3. Call `acknowledge_finding(slug, doi, note="...")` once handled
+     so it stops surfacing.
+
+For single-citation spot checks: `verify_doi(doi)` returns metadata
+without writing anything.
+
+## Prose for non-English audiences (todo 001)
+
+When generating prose for a non-English audience — Korean, Japanese,
+Chinese, etc. — draft *natively* in that language. Do not write English
+first and translate; the result reads as translation-ese (em-dash
+chains, mixed sentence endings, English noun + native particle pairs)
+that a native reader spots on first pass. Keep English **only** for
+field-standard abbreviations (GWAS, BLUP, MCP, F4, GO, OTU). Translate
+everyday English nouns (shortcut → 지름길, process → 과정). Keep sentence
+endings consistent within a unit (Korean: all `~합니다` or all `~한다`).
+
+Self-check before delivery: "Could a native speaker mentally reverse-
+translate this word-for-word to English?" If yes, rewrite.
+
+This applies across `/paper-deck`, `/paper-writing`, `/paper-revision`,
+`/paper-export` — any skill generating user-visible text.
+
+## Math mode (Pandoc)
+
+Use `$...$` (inline) or `$$...$$` (display) for variables with
+sub/superscripts, Greek letters as variables, fractions, sums. Leave
+`n = 69` / `q < 0.005` / `α-helix` as plain text. `prepare_export` returns
+`math_warnings` flagging violations.
+
+## Remote job rule
+
+**Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.
+Use `mcp__co_scientist__submit_remote_job` so the run is tracked in
+`analysis_runs` and visible in the dashboard.
+
+## Image generation
+
+`mcp__co_scientist__generate_image` routes through the Firebase Cloud
+Function (Cloud Run gen2) backed by OpenAI gpt-image-2.
+
+**Plan gating** — the function enforces:
+  - `plan_id="free"`   → HTTP 403 (`PermissionError` on the client).
+  - `plan_id="pro"`    → up to 200 images / month
+  - `plan_id="enterprise"` → up to 2000 / month
+
+Free-tier users who want image generation do it OUTSIDE this MCP —
+wire up another image-gen MCP / built-in Claude Code tool with their
+own API key. The skill `/scientific-image` will surface the 403 to the
+user and suggest the upgrade.
+"""
