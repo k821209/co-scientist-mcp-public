@@ -77,7 +77,7 @@ def add_material(
         "updated_at": now,
     }
     state.backend.set_doc(_material_path(state, material_id), doc)
-    return doc
+    return {**doc, "dashboard_url": state.dashboard_url("materials")}
 
 
 def list_materials(state: State) -> list[dict]:

@@ -12,6 +12,7 @@ path construction — that's what project_path() is for.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,11 @@ if TYPE_CHECKING:
     from .exporters import PandocExecutor
     from .image_gen import ImageGenerator
     from .ssh import RsyncExecutor, SSHExecutor
+
+# Public dashboard host (Firebase Hosting). Overridable for emulator/testing.
+DASHBOARD_BASE_URL = os.environ.get(
+    "CO_SCIENTIST_DASHBOARD_URL", "https://co-scientist-5af1a.web.app",
+).rstrip("/")
 
 
 @dataclass
@@ -41,6 +47,16 @@ class State:
             -> "projects/abc123/papers/rice-evo"
         """
         return "/".join(("projects", self.project_id, *parts))
+
+    def dashboard_url(self, *parts: str) -> str:
+        """Clickable dashboard URL rooted at the active project.
+
+        Example:
+            state.dashboard_url("papers", "rice-evo")
+            -> "https://…web.app/projects/abc123/papers/rice-evo"
+        """
+        suffix = "/".join(("projects", self.project_id, *parts))
+        return f"{DASHBOARD_BASE_URL}/{suffix}"
 
     def require_ssh(self) -> "SSHExecutor":
         if self.ssh is None:

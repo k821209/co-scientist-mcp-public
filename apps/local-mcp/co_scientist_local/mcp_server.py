@@ -309,8 +309,43 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def count_open_user_comments(slug: str) -> int:
-        """How many unresolved user comments exist (for SessionStart banner)."""
+        """How many unresolved human comments exist — dashboard ('user') AND
+        shared/public-page ('external') feedback, excluding AI reviewer notes.
+        Used for the SessionStart banner."""
         return _reviews.count_open_user_comments(state, slug)
+
+    @mcp.tool()
+    def list_paper_comments(
+        slug: str,
+        status: str | None = "open",
+        source: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Full text of comments on a paper — dashboard ('user') and shared/
+        public-page ('external') feedback, plus AI reviewer ('ai') notes. Each
+        item carries section, anchor_text, reviewer_name, source, severity,
+        comment, and status.
+
+        status='open' (default) is the agent's revision to-do list; pass None
+        for all. Optionally filter by source ('user'|'external'|'ai'). Read
+        these, revise the manuscript, then resolve_paper_comment — the
+        manuscript analogue of the list_deck_comments / resolve_deck_comment
+        loop. (Same data as list_reviews, named for the comment workflow.)
+        """
+        return _reviews.list_reviews(state, slug, status=status, source=source)
+
+    @mcp.tool()
+    def resolve_paper_comment(
+        slug: str,
+        review_id: str,
+        status: str = "resolved",
+        response: str | None = None,
+    ) -> dict[str, Any]:
+        """Close a paper comment once addressed: status 'resolved' (done),
+        'accepted' / 'rejected', or 'open' to reopen. Optionally attach a
+        `response`. The manuscript analogue of resolve_deck_comment."""
+        return _reviews.update_review(
+            state, slug, review_id, status=status, response=response,
+        )
 
     # ─── figures ─────────────────────────────────────────────────────────────
     @mcp.tool()
@@ -345,8 +380,18 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
-    def get_figure(slug: str, figure_number: int) -> dict[str, Any]:
-        return _figures.get_figure(state, slug, figure_number)
+    def get_figure(
+        slug: str,
+        figure_number: int,
+        dest_dir: str | None = None,
+        dest_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Figure metadata. Pass dest_dir or dest_path to also download the
+        image blob locally (adds `local_path` to the result) — e.g. to embed
+        the PNG in a docx or hand it to the user."""
+        return _figures.get_figure(
+            state, slug, figure_number, dest_dir=dest_dir, dest_path=dest_path,
+        )
 
     @mcp.tool()
     def list_figures(slug: str, supplementary: bool = False) -> list[dict[str, Any]]:

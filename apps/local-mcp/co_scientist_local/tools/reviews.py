@@ -146,5 +146,10 @@ def update_review(
 
 
 def count_open_user_comments(state: State, slug: str) -> int:
-    """Used by the SessionStart hook to surface 'you have N new comments'."""
-    return len(list_reviews(state, slug, status="open", source="user"))
+    """Open, human-authored comments — both dashboard ('user') and shared/public
+    page ('external') feedback. Excludes 'ai' (virtual reviewer) comments.
+
+    Used by the SessionStart hook to surface 'you have N new comments'.
+    """
+    open_reviews = list_reviews(state, slug, status="open")
+    return sum(1 for r in open_reviews if r.get("source") != "ai")

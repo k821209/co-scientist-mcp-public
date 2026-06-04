@@ -97,7 +97,7 @@ def create_paper(
     _regenerate_manuscript(state, slug)
     log_event(state, slug, action="paper_created",
               detail={"title": title, "journal": journal})
-    return paper
+    return {**paper, "dashboard_url": state.dashboard_url("papers", slug)}
 
 
 def list_papers(state: State) -> list[dict]:

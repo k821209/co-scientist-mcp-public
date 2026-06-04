@@ -128,12 +128,39 @@ def update_figure(
     return state.backend.get_doc(path)
 
 
-def get_figure(state: State, slug: str, figure_number: int) -> dict:
+def get_figure(
+    state: State,
+    slug: str,
+    figure_number: int,
+    *,
+    dest_dir: str | None = None,
+    dest_path: str | None = None,
+) -> dict:
+    """Figure metadata. If `dest_dir` or `dest_path` is given, also download
+    the image blob to local disk and add a `local_path` field to the result
+    (so the agent can embed the PNG in a docx or hand it to the user).
+
+    Writes to `dest_path` if given, else `dest_dir`/<blob-filename>.
+    """
     _ensure_paper(state, slug)
     doc = state.backend.get_doc(_figure_path(state, slug, figure_number))
     if doc is None:
         raise NotFound(f"figure {figure_number} not found for {slug!r}")
-    return doc
+    if dest_dir is None and dest_path is None:
+        return doc
+    blob_path = doc.get("blob_path")
+    if not blob_path:
+        raise NotFound(f"figure {figure_number} has no stored image")
+    data = state.backend.get_blob(blob_path)
+    if data is None:
+        raise NotFound(f"figure {figure_number} blob missing at {blob_path}")
+    if dest_path:
+        out = pathlib.Path(dest_path).expanduser()
+    else:
+        out = pathlib.Path(dest_dir).expanduser() / pathlib.Path(blob_path).name
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    return {**doc, "local_path": str(out.resolve())}
 
 
 def list_figures(state: State, slug: str, *, supplementary: bool = False) -> list[dict]:

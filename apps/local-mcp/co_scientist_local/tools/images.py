@@ -70,6 +70,7 @@ def generate_image(
             "mode": "figure", "figure_number": figure_number,
             "blob_path": fig["blob_path"], "size_bytes": len(png),
             "prompt": prompt, "model": model,
+            "dashboard_url": state.dashboard_url("papers", slug),
         }
 
     asset_id = new_id()
@@ -91,6 +92,7 @@ def generate_image(
     return {
         "mode": "asset", "asset_id": asset_id, "blob_path": blob_path,
         "size_bytes": len(png), "prompt": prompt, "model": model,
+        "dashboard_url": state.dashboard_url("papers", slug),
     }
 
 

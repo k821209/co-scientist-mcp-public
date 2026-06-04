@@ -59,6 +59,56 @@ def _extract_cited_dois(text: str) -> list[str]:
     return _DOI_INLINE_RE.findall(text)
 
 
+_THEMATIC_BREAK_RE = re.compile(r"(?m)^[ \t]*-{3,}[ \t]*$")
+
+
+def _escape_thematic_breaks(text: str) -> str:
+    """Disambiguate '---' rules for pandoc (dev-todo P1-3). The YAML metadata
+    fence is already turned off via `-f markdown-yaml_metadata_block`, but a
+    '---' line directly under a paragraph is still read as a setext-H2
+    underline (silently promoting that text to a heading). Rewriting standalone
+    dash rules to '***' keeps the intended thematic break with no ambiguity.
+    """
+    return _THEMATIC_BREAK_RE.sub("***", text)
+
+
+def _figures_appendix(figures: list[dict], supp_figures: list[dict]) -> str:
+    """Markdown that embeds each registered figure's image as a Pandoc figure.
+
+    The body only carries 'Figure N' text references, so without this pandoc
+    has no image to embed (dev-todo EXP-1). We append a Figures section whose
+    image targets are the blob basenames — matching the files export_to_path
+    writes into the pandoc working dir.
+    """
+    def block(fig: dict, supplementary: bool) -> str | None:
+        bp = fig.get("blob_path")
+        if not bp:
+            return None
+        local_name = pathlib.Path(bp).name
+        num = fig.get("figure_number")
+        if supplementary and isinstance(num, int):
+            label = f"Figure S{num - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
+        else:
+            label = f"Figure {num}"
+        parts = [label.rstrip(".") + "."]
+        for field in ("caption", "legend"):
+            val = (fig.get(field) or "").strip()
+            if val:
+                parts.append(val)
+        # Alt text becomes the docx/PDF caption; collapse newlines so the
+        # `![ ... ]( ... )` stays a single image node.
+        alt = " ".join(parts).replace("\n", " ").strip()
+        return f"![{alt}]({local_name})"
+
+    blocks = [b for b in (
+        *(block(f, False) for f in figures),
+        *(block(f, True) for f in supp_figures),
+    ) if b]
+    if not blocks:
+        return ""
+    return "## Figures\n\n" + "\n\n".join(blocks) + "\n"
+
+
 def _ref_to_bibtex(ref: dict) -> str:
     """Build a minimal @article BibTeX entry from a reference doc.
 
@@ -363,8 +413,16 @@ def export_to_path(
     with tempfile.TemporaryDirectory(prefix=f"export-{slug}-") as tmp:
         tmp_path = pathlib.Path(tmp)
 
-        # Lay out manuscript + bib
-        (tmp_path / "manuscript.md").write_text(bundle["manuscript"], encoding="utf-8")
+        # Lay out manuscript + bib. Escape '---' rules (dev-todo P1-3), then
+        # append a Figures section so registered figure images get embedded
+        # (dev-todo EXP-1).
+        manuscript_text = _escape_thematic_breaks(bundle["manuscript"])
+        fig_appendix = _figures_appendix(
+            bundle["figures"], bundle["supplementary_figures"],
+        )
+        if fig_appendix:
+            manuscript_text = manuscript_text.rstrip() + "\n\n" + fig_appendix
+        (tmp_path / "manuscript.md").write_text(manuscript_text, encoding="utf-8")
         has_bib = bool(bundle["bibtex"].strip())
         csl_arg: str | None = None
         csl_status = "no_references"
@@ -457,6 +515,7 @@ def export_to_path(
         "warnings": export_warnings,
         "placeholders": bundle["placeholders"],
         "unresolved_citations": bundle["unresolved_citations"],
+        "dashboard_url": state.dashboard_url("papers", slug),
     }
 
 
