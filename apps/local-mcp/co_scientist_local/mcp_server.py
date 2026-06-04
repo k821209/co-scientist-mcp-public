@@ -986,6 +986,7 @@ def build_mcp(state: State) -> FastMCP:
         caption: str | None = None,
         overwrite: bool = False,
         apply_style: bool = True,
+        quality: str | None = None,
     ) -> dict[str, Any]:
         """Generate an image via the configured ImageGenerator (local or cloud-fn).
 
@@ -995,6 +996,11 @@ def build_mcp(state: State) -> FastMCP:
 
         Supported aspect_ratio values: "1:1" (1024x1024), "16:9"/"3:2"/
         "landscape" (1536x1024), "9:16"/"2:3"/"portrait" (1024x1536).
+
+        `quality` (gpt-image: "low"/"medium"/"high"/"auto") is forwarded to the
+        provider when set; leave None for the provider default. Higher quality
+        costs more. The chosen aspect_ratio and quality are stored on the figure
+        so a dashboard re-render reuses the same shape.
 
         If `figure_number` is set, registers the result as a figure for the paper.
         Pass `overwrite=True` to replace an existing figure at that number
@@ -1009,7 +1015,7 @@ def build_mcp(state: State) -> FastMCP:
             state, slug, prompt=prompt, figure_number=figure_number,
             asset_filename=asset_filename, aspect_ratio=aspect_ratio,
             model=model, caption=caption, overwrite=overwrite,
-            apply_style=apply_style,
+            apply_style=apply_style, quality=quality,
         )
 
     @mcp.tool()

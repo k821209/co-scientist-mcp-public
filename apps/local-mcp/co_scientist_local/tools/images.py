@@ -50,6 +50,7 @@ def generate_image(
     caption: str | None = None,
     overwrite: bool = False,
     apply_style: bool = True,
+    quality: str | None = None,
 ) -> dict:
     """Generate an image; either register it as a figure or store as an asset.
 
@@ -69,7 +70,9 @@ def generate_image(
     final_prompt = f"{prompt.strip()}\n\nVisual style: {style}" if style else prompt
 
     gen = state.require_image_gen()
-    png = gen.generate(prompt=final_prompt, aspect_ratio=aspect_ratio, model=model)
+    png = gen.generate(
+        prompt=final_prompt, aspect_ratio=aspect_ratio, model=model, quality=quality,
+    )
 
     if figure_number is not None:
         # Spill to a temp file so add_figure's existing local_path path works.
@@ -86,6 +89,8 @@ def generate_image(
                 overwrite=overwrite,
                 prompt=prompt,
                 style_applied=style or None,
+                aspect_ratio=aspect_ratio,
+                quality=quality,
             )
         finally:
             os.unlink(tmp_path)
@@ -94,6 +99,7 @@ def generate_image(
             "blob_path": fig["blob_path"], "size_bytes": len(png),
             "prompt": prompt, "model": model,
             "style_applied": style or None,
+            "aspect_ratio": aspect_ratio, "quality": quality,
             "dashboard_url": state.dashboard_url("papers", slug),
         }
 
@@ -111,6 +117,7 @@ def generate_image(
         "prompt": prompt,
         "model": model,
         "aspect_ratio": aspect_ratio,
+        "quality": quality,
         "style_applied": style or None,
         "created_at": now_iso(),
     })
@@ -118,6 +125,7 @@ def generate_image(
         "mode": "asset", "asset_id": asset_id, "blob_path": blob_path,
         "size_bytes": len(png), "prompt": prompt, "model": model,
         "style_applied": style or None,
+        "aspect_ratio": aspect_ratio, "quality": quality,
         "dashboard_url": state.dashboard_url("papers", slug),
     }
 

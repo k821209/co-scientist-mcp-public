@@ -30,8 +30,13 @@ class ImageGenerator(Protocol):
         prompt: str,
         aspect_ratio: str = "1:1",
         model: str = "gpt-image-2",
+        quality: str | None = None,
     ) -> bytes:
-        """Generate an image. Returns the PNG (or other format) bytes."""
+        """Generate an image. Returns the PNG (or other format) bytes.
+
+        `quality` (gpt-image: low/medium/high/auto) is passed to the provider
+        when set; None leaves the provider default.
+        """
         ...
 
 
@@ -52,7 +57,9 @@ class LocalGeminiImageGenerator:
         prompt: str,
         aspect_ratio: str = "1:1",
         model: str = "imagen-3",
+        quality: str | None = None,
     ) -> bytes:
+        # Gemini path ignores quality (no equivalent knob).
         # Lazy import — pip extra `gemini` pulls google-generativeai
         try:
             import google.generativeai as genai  # type: ignore
@@ -106,6 +113,7 @@ class LocalOpenAIImageGenerator:
         prompt: str,
         aspect_ratio: str = "1:1",
         model: str = "gpt-image-2",
+        quality: str | None = None,
     ) -> bytes:
         import base64
         import json as _json
@@ -114,12 +122,15 @@ class LocalOpenAIImageGenerator:
 
         size = self.SIZE_MAP.get(aspect_ratio, "1024x1024")
         # gpt-image-2 always returns b64_json (no response_format param needed).
-        body = _json.dumps({
+        payload: dict = {
             "model": model or self._default_model,
             "prompt": prompt,
             "size": size,
             "n": 1,
-        }).encode("utf-8")
+        }
+        if quality:
+            payload["quality"] = quality
+        body = _json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             self.URL,
             data=body,
@@ -171,6 +182,7 @@ class CloudFunctionImageGenerator:
         prompt: str,
         aspect_ratio: str = "1:1",
         model: str | None = None,
+        quality: str | None = None,
     ) -> bytes:
         import json as _json
         import urllib.error
@@ -180,6 +192,8 @@ class CloudFunctionImageGenerator:
         payload: dict = {"prompt": prompt, "aspect_ratio": aspect_ratio}
         if model:
             payload["model"] = model
+        if quality:
+            payload["quality"] = quality
 
         req = urllib.request.Request(
             self._url,
@@ -230,10 +244,12 @@ class FakeImageGenerator:
         prompt: str,
         aspect_ratio: str = "1:1",
         model: str = "gpt-image-2",
+        quality: str | None = None,
     ) -> bytes:
         if self._quota_exceeded:
             raise QuotaExceeded("test-quota-exceeded")
         self.calls.append({
             "prompt": prompt, "aspect_ratio": aspect_ratio, "model": model,
+            "quality": quality,
         })
         return self._png
