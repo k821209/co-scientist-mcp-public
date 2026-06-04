@@ -96,7 +96,11 @@ def list_reviews(
     if state.backend.get_doc(_paper_path(state, slug)) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
     pairs = state.backend.list_collection(_reviews_path(state, slug))
-    reviews = [data for _, data in pairs]
+    # The document key is the authoritative id (resolve_paper_comment needs it).
+    # Comments written by the web dashboard via addDoc carry no `id` field in
+    # their data — only the Firestore doc key — so surface the key as both
+    # `id` and `review_id` (dev-todo CMT-3).
+    reviews = [{**data, "id": doc_id, "review_id": doc_id} for doc_id, data in pairs]
     if status is not None:
         reviews = [r for r in reviews if r.get("status") == status]
     if source is not None:
