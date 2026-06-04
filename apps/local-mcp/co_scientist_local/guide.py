@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-05-31a"
+GUIDE_VERSION = "2026-06-05a"
 
 
 def render_guide() -> str:
@@ -234,4 +234,27 @@ Free-tier users who want image generation do it OUTSIDE this MCP —
 wire up another image-gen MCP / built-in Claude Code tool with their
 own API key. The skill `/scientific-image` will surface the 403 to the
 user and suggest the upgrade.
+
+### The figure's stored prompt is the source of truth
+
+The user can edit a figure's generation prompt (and its aspect ratio /
+quality) directly in the dashboard and re-render it there. That edited
+prompt is saved back onto the figure. So your own memory of how you
+first drew a figure may be **stale** — the user may have changed it.
+
+Before you regenerate or overwrite any existing figure:
+
+1. **Always `get_figure(slug, n)` first** and read its stored `prompt`,
+   `aspect_ratio`, and `quality`. That is the latest intent (the user's
+   dashboard edit wins over your remembered prompt).
+2. Use that stored prompt as the **base**, apply only the change being
+   requested as a diff on top, and keep `aspect_ratio`/`quality` unless
+   asked to change them. Then `generate_image(..., figure_number=n,
+   overwrite=true)`.
+3. **Never** overwrite a figure with a freshly-written prompt from your
+   own memory — that silently discards the user's edit.
+
+A figure with `rerender_pending=true` means the user edited the prompt
+in the dashboard and is asking for a re-render: render it from the
+stored `prompt` (overwrite clears the flag automatically).
 """
