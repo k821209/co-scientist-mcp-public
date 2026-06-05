@@ -31,7 +31,6 @@ import re
 import sys
 
 from .backends import InMemoryBackend
-from .mcp_server import build_mcp
 from .state import State
 
 
@@ -171,6 +170,11 @@ def _build_service_account_state() -> State:
 
 
 def main() -> None:
+    argv = sys.argv[1:]
+    if argv and argv[0] == "install-skills":
+        from .skills_install import cli as _install_skills_cli
+        sys.exit(_install_skills_cli(argv[1:]))
+
     if os.environ.get("CO_SCIENTIST_USE_MEMORY") == "1":
         state = _build_dev_state()
         print("co-scientist-local: in-memory (dev mode)", file=sys.stderr)
@@ -206,6 +210,12 @@ def main() -> None:
         )
         sys.exit(2)
 
+    # Link bundled skills into this project's .claude/skills/ (best-effort;
+    # cwd is the project dir). Takes effect on the next Claude Code launch.
+    from .skills_install import install_skills_quietly
+    install_skills_quietly()
+
+    from .mcp_server import build_mcp
     mcp = build_mcp(state)
     mcp.run()
 

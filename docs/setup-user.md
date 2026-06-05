@@ -49,6 +49,22 @@ Claude Code auto-loads `CLAUDE.md` + spawns the MCP child process via
 `.mcp.json`. The MCP exchanges your API key, signs in to Firebase as the
 project owner, and is ready.
 
+### Skills
+
+The paper-writing/-review/-export skills ship **inside** the MCP package, so
+`pip install` already puts them on your disk. The setup script links them into
+this project's `.claude/skills/` (project-local, not global), and the MCP also
+re-links them on every startup — so a `git pull` + restart keeps them current.
+
+To (re)install them by hand from a project directory:
+
+```bash
+co-scientist-local install-skills --dir .
+```
+
+Add `--copy` to copy instead of symlink (useful if your editor follows links
+oddly). Unrelated skills you've added yourself are left untouched.
+
 Try:
 
 ```

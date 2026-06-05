@@ -40,6 +40,14 @@ co-scientist-local = "co_scientist_local.__main__:main"
 where = ["."]
 include = ["co_scientist_local*"]
 
+[tool.setuptools.package-data]
+# Claude Code skills bundled into the wheel so a non-editable
+# `pip install git+…#subdirectory=apps/local-mcp` carries them too. In the
+# private repo this dir is absent (canonical lives at repo-root packages/skills
+# and is resolved at runtime); the publish step materializes it into the
+# public package. See co_scientist_local/skills_install.py.
+co_scientist_local = ["skills/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["../../tests"]
 asyncio_mode = "auto"

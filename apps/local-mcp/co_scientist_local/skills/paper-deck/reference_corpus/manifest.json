@@ -1,0 +1,79 @@
+{
+  "generated_at": "2026-05-27",
+  "generator": "packages/skills/paper-deck/reference_corpus/generate.py",
+  "note": "Body slides are bespoke by default — compose them directly from h.* primitives (see proposal_dense / personnel_equipment for the density vocabulary). The named patterns here are MECHANICAL scaffolds only: structural layouts (gantt, image grids, metric rows, pipelines, dividers, figure-only, title) that are tedious to hand-roll and content-neutral. Do NOT reach for a pattern to frame argument/evidence/comparison content — design that layout yourself. Agent flow: read manifest.json; if the slide is one of the mechanical structures below, Read its PNG and call the pattern; otherwise compose bespoke from h.*.",
+  "patterns": {
+    "title_slide": {
+      "file": "title_slide.png",
+      "title": "Multi-modal AI for plant breeding",
+      "owns_slide": true,
+      "do": "Eyebrow (kicker label) above the big title, accent rule under it, subtitle (author + venue + date) on a third line. All centered, all vertically balanced. Use for the *opening* slide of a deck.",
+      "dont": "Don't add body bullets or a closing tagline here — keep the slide to four short text lines max. The title IS the slide; whitespace carries the rest. For a centered emphasis MID-deck, use `chapter_divider` instead.",
+      "shape_count": 4
+    },
+    "chapter_divider": {
+      "file": "chapter_divider.png",
+      "title": "Section opener",
+      "owns_slide": true,
+      "do": "Massive 56pt+ chapter label vertically-centered, short accent rule *under* the label (visual anchor), italic summary as a tagline. Use between sections of a long talk so the audience feels the break.",
+      "dont": "Don't repeat the deck-level accent stripe at the top — this pattern owns the canvas. Don't make the summary a paragraph; one tight sentence (≤ 50 chars) carries the rhythm.",
+      "shape_count": 3
+    },
+    "metric_tile_row": {
+      "file": "metric_tile_row.png",
+      "title": "Quantitative summary",
+      "owns_slide": false,
+      "do": "3–5 big numbers (display type, accent color) with thin labels and optional units. Numbers carry the headline emotion; labels carry the meaning. Use for KPI / result slides where the magnitudes themselves are the message.",
+      "dont": "Don't put 6+ tiles — the row gets cramped and each number loses weight. Don't write a long label; ≤ ~24 chars per tile, one line only.",
+      "shape_count": 15
+    },
+    "flow_pipeline": {
+      "file": "flow_pipeline.png",
+      "title": "Process pipeline",
+      "owns_slide": false,
+      "do": "Numbered cards (01 / 02 / 03 / 04) connected by right-arrows. Use for *sequential* processes — method, workflow, lifecycle. 3–5 steps is the readable range.",
+      "dont": "Don't use this for non-sequential lists (peers without an order) — compose a bespoke grid from `h.*` instead. Don't write a long body per step; the readability comes from short headings and quick descriptions.",
+      "shape_count": 28
+    },
+    "figure_full": {
+      "file": "figure_full.png",
+      "title": "Reference architecture (figure-only slide)",
+      "owns_slide": false,
+      "do": "Image owns the **full grid** (rows 1–6 ≈ 85% of slide height). Caption tucks into the 0.6\" bottom-margin strip OUTSIDE the grid, in muted body italics. Wins back ~17% of figure area vs the old row_span=4 + caption-in-row-6 layout (todo 008 §A).",
+      "dont": "Don't waste a grid row as 'breathing space' between figure and caption — the bottom margin already does that job. Don't let the caption run > 120 chars; 1 line preferred, 2 max.",
+      "shape_count": 7
+    },
+    "gantt_chart": {
+      "file": "gantt_chart.png",
+      "title": "추진 일정 (M1–M8) 및 업무 분장",
+      "owns_slide": false,
+      "do": "Activity rows × period columns with accent-colored bars at each row's `{start, span}`. Zebra row backgrounds + period labels across the top + label column on the left. Pair with `h.deck_chrome` (eyebrow / footer / page number) for proposal-grade rhythm. Use for project timelines, parallel workstreams, multi-month delivery plans.",
+      "dont": "Don't squeeze long Korean activity labels into a narrow label column — keep labels ≤ ~20 chars or let them wrap. Don't stack > ~12 rows; readability falls off.",
+      "shape_count": 44
+    },
+    "title_and_image_grid": {
+      "file": "title_and_image_grid.png",
+      "title": "Multi-image overview",
+      "owns_slide": false,
+      "do": "N images in a `cols`-column grid with italic captions below each. 2×2 = comparison (peers, no order). N×1 row = progression (left → right reads as sequence). Captions stay in body type, never display.",
+      "dont": "Don't use a grid for one hero image (`h.image_*` full-bleed). Don't pile in 6+ tiles — they get small and lose weight. Don't skip captions; the grid needs labeling to land.",
+      "shape_count": 13
+    },
+    "proposal_dense": {
+      "file": "proposal_dense.png",
+      "title": "Part 1 — 참조 유전체 구축 (3중 플랫폼 전략)",
+      "owns_slide": false,
+      "do": "**Bespoke** — NOT a pattern call. ~50 shapes hand-composed from h.* primitives: 3-platform comparison cards (top half) + 5-stage pipeline row + target-metrics line + deck chrome. Use as the reference rendering whenever the slide's content asks for *proposal-grade density* (3+ structured comparison sections / multiple coordinated layouts / equipment lists / personnel pages). Read this exemplar's source in `reference_corpus/generate.py` for the canonical density vocabulary.",
+      "dont": "Don't shoehorn this kind of content into a single pattern (`card_grid` / `metric_tile_row` / etc.). Pattern calls top out at ~15 shapes; the content here needs ~50. The right answer is to compose directly — that's the whole point of `code` mode.",
+      "shape_count": 42
+    },
+    "personnel_equipment": {
+      "file": "personnel_equipment.png",
+      "title": "수행 인력 및 보유 장비",
+      "owns_slide": false,
+      "do": "**Bespoke** — NOT a pattern call. ~60 shapes hand-composed: LEFT half is a 4-row personnel table (name + role + percentage + expertise), RIGHT half is a multi-section equipment list (sequencing / HPC / storage). Use as the reference whenever the slide carries TWO independent dense compositions side-by-side (personnel + infrastructure, methodology + outputs, criteria + verification).",
+      "dont": "Don't try to fit two independent tabular blocks into a single canned two-panel shape — when each side has its own internal multi-row layout, compose them bespoke side-by-side from `h.*` primitives.",
+      "shape_count": 47
+    }
+  }
+}
