@@ -274,18 +274,22 @@ def build_mcp(state: State) -> FastMCP:
         anchor_text: str | None = None,
         anchor_prefix: str | None = None,
         anchor_suffix: str | None = None,
+        anchor_occurrence: int | None = None,
         manuscript_snapshot: str | None = None,
     ) -> dict[str, Any]:
         """Create a new review/comment. Use source='user' for dashboard comments.
 
         anchor_prefix/anchor_suffix are the text just before/after anchor_text;
         when anchor_text repeats in a section they let the dashboard highlight
-        the exact occurrence instead of every match."""
+        the exact occurrence instead of every match. anchor_occurrence is the
+        0-based index of the intended instance among repeats (pins it exactly,
+        even when the surrounding context is identical)."""
         return _reviews.add_review(
             state, slug, comment=comment, source=source, reviewer_name=reviewer_name,
             section=section, severity=severity, manuscript_ref=manuscript_ref,
             anchor_text=anchor_text, anchor_prefix=anchor_prefix,
-            anchor_suffix=anchor_suffix, manuscript_snapshot=manuscript_snapshot,
+            anchor_suffix=anchor_suffix, anchor_occurrence=anchor_occurrence,
+            manuscript_snapshot=manuscript_snapshot,
         )
 
     @mcp.tool()

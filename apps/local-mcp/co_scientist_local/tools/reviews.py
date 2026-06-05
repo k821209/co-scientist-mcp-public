@@ -42,6 +42,7 @@ def add_review(
     anchor_text: str | None = None,
     anchor_prefix: str | None = None,
     anchor_suffix: str | None = None,
+    anchor_occurrence: int | None = None,
     manuscript_snapshot: str | None = None,
 ) -> dict:
     """Create a new review/comment. Returns the created doc."""
@@ -69,6 +70,7 @@ def add_review(
         "anchor_text": anchor_text,
         "anchor_prefix": anchor_prefix,
         "anchor_suffix": anchor_suffix,
+        "anchor_occurrence": anchor_occurrence,
         "manuscript_snapshot": manuscript_snapshot,
         "created_at": now,
         "resolved_at": None,
