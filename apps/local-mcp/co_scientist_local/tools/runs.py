@@ -1,16 +1,16 @@
 """Analysis runs: a record of one execution of an analysis.
 
 Paths:
-    doc: users/{uid}/papers/{slug}/analyses/{analysis_name}/runs/{run_key}
+    doc: projects/{pid}/papers/{slug}/analyses/{analysis_name}/runs/{run_key}
 
 `run_key` is a timestamp-derived id like `run_20260517_120453`. It's unique
 per analysis. Runs carry: host ('local' or a server alias), command, pid,
 exit_code, log path, start/finish timestamps.
 
-`launch_local_job` is the only side-effecting tool here — it spawns a real
-subprocess via `subprocess.Popen(start_new_session=True)` so the process
-keeps running even if Claude Code exits. The remote (SSH) job tools land
-next session.
+`launch_local_job` is the only side-effecting tool here — it backgrounds the
+command with `nohup … &` (the real work reparents to init) so it keeps
+running even if Claude Code exits. The remote (SSH) job tools live in
+`ssh_ops.py`.
 """
 from __future__ import annotations
 

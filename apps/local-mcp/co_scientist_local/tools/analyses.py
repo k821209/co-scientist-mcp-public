@@ -4,13 +4,12 @@ Each analysis is a named group within a paper (e.g. `pca_analysis`). It
 collects scripts + outputs that will be promoted to figures/tables.
 
 Paths:
-    doc: users/{uid}/papers/{slug}/analyses/{name}
+    doc: projects/{pid}/papers/{slug}/analyses/{name}
 
-For v0 we only support CRUD on the analysis record itself. The downstream
-pieces — `analysis_runs` (SSH submissions), `analysis_results` (file scan
-& panel mapping), `analysis_outputs` (figure/table provenance links) — get
-ported in the next session along with the SSH/server tools, because they
-all share infrastructure.
+This module owns CRUD on the analysis record itself. Execution and output
+mapping live alongside it: run records in `runs.py` (`launch_local_job`)
+and `ssh_ops.py` (`submit_remote_job`); figure/table promotion in the
+figures/tables tools.
 
 Auto-slugifies the supplied name (matches the original `create_analysis`
 behavior described in the architecture doc).

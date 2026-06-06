@@ -24,24 +24,43 @@ The dashboard's Runs tab surfaces every run in real time
 
 ## Two execution paths
 
+Every run goes **one of two ways**, and you pick per run:
+
+- **Local** — runs on the same machine Claude Code is on, inside the
+  project's `analysis/<group>/` folder. Use for quick/light jobs, or
+  when no HPC is registered. → `launch_local_job`
+- **Server (remote HPC)** — rsyncs the analysis folder to a registered
+  server and launches there (nohup or a scheduler like `sbatch`). Use
+  for heavy/long jobs. → `submit_remote_job`
+
+The original repo split these the same way; keep them distinct — don't
+try to run a remote command through the local tool or vice-versa.
+
 ### A. Local (your machine)
 
 ```
 run = mcp__co_scientist__launch_local_job(
   slug,
   analysis="<group_name>",
-  run_key="<short_id>",
-  command="bash analysis/<group>/run.sh",
-  cwd="analysis/<group>",
-  env={"OMP_NUM_THREADS": "8", ...},
+  command="bash run.sh",            # runs *inside* workdir
+  workdir="analysis/<group>",       # must already exist
+  env_name="<conda_env>",           # optional — conda env to activate
+  conda_root="~/miniconda3",        # optional — required with env_name
 )
 ```
 
-Returns immediately with the PID. The MCP wraps `subprocess.Popen` so
-your Claude Code session doesn't block. Periodically poll:
+`workdir` must already exist — the MCP does **not** create it
+(`FileNotFoundError` otherwise). Create `analysis/<group>/` and write
+the script there first. The command's cwd **is** `workdir`, so use
+paths relative to it (`bash run.sh`, not `bash analysis/<group>/run.sh`).
+
+Returns immediately with the PID and a generated `run_key` (in the
+returned row — you don't pass one in). The MCP wraps `subprocess.Popen`
+so your Claude Code session doesn't block. Periodically poll with the
+`run_key` from the return:
 
 ```
-mcp__co_scientist__reap_local_run(slug, analysis, run_key)
+mcp__co_scientist__reap_local_run(slug, analysis, run["run_key"])
 ```
 
 When `finished_at` is set, you're done.
@@ -52,12 +71,20 @@ If the user has registered a server (see `add_server`):
 
 ```
 mcp__co_scientist__submit_remote_job(
-  slug, analysis, run_key,
-  alias="<server_alias>",
-  command="sbatch run.slurm",
-  cwd="/scratch/<user>/<project>/<group>",
+  slug,
+  analysis="<group_name>",
+  command="sbatch run.slurm",       # runs *inside* the remote dir
+  server_alias="<server_alias>",
+  env_name="<conda_env>",           # optional
+  local_dir="analysis/<group>",     # rsync'd to the server before launch
 )
 ```
+
+The remote working dir is derived automatically — it's the server's
+`default_workdir` + `/analysis/<group>` (created with `mkdir -p`). You
+don't pass a remote path; set `local_dir` to the local folder to rsync
+up, and the command runs inside the remote dir. `run_key` is generated
+for you (in the returned row).
 
 Streams stderr/stdout back via `tail_remote_log` and
 `refresh_log_tail`. Don't `ssh "nohup …"` manually — the run won't be
@@ -104,10 +131,12 @@ If the user described the analysis but doesn't have a script yet:
 
 ### 3. Run
 
-Pick local or remote based on the command and the user's setup.
+Pick **local or server** based on the job's weight and the user's
+setup (see "Two execution paths" above).
 
-For local — set `cwd` so relative paths inside the script work. For
-remote — pre-stage data via rsync if needed:
+For local — set `workdir="analysis/<group>"` so relative paths inside
+the script work, and make sure that folder exists first. For server —
+set `local_dir="analysis/<group>"`; it gets rsync'd up before launch:
 
 ```
 mcp__co_scientist__add_server(...)    # one-time per HPC

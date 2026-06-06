@@ -1,14 +1,14 @@
 """Compute-server registry: user's HPC nodes and workstations.
 
 Paths:
-    doc:  users/{uid}/servers/{alias}
-    sub:  users/{uid}/servers/{alias}/envs/{env_name}
+    doc:  projects/{pid}/servers/{alias}
+    sub:  projects/{pid}/servers/{alias}/envs/{env_name}
 
 `alias` is the natural key — same string the user puts in `~/.ssh/config`.
 
 **Important security boundary:** the `ssh_key` field stores a *path on the
 user's disk* (e.g. `~/.ssh/id_ed25519`), never the private key material
-itself. The SSH executor (added next session) reads keys from disk on the
+itself. The SSH executor (in `ssh_ops.py`) reads keys from disk on the
 user's laptop — they never touch Firestore.
 """
 from __future__ import annotations
