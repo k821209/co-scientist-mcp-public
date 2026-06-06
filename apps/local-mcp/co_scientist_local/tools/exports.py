@@ -72,6 +72,35 @@ def _escape_thematic_breaks(text: str) -> str:
     return _THEMATIC_BREAK_RE.sub("***", text)
 
 
+_INLINE_FIGURE_RE = re.compile(r"!\[([^\]]*)\]\(figure:(\d+)\)")
+
+
+def _rewrite_inline_figure_refs(
+    text: str, figures: list[dict], supp_figures: list[dict]
+) -> str:
+    """Rewrite body embeds `![alt](figure:N)` to point at the staged image file
+    (`figure_N.png`) that export_to_path writes into pandoc's working dir.
+
+    The web renderer resolves the `figure:N` scheme to the figure's download
+    URL; pandoc can't, so without this rewrite it looks for a file literally
+    named `figure:N` and emits a broken/missing image. An unresolved N (no
+    blob) drops the image node and keeps the alt text as plain caption text.
+    """
+    name_by_num: dict[int, str] = {}
+    for fig in (*figures, *supp_figures):
+        bp = fig.get("blob_path")
+        num = fig.get("figure_number")
+        if bp and isinstance(num, int):
+            name_by_num[num] = pathlib.Path(bp).name
+
+    def repl(m: re.Match) -> str:
+        alt, num = m.group(1), int(m.group(2))
+        name = name_by_num.get(num)
+        return f"![{alt}]({name})" if name else alt
+
+    return _INLINE_FIGURE_RE.sub(repl, text)
+
+
 def _figures_appendix(figures: list[dict], supp_figures: list[dict]) -> str:
     """Markdown that embeds each registered figure's image as a Pandoc figure.
 
@@ -417,6 +446,9 @@ def export_to_path(
         # append a Figures section so registered figure images get embedded
         # (dev-todo EXP-1).
         manuscript_text = _escape_thematic_breaks(bundle["manuscript"])
+        manuscript_text = _rewrite_inline_figure_refs(
+            manuscript_text, bundle["figures"], bundle["supplementary_figures"],
+        )
         fig_appendix = _figures_appendix(
             bundle["figures"], bundle["supplementary_figures"],
         )
