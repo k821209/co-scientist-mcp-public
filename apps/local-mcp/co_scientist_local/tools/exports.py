@@ -29,6 +29,7 @@ from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
 from . import csl as _csl
+from . import docx_export as _docx_export
 from . import figures as _figures
 from . import papers as _papers
 from . import references as _references
@@ -439,6 +440,12 @@ def export_to_path(
     if fmt not in _VALID_FORMATS:
         raise ValueError(f"unsupported format {fmt!r}; choose from {_VALID_FORMATS}")
 
+    # Non-"paper" docs (reports / other) render .docx natively via python-docx
+    # — pandoc's OOXML crashes Hancom (dev-todo P0-1) and these docs don't need
+    # citeproc/CSL. Papers, and any non-docx format, stay on the pandoc path.
+    doc_type = (bundle["paper"].get("doc_type") or "paper").lower()
+    engine = "docx_native" if (doc_type != "paper" and fmt == "docx") else "pandoc"
+
     with tempfile.TemporaryDirectory(prefix=f"export-{slug}-") as tmp:
         tmp_path = pathlib.Path(tmp)
 
@@ -459,9 +466,9 @@ def export_to_path(
         csl_arg: str | None = None
         csl_status = "no_references"
         csl_filename: str | None = None
-        if has_bib:
+        # Citation style / bibliography only apply to the pandoc path.
+        if has_bib and engine == "pandoc":
             (tmp_path / "references.bib").write_text(bundle["bibtex"], encoding="utf-8")
-            # Citation style only matters once there's a bibliography.
             csl_arg, csl_status, csl_filename, csl_warnings = _place_csl(
                 state, tmp_path, bundle, csl_path,
             )
@@ -478,34 +485,50 @@ def export_to_path(
             local_name = pathlib.Path(bp).name
             (tmp_path / local_name).write_bytes(data)
 
-        # Run pandoc; it writes the output file inside tmp dir, we copy it out
         tmp_output = tmp_path / out.name
-        args = _format_pandoc_args(
-            fmt, "manuscript.md", out.name,
-            has_bib=has_bib, csl_path=csl_arg,
-        )
-        rc, stdout, stderr = state.require_pandoc().run(args, cwd=str(tmp_path))
-        if rc != 0:
-            return {
-                "error": f"pandoc failed (rc={rc}): {stderr.strip()}",
-                "warnings": export_warnings,
-            }
-        if not tmp_output.is_file():
-            return {
-                "error": "pandoc reported success but produced no output file",
-                "warnings": export_warnings,
-            }
-
-        # Make the .docx open in Hancom Office (dev-todo P0-1): prefer a
-        # LibreOffice round-trip (normalizes the whole OOXML package); fall
-        # back to stripping the known-problem empty parts when soffice is
-        # unavailable. Done before we copy/upload.
         docx_hancom_fix = "none"
-        if fmt == "docx":
-            if _normalize_docx_via_soffice(tmp_output):
-                docx_hancom_fix = "soffice"
-            elif _strip_problem_docx_parts(tmp_output):
-                docx_hancom_fix = "stripped_parts"
+
+        if engine == "docx_native":
+            # python-docx writes a native package Hancom opens cleanly, so no
+            # OOXML normalization is needed. Figure embeds resolve against the
+            # staged blobs in tmp_path.
+            _docx_export.render_markdown_to_docx(
+                manuscript_text, tmp_output, asset_dir=tmp_path,
+            )
+            docx_hancom_fix = "native_python_docx"
+            if has_bib:
+                export_warnings.append(
+                    "references are not auto-formatted for report/other docs "
+                    "(python-docx export has no citeproc) — add a manual "
+                    "references section if needed"
+                )
+        else:
+            # Run pandoc; it writes the output file inside tmp dir, we copy out.
+            args = _format_pandoc_args(
+                fmt, "manuscript.md", out.name,
+                has_bib=has_bib, csl_path=csl_arg,
+            )
+            rc, stdout, stderr = state.require_pandoc().run(args, cwd=str(tmp_path))
+            if rc != 0:
+                return {
+                    "error": f"pandoc failed (rc={rc}): {stderr.strip()}",
+                    "warnings": export_warnings,
+                }
+            if not tmp_output.is_file():
+                return {
+                    "error": "pandoc reported success but produced no output file",
+                    "warnings": export_warnings,
+                }
+
+            # Make the .docx open in Hancom Office (dev-todo P0-1): prefer a
+            # LibreOffice round-trip (normalizes the whole OOXML package); fall
+            # back to stripping the known-problem empty parts when soffice is
+            # unavailable. Done before we copy/upload.
+            if fmt == "docx":
+                if _normalize_docx_via_soffice(tmp_output):
+                    docx_hancom_fix = "soffice"
+                elif _strip_problem_docx_parts(tmp_output):
+                    docx_hancom_fix = "stripped_parts"
 
         # Copy to the user-specified path
         shutil.copy2(tmp_output, out)
@@ -538,6 +561,8 @@ def export_to_path(
     return {
         "slug": slug,
         "format": fmt,
+        "doc_type": doc_type,
+        "engine": engine,
         "local_path": str(out),
         "blob_path": blob_path,
         "size_bytes": len(output_bytes),

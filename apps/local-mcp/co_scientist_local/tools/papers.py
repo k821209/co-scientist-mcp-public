@@ -8,7 +8,7 @@ Paths used:
 from __future__ import annotations
 
 from ..backends.base import NotFound
-from ..manuscript import DEFAULT_SECTIONS, compile_manuscript
+from ..manuscript import DOC_TYPES, compile_manuscript, sections_for_doc_type
 from ..state import State
 from ..util import now_iso, slugify, word_count
 from .activity import log_event
@@ -47,13 +47,23 @@ def create_paper(
     journal: str | None = None,
     abstract: str | None = None,
     target_date: str | None = None,
+    doc_type: str = "paper",
 ) -> dict:
-    """Create a new paper and seed its canonical sections.
+    """Create a new document and seed its sections.
+
+    `doc_type` is one of "paper", "report", "other". Only "paper" seeds the
+    canonical section scaffold (abstract/intro/methods/results/discussion/
+    conclusion); reports and other docs start with no sections so the author
+    structures them freely. doc_type also drives the export engine
+    (paper → pandoc, others → python-docx).
 
     Returns the created paper doc (without sections).
     """
     if not title or not title.strip():
         raise ValueError("title is required")
+    doc_type = (doc_type or "paper").strip().lower()
+    if doc_type not in DOC_TYPES:
+        raise ValueError(f"doc_type must be one of {DOC_TYPES}, got {doc_type!r}")
     slug = (slug or slugify(title)).strip("-")
     if not slug:
         raise ValueError("could not derive a valid slug from title")
@@ -70,6 +80,7 @@ def create_paper(
         "title": title.strip(),
         "authors": list(authors or []),
         "journal": journal,
+        "doc_type": doc_type,
         "status": "draft",
         "target_date": target_date,
         "abstract": abstract,
@@ -78,8 +89,8 @@ def create_paper(
     }
     state.backend.set_doc(path, paper)
 
-    # Seed canonical empty sections
-    for i, (key, section_title) in enumerate(DEFAULT_SECTIONS):
+    # Seed sections per type (papers get the canonical scaffold; others none).
+    for i, (key, section_title) in enumerate(sections_for_doc_type(doc_type)):
         body = abstract if (key == "abstract" and abstract) else ""
         state.backend.set_doc(
             _section_path(state, slug, key),
@@ -96,7 +107,7 @@ def create_paper(
 
     _regenerate_manuscript(state, slug)
     log_event(state, slug, action="paper_created",
-              detail={"title": title, "journal": journal})
+              detail={"title": title, "journal": journal, "doc_type": doc_type})
     return {**paper, "dashboard_url": state.dashboard_url("papers", slug)}
 
 
@@ -137,6 +148,7 @@ def update_paper(
     status: str | None = None,
     target_date: str | None = None,
     authors: list[str] | None = None,
+    doc_type: str | None = None,
 ) -> dict:
     """Patch a paper's metadata fields. Only non-None values are applied."""
     path = _paper_path(state, slug)
@@ -149,6 +161,11 @@ def update_paper(
     if status is not None: fields["status"] = status
     if target_date is not None: fields["target_date"] = target_date
     if authors is not None: fields["authors"] = list(authors)
+    if doc_type is not None:
+        dt = doc_type.strip().lower()
+        if dt not in DOC_TYPES:
+            raise ValueError(f"doc_type must be one of {DOC_TYPES}, got {doc_type!r}")
+        fields["doc_type"] = dt
     state.backend.update_doc(path, fields)
     if title is not None:
         _regenerate_manuscript(state, slug)

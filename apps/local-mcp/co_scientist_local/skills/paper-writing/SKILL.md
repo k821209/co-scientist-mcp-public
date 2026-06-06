@@ -12,10 +12,20 @@ description: Create a new paper or update sections of an existing one. Use when 
 ### Starting a new paper
 
 1. Ask the user for title + target journal if not provided.
-2. Call `mcp__co_scientist__create_paper(title=..., journal=...)`.
-3. The canonical 6 sections (abstract, introduction, methods, results,
-   discussion, conclusion) are seeded automatically.
-4. Suggest next steps: literature review, methods draft, etc.
+2. Ask which document type this is — **논문(paper) / 보고서(report) / 기타(other)** —
+   and pass it as `doc_type`. Default to `"paper"` if the user just wants a
+   journal manuscript.
+   - `doc_type="paper"` seeds the canonical 6 sections and exports via pandoc
+     (journal citation styles, CSL).
+   - `doc_type="report"` / `"other"` start with **no sections** (you structure
+     the body freely with markdown headings) and export to **.docx via
+     python-docx** — a native file that opens cleanly in 한컴오피스/Word.
+3. Call `mcp__co_scientist__create_paper(title=..., journal=..., doc_type=...)`.
+4. For a `paper`, the canonical 6 sections (abstract, introduction, methods,
+   results, discussion, conclusion) are seeded automatically. For
+   `report`/`other`, add sections yourself with markdown `##` headings in the
+   body as you draft.
+5. Suggest next steps: literature review, methods draft, etc.
 
 ### Working on an existing paper
 

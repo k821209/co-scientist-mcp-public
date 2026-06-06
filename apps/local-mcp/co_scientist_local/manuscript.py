@@ -53,3 +53,12 @@ DEFAULT_SECTIONS: list[tuple[str, str]] = [
     ("discussion", "Discussion"),
     ("conclusion", "Conclusion"),
 ]
+
+# Document types. Only "paper" gets the canonical section scaffold; reports and
+# other docs start empty so the author structures them freely.
+DOC_TYPES = ("paper", "report", "other")
+
+
+def sections_for_doc_type(doc_type: str) -> list[tuple[str, str]]:
+    """Section seeds for a new document of the given type."""
+    return DEFAULT_SECTIONS if doc_type == "paper" else []

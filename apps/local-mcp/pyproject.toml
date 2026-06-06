@@ -18,6 +18,10 @@ dependencies = [
     "google-cloud-storage>=2.16",
     # paper-deck Phase 3 — PPTX export.
     "python-pptx>=1.0",
+    # Report/other doc export — native .docx via python-docx (pandoc OOXML
+    # crashes Hancom Office). markdown-it-py parses the manuscript markdown.
+    "python-docx>=1.1",
+    "markdown-it-py>=2.2",
     # paper-import — PDF text extraction (docx goes through pandoc).
     "pypdf>=4.0",
     # paper-deck Phase 4 (todo 004 §A) — per-slide PNG render from the

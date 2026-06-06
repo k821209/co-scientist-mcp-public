@@ -103,11 +103,20 @@ def build_mcp(state: State) -> FastMCP:
         authors: list[str] | None = None,
         journal: str | None = None,
         abstract: str | None = None,
+        doc_type: str = "paper",
     ) -> dict[str, Any]:
-        """Create a new paper and seed canonical sections."""
+        """Create a new document and seed sections.
+
+        doc_type is one of "paper", "report", "other". Only "paper" seeds the
+        canonical section scaffold (abstract/intro/methods/results/discussion/
+        conclusion); "report" and "other" start with no sections so the author
+        structures them freely. doc_type also drives export: non-paper docs
+        export to .docx via python-docx (native, Hancom-friendly) instead of
+        pandoc.
+        """
         return _papers.create_paper(
             state, title=title, slug=slug, authors=authors,
-            journal=journal, abstract=abstract,
+            journal=journal, abstract=abstract, doc_type=doc_type,
         )
 
     @mcp.tool()
@@ -147,9 +156,13 @@ def build_mcp(state: State) -> FastMCP:
         title: str | None = None,
         journal: str | None = None,
         status: str | None = None,
+        doc_type: str | None = None,
     ) -> dict[str, Any]:
-        """Patch a paper's metadata."""
-        return _papers.update_paper(state, slug, title=title, journal=journal, status=status)
+        """Patch a paper's metadata. doc_type is one of "paper"/"report"/"other"."""
+        return _papers.update_paper(
+            state, slug, title=title, journal=journal, status=status,
+            doc_type=doc_type,
+        )
 
     @mcp.tool()
     def delete_paper(slug: str) -> dict[str, Any]:
