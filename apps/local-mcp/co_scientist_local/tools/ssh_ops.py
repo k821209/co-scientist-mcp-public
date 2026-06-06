@@ -339,6 +339,7 @@ def submit_remote_job(
         state, paper_slug, analysis_name,
         command=command, host=server_alias, env_name=env_name,
         pid=pid, started_at=started_at, log_path=log_path_relative,
+        workdir=remote_dir,
         notes=notes,
     )
     return {
@@ -383,6 +384,10 @@ def tail_remote_log(
     ssh = state.require_ssh()
     if log_path.startswith("/"):
         remote_log = log_path
+    elif run.get("workdir"):
+        # Prefer the absolute workdir recorded at submit time — robust even if
+        # the server's default_workdir was changed afterwards.
+        remote_log = f"{run['workdir'].rstrip('/')}/{pathlib.PurePosixPath(log_path).name}"
     else:
         wd = (server.get("default_workdir") or "").rstrip("/")
         remote_log = f"{wd}/{log_path}" if wd else log_path

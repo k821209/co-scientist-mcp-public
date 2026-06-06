@@ -215,6 +215,15 @@ def main() -> None:
     from .skills_install import install_skills_quietly
     install_skills_quietly()
 
+    # Reap local jobs that died while no session was running, then start a
+    # background reaper so kills/crashes reflect on the dashboard automatically.
+    from .tools.runs import reap_all_local_runs, start_local_reaper
+    try:
+        reap_all_local_runs(state)
+    except Exception as e:  # pragma: no cover — best-effort startup cleanup
+        print(f"co-scientist-local: startup reap failed: {e}", file=sys.stderr)
+    start_local_reaper(state)
+
     from .mcp_server import build_mcp
     mcp = build_mcp(state)
     mcp.run()

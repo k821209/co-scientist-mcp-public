@@ -152,6 +152,12 @@ run = mcp__co_scientist__reap_local_run(slug, analysis, run_key)
 # loop with a short sleep until run["finished_at"] is set
 ```
 
+Calling `reap_local_run` is the fastest way to get the result, but it's
+no longer the *only* way a run gets closed: a background reaper in the
+MCP polls launched local PIDs and auto-marks finished within ~30s, so a
+job you killed or that crashed surfaces on the dashboard's Runs tab on
+its own (jobs that died between sessions are swept at the next startup).
+
 Remote:
 ```
 mcp__co_scientist__poll_remote_pids(alias)  # PIDs still alive?

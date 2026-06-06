@@ -18,6 +18,9 @@ import os
 import pathlib
 import shlex
 import subprocess
+import sys
+import threading
+import time
 from datetime import datetime, timezone
 
 from ..backends.base import NotFound
@@ -43,6 +46,21 @@ def _new_run_key() -> str:
     return "run_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
 
 
+# In-session registry of local PIDs we launched, so the background reaper can
+# check liveness with `os.kill` alone (no Firestore reads) and only write when a
+# job actually dies. Cleared as entries finish; cross-session leftovers are
+# handled by the one-shot startup sweep (`reap_all_local_runs`).
+_LOCAL_PIDS: list[tuple[str, str, str, int]] = []  # (slug, analysis, run_key, pid)
+_LOCAL_PIDS_LOCK = threading.Lock()
+
+
+def _register_local_pid(slug: str, analysis: str, run_key: str, pid: int | None) -> None:
+    if pid is None:
+        return
+    with _LOCAL_PIDS_LOCK:
+        _LOCAL_PIDS.append((slug, analysis, run_key, pid))
+
+
 def record_analysis_run(
     state: State,
     slug: str,
@@ -54,11 +72,16 @@ def record_analysis_run(
     pid: int | None = None,
     started_at: str | None = None,
     log_path: str | None = None,
+    workdir: str | None = None,
     notes: str | None = None,
     run_key: str | None = None,
 ) -> dict:
-    """Insert a new analysis_runs doc. Used by `launch_local_job` and (later)
-    `submit_remote_job`."""
+    """Insert a new analysis_runs doc. Used by `launch_local_job` and
+    `submit_remote_job`.
+
+    `workdir` is the absolute directory the command ran in (local path, or
+    the resolved remote dir). Persisted so a run stays self-contained — the
+    location survives even if a server's `default_workdir` later changes."""
     _ensure_analysis(state, slug, analysis)
     run_key = run_key or _new_run_key()
     doc = {
@@ -76,6 +99,7 @@ def record_analysis_run(
         "finished_at": None,
         "exit_code": None,
         "log_path": log_path,
+        "workdir": workdir,
         "notes": notes,
         "created_at": now_iso(),
     }
@@ -201,13 +225,16 @@ def launch_local_job(
     except (ValueError, IndexError):
         raise RuntimeError(f"could not parse PID from launcher output: {result.stdout!r}")
 
-    return record_analysis_run(
+    run = record_analysis_run(
         state, slug, analysis,
         command=command, host="local", env_name=env_name,
         pid=pid,
         log_path=str(log_file),
+        workdir=str(wd),
         run_key=run_key,
     )
+    _register_local_pid(slug, analysis, run_key, pid)
+    return run
 
 
 def read_local_exitcode(workdir: str, run_key: str) -> int | None:
@@ -249,3 +276,79 @@ def reap_local_run(state: State, slug: str, analysis: str, run_key: str) -> dict
     except PermissionError:
         # Process exists but is owned by someone else (shouldn't happen for local)
         return run
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists but not ours
+
+
+def reap_registered_local_runs(state: State) -> dict:
+    """Reap dead jobs from the in-session registry. PID check is `os.kill`
+    only — no Firestore reads for live jobs; a write happens only when one
+    actually died. Driven by the background reaper thread.
+    """
+    with _LOCAL_PIDS_LOCK:
+        snapshot = list(_LOCAL_PIDS)
+    dead: list[tuple[str, str, str, int]] = [
+        entry for entry in snapshot if not _pid_alive(entry[3])
+    ]
+    finished = 0
+    for slug, analysis, run_key, _pid in dead:
+        try:
+            reap_local_run(state, slug, analysis, run_key)
+            finished += 1
+        except Exception as e:  # pragma: no cover — defensive; never break the loop
+            print(f"co-scientist-local: reap {run_key} failed: {e}", file=sys.stderr)
+    if dead:
+        dead_set = set(dead)
+        with _LOCAL_PIDS_LOCK:
+            _LOCAL_PIDS[:] = [e for e in _LOCAL_PIDS if e not in dead_set]
+    return {"checked": len(snapshot), "finished": finished}
+
+
+def reap_all_local_runs(state: State) -> dict:
+    """One-shot full sweep across every paper/analysis: mark finished any
+    unfinished *local* run whose PID is gone. Used at MCP startup to clean up
+    jobs that died while no session was running (the registry is empty then).
+    """
+    checked = finished = 0
+    for slug, _ in state.backend.list_collection(state.project_path("papers")):
+        for analysis, _ in state.backend.list_collection(
+            state.project_path("papers", slug, "analyses")
+        ):
+            for r in list_analysis_runs(state, slug, analysis, unfinished_only=True):
+                if (r.get("host") or "local") != "local" or not r.get("pid"):
+                    continue
+                checked += 1
+                try:
+                    updated = reap_local_run(state, slug, analysis, r["run_key"])
+                    if updated.get("finished_at"):
+                        finished += 1
+                except Exception as e:  # pragma: no cover — defensive
+                    print(f"co-scientist-local: sweep {r.get('run_key')} failed: {e}",
+                          file=sys.stderr)
+    return {"checked": checked, "finished": finished}
+
+
+def start_local_reaper(state: State, *, interval_seconds: float = 30.0) -> threading.Thread:
+    """Spawn a daemon thread that periodically reaps dead local jobs so the
+    dashboard (a Firestore listener) reflects kills/crashes within one
+    interval — without the agent calling `reap_local_run` by hand.
+    """
+    def _loop() -> None:
+        while True:
+            time.sleep(interval_seconds)
+            try:
+                reap_registered_local_runs(state)
+            except Exception as e:  # pragma: no cover — defensive; keep the thread alive
+                print(f"co-scientist-local: reaper tick failed: {e}", file=sys.stderr)
+
+    t = threading.Thread(target=_loop, name="co-scientist-local-reaper", daemon=True)
+    t.start()
+    return t
