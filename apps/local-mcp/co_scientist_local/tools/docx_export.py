@@ -37,6 +37,58 @@ _MAX_IMAGE_WIDTH = Inches(6.0)
 _MONO_FONT = "Consolas"
 _LINK_COLOR = RGBColor(0x05, 0x63, 0xC1)
 
+# Report design template. Reports/other docs open in Hancom Office, so we pick a
+# CJK-safe default font and style headings/tables for a polished, readable look.
+# The East Asian face drives Hangul glyphs; the Latin face drives ASCII.
+_BODY_FONT_EASTASIA = "맑은 고딕"          # Malgun Gothic — ships with Korean Windows/Hancom
+_BODY_FONT_LATIN = "Calibri"
+_BODY_FONT_SIZE = Pt(10.5)
+_HEADING_COLOR = RGBColor(0x1F, 0x38, 0x64)  # deep navy — reads as a section title
+# Built-in table style confirmed present in python-docx's default template;
+# gives header shading + banded rows out of the box.
+_TABLE_STYLE = "Light Grid Accent 1"
+# (level, size pt, space-before pt, space-after pt)
+_HEADING_SPECS = [(1, 16, 12, 6), (2, 13, 10, 4), (3, 11.5, 8, 3)]
+
+
+def _set_eastasia_font(style, eastasia: str) -> None:
+    """Set a style's East Asian font face via oxml.
+
+    python-docx's `.font.name` only writes the `w:ascii`/`w:hAnsi` attributes;
+    Hangul glyphs are selected by `w:eastAsia`, which has no high-level API.
+    """
+    rpr = style.element.get_or_add_rPr()
+    rfonts = rpr.find(qn("w:rFonts"))
+    if rfonts is None:
+        rfonts = rpr.makeelement(qn("w:rFonts"), {})
+        rpr.append(rfonts)
+    rfonts.set(qn("w:eastAsia"), eastasia)
+
+
+def _apply_report_template(doc) -> None:
+    """Style the document's Normal + Heading styles for report/other exports.
+
+    Sets a CJK-friendly body font (Latin + East Asian faces), comfortable body
+    size with relaxed line spacing, and navy headings with breathing room. All
+    block renderers inherit from these styles, so this colors the whole doc.
+    """
+    normal = doc.styles["Normal"]
+    normal.font.name = _BODY_FONT_LATIN
+    normal.font.size = _BODY_FONT_SIZE
+    _set_eastasia_font(normal, _BODY_FONT_EASTASIA)
+    pf = normal.paragraph_format
+    pf.line_spacing = 1.15
+    pf.space_after = Pt(6)
+
+    for level, size, before, after in _HEADING_SPECS:
+        style = doc.styles[f"Heading {level}"]
+        style.font.name = _BODY_FONT_LATIN
+        style.font.size = Pt(size)
+        style.font.color.rgb = _HEADING_COLOR
+        _set_eastasia_font(style, _BODY_FONT_EASTASIA)
+        style.paragraph_format.space_before = Pt(before)
+        style.paragraph_format.space_after = Pt(after)
+
 
 def _md() -> MarkdownIt:
     # "commonmark" + table only — NOT "gfm-like" (that enables linkify, which
@@ -256,6 +308,24 @@ def _render_list_item(doc, item: SyntaxTreeNode, asset_dir, style: str, list_lev
             _render_block(doc, child, asset_dir, list_level)
 
 
+def _set_table_look(table, *, header: bool, banded_rows: bool) -> None:
+    """Set the table's `<w:tblLook>` so the style's conditional formatting
+    (header shading, row banding) actually renders. python-docx exposes no
+    high-level API for this, so we write the element attributes directly.
+    """
+    tbl_pr = table._tbl.tblPr
+    look = tbl_pr.find(qn("w:tblLook"))
+    if look is None:
+        look = tbl_pr.makeelement(qn("w:tblLook"), {})
+        tbl_pr.append(look)
+    look.set(qn("w:firstRow"), "1" if header else "0")
+    look.set(qn("w:lastRow"), "0")
+    look.set(qn("w:firstColumn"), "0")
+    look.set(qn("w:lastColumn"), "0")
+    look.set(qn("w:noHBand"), "0" if banded_rows else "1")
+    look.set(qn("w:noVBand"), "1")
+
+
 def _render_table(doc, node: SyntaxTreeNode, asset_dir):
     rows: list[list[SyntaxTreeNode]] = []
     for section in node.children:  # thead / tbody
@@ -266,7 +336,11 @@ def _render_table(doc, node: SyntaxTreeNode, asset_dir):
         return
     ncols = max(len(r) for r in rows)
     table = doc.add_table(rows=len(rows), cols=ncols)
-    table.style = "Table Grid"
+    table.style = _TABLE_STYLE
+    # Turn on the style's conditional formatting: header-row + banded rows,
+    # no first/last-column emphasis (so data columns read evenly). Without a
+    # `<w:tblLook>` the banding/header shading don't render in some viewers.
+    _set_table_look(table, header=True, banded_rows=True)
     for ri, cells in enumerate(rows):
         for ci in range(ncols):
             cell = table.cell(ri, ci)
@@ -299,6 +373,7 @@ def render_markdown_to_docx(
     root = SyntaxTreeNode(tokens)
 
     doc = Document()
+    _apply_report_template(doc)
     for node in root.children:
         _render_block(doc, node, assets)
     doc.save(str(out))
