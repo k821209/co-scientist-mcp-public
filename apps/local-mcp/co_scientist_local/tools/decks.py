@@ -248,6 +248,13 @@ def add_slide(
     """Append a slide. `slide_number` is the 1-based order. Use
     `renumber_deck` after bulk add/delete to normalize gaps.
 
+    Inserting at a slide_number that already exists does NOT shift the
+    existing slides — both keep the same number until `renumber_deck`.
+    During that window `list_slides` orders the tie by creation time, so
+    the new slide sorts *after* the one it collides with. A slide added
+    at number N therefore lands directly after the current slide N: to
+    insert "between 4 and 5", add at 4 and then `renumber_deck`.
+
     `render_mode` is optional (todo 010 — defer the design decision to
     authoring time). When `None`, the exporter / renderer infers the
     mode from which fields are populated (regions → hybrid, code with
@@ -383,12 +390,17 @@ def set_slide_regions(
     / paper-figure); x/y/w/h are fractions (0..1) of the slide so the
     layout is aspect-independent.
 
-    Forces the slide's render_mode to 'hybrid', EXCEPT when the slide
-    is already in 'code' mode — in that case regions act as image
-    placeholders the slide's `code` snippet references via
+    Forces the slide's render_mode to 'hybrid', EXCEPT when the slide is
+    in 'code' mode OR already carries a `code` snippet — in that case
+    regions act as image placeholders the slide's `code` references via
     `h.image_region(region_id, ...)`. This lets the agent plan a
     slide's images up-front (regions = placeholders), have them
     rendered separately, and embed them by id at compose time.
+
+    Preserving 'code' for a slide that has `code` matters: the export
+    runs a `code` slide's snippet (placing both text and region images),
+    whereas a `hybrid` slide only lays down region pictures — so snapping
+    a code slide to hybrid would silently drop its text/shape overlay.
 
     Replaces any existing regions. A region whose *source* (render_mode +
     figure_number / prompt / code) is unchanged keeps its rendered image,
@@ -424,9 +436,13 @@ def set_slide_regions(
         reg["rendered_at"] = old.get("rendered_at") if old else None
         normalized.append(reg)
 
-    # Preserve `code` mode (image placeholder use); everything else
-    # snaps to `hybrid` (the historical default).
-    new_mode = "code" if cur.get("render_mode") == "code" else "hybrid"
+    # Preserve `code` mode (image placeholder use) whenever the slide is
+    # in code mode OR carries a code snippet; everything else snaps to
+    # `hybrid` (the historical default). Without the snippet check, adding
+    # regions to a code slide whose render_mode was left inferred (None)
+    # would flip it to hybrid and drop its text/shape overlay on export.
+    has_code = bool((cur.get("code") or "").strip())
+    new_mode = "code" if (cur.get("render_mode") == "code" or has_code) else "hybrid"
     state.backend.update_doc(path, {
         "regions": normalized,
         "render_mode": new_mode,
@@ -450,11 +466,38 @@ def delete_slide(state: State, slug: str, deck_id: str, slide_id: str) -> bool:
     return True
 
 
-def list_slides(state: State, slug: str, deck_id: str) -> list[dict]:
+def list_slides(
+    state: State,
+    slug: str,
+    deck_id: str,
+    *,
+    fields: list[str] | None = None,
+) -> list[dict]:
+    """List a deck's slides in display order.
+
+    Ordering is `(slide_number, created_at, id)`. The created_at tie-break
+    makes the order deterministic when two slides share a slide_number
+    (e.g. after `add_slide` inserts at an existing number): the
+    later-created slide sorts after the existing one, so a fresh insert
+    lands *after* the slide it shares a number with until `renumber_deck`
+    packs the numbers. Sorting on slide_number alone left ties to fall
+    back on the random id suffix — non-deterministic.
+
+    `fields`, if given, projects each slide to just those keys (plus `id`
+    and `slide_number`, always kept). Use it to skip the large `code` /
+    `notes` blobs when you only need an index — full `list_slides()`
+    output can blow past the tool's token budget on a 20-slide deck."""
     _ensure_paper(state, slug)
     pairs = state.backend.list_collection(_slides_path(state, slug, deck_id))
     slides = [data for _, data in pairs]
-    slides.sort(key=lambda s: s.get("slide_number") or 0)
+    slides.sort(key=lambda s: (
+        s.get("slide_number") or 0,
+        s.get("created_at") or "",
+        s.get("id") or "",
+    ))
+    if fields is not None:
+        keep = {"id", "slide_number", *fields}
+        slides = [{k: v for k, v in s.items() if k in keep} for s in slides]
     return slides
 
 

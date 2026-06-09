@@ -188,6 +188,12 @@ def _image_dims(data: bytes) -> dict:
     return {"image_width": sz[0], "image_height": sz[1]} if sz else {}
 
 
+# Sentinel for h.deck_chrome's auto page-number default: "page_number not
+# given" (→ use the slide's slide_number) vs. "page_number=None" (→ skip
+# the page label). A plain None can't distinguish the two.
+_PAGE_AUTO = object()
+
+
 # Tokens that signal a `code` field is an in-place python-pptx snippet
 # (renders at export time via _add_code_slide) rather than a `code-shape`
 # external script (produces a PNG path the agent supplies via local_path).
@@ -1123,6 +1129,16 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
         _place_picture(slide, str(tmp),
                        left=left, top=top, box_w=width, box_h=height, fit=fit)
 
+    def _deck_chrome(*args, page_number=_PAGE_AUTO, **kwargs):
+        """Wrap h.deck_chrome to default `page_number` to this slide's
+        `slide_number`. Inserting a slide then only requires a renumber —
+        not a rewrite of every following slide's literal page number.
+        Pass `page_number=None` explicitly to skip the page label."""
+        target_slide = args[0] if args else slide
+        if page_number is _PAGE_AUTO:
+            page_number = row.get("slide_number")
+        return _h.deck_chrome(target_slide, page_number=page_number, **kwargs)
+
     # Combine static helpers + state-aware image helpers into one `h`.
     h = SimpleNamespace(
         accent_stripe=_h.accent_stripe,
@@ -1141,8 +1157,10 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
         autofit_pt=_h.autofit_pt,           # Korean-aware text autofit
         estimate_text_width_pt=_h.estimate_text_width_pt,
         text=_h.text,                       # todo 007 §D — one-call textbox
+        vstack=_h.vstack,                   # todo 014 — auto-stacked text lines
+        callout=_h.callout,                 # todo 014 — self-sizing filled box
         Cell=_h.Cell,                       # Grid.cell() return type
-        deck_chrome=_h.deck_chrome,         # todo 009 B — eyebrow/footer/page
+        deck_chrome=_deck_chrome,           # todo 009 B — eyebrow/footer/page
         table=_h.table,                     # todo 009 C — native pptx table
     )
     # Mechanical structural layouts only — bound as `p`. Content-framing

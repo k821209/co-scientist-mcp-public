@@ -37,7 +37,15 @@ unity header — ready for rendering.
    `len(list_figures(slug))`.
 4. **`add_slide` then `renumber_deck` once.** Don't renumber by hand —
    the doc IDs encode the original number; renumber updates the
-   `slide_number` field, the IDs stay.
+   `slide_number` field, the IDs stay. Inserting at a number that
+   already exists does **not** push the others down: both slides keep
+   that number until `renumber_deck`, and in the meantime the *newer*
+   slide sorts right after the existing one (ties break by creation
+   time, deterministically). So a slide added at number N lands directly
+   after the current slide N. To insert "between 4 and 5", add at **4**
+   and renumber — the new slide sorts after the old 4 and before old 5.
+   On a big deck, call `list_slides(slug, deck_id, fields=["title",
+   "role"])` to get a compact index without the bulky `code`/`notes`.
 5. **Native-language flow when the audience is non-English** (todo 001).
    Detect the audience language from `audience`, the user's prompt, or
    the deck concept. When it's Korean / Japanese / Chinese / etc.:
@@ -395,8 +403,12 @@ mcp__co_scientist__update_slide(
                   type_scale=type_scale, sw=sw, sh=sh)
     h.deck_chrome(slide, palette=palette, fonts=fonts,
                   type_scale=type_scale, sw=sw, sh=sh,
-                  eyebrow='HOW · 추진 방법', page_number=5, total=13,
+                  eyebrow='HOW · 추진 방법', total=13,
                   footer='기러기류 마커 발굴 · ㈜디보')
+    # page_number is auto-filled from this slide's slide_number when
+    # omitted — so inserting a slide only needs a renumber_deck, not a
+    # rewrite of every following slide's literal page number. Pass an
+    # explicit page_number=N to override, or page_number=None to hide it.
     p.flow_pipeline(slide, items=[...],
                     palette=palette, fonts=fonts,
                     type_scale=type_scale, sw=sw, sh=sh)
@@ -498,8 +510,11 @@ HELPERS  (h.* — primitives)
          color=None, fonts=None)
   h.icon_names() -> list[str]                             # vocabulary
   h.deck_chrome(slide, *, palette, fonts, type_scale,     # eyebrow + footer
-                sw, sh, eyebrow="", page_number=None,     # + page number
-                total=None, footer="")                    # (todo 009 B)
+                sw, sh, eyebrow="", page_number=<auto>,   # + page number
+                total=None, footer="")                    # page_number omitted
+                                                          # → slide_number;
+                                                          # =None hides it
+                                                          # (todo 009 B)
   h.table(slide, *, headers, rows, left, top, width,      # native pptx TABLE
           height, palette, fonts, type_scale,             # (todo 009 C)
           first_col_emphasis=False)
@@ -1057,9 +1072,14 @@ paths. The agent's workflow:
 
 This separates **layout decision** (in the code) from **image
 generation** (in regions[]). Theme / palette changes don't trigger
-re-generation; re-positioning a region doesn't either. Set
-`render_mode="code"` BEFORE calling `set_slide_regions` to keep the
-mode (otherwise it snaps to `hybrid` for backwards compatibility).
+re-generation; re-positioning a region doesn't either.
+
+`set_slide_regions` keeps the slide in `code` mode whenever it already
+carries a `code` snippet (or its `render_mode` is explicitly `code`) —
+so you can author the code first and add regions after without losing
+the text/shape overlay. Only a slide with **no** code snaps to `hybrid`
+(regions-only, no code execution at export). Watch for this: if you
+strip a slide's code to empty and then add regions, it becomes hybrid.
 
 **Box overlap won't happen** — every text emitter in `h.*` and every
 `_emit_text` inside `p.*` calls `h.autofit_pt` to shrink the font

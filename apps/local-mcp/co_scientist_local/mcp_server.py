@@ -1165,8 +1165,17 @@ def build_mcp(state: State) -> FastMCP:
         return {"deleted": _decks.delete_slide(state, slug, deck_id, slide_id)}
 
     @mcp.tool()
-    def list_slides(slug: str, deck_id: str) -> list[dict[str, Any]]:
-        return _decks.list_slides(state, slug, deck_id)
+    def list_slides(
+        slug: str, deck_id: str, fields: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """List a deck's slides in display order.
+
+        Pass `fields` (e.g. ["title", "role", "render_mode"]) to project
+        each slide to just those keys — `id` and `slide_number` are always
+        included. Use it to skip the bulky `code`/`notes` text when you
+        only need an index; the full payload can exceed the tool's token
+        budget on a large deck."""
+        return _decks.list_slides(state, slug, deck_id, fields=fields)
 
     @mcp.tool()
     def renumber_deck(slug: str, deck_id: str) -> dict[str, Any]:
