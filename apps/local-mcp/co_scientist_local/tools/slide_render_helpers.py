@@ -578,10 +578,42 @@ def deck_chrome(slide, *, palette, fonts, type_scale, sw, sh,
             run.font.name = fonts["body"]
 
 
+_VALIGN = {
+    "top": MSO_ANCHOR.TOP,
+    "middle": MSO_ANCHOR.MIDDLE,
+    "bottom": MSO_ANCHOR.BOTTOM,
+}
+
+# Default monospace face for code text (h.text_block(mono=True)). Override
+# per-call via font_name when a deck ships a specific code face.
+_MONO_FONT = "Consolas"
+
+
+def _contrast_text(fill, palette):
+    """Pick a readable text color for a given solid `fill` background:
+    light (surface/background) on dark fills, foreground on light fills.
+    Mirrors h.callout's luminance heuristic."""
+    luma = 0.299 * fill[0] + 0.587 * fill[1] + 0.114 * fill[2]
+    if luma < 128:
+        return palette.get("surface") or palette.get("background") or RGBColor(0xFF, 0xFF, 0xFF)
+    return palette.get("foreground") or RGBColor(0x1A, 0x1A, 0x1A)
+
+
+def _resolve_color(spec, palette, default_key):
+    """Resolve a color spec: None → palette[default_key]; a palette key
+    string → that color; otherwise assume it's already an RGBColor."""
+    if spec is None:
+        return palette.get(default_key)
+    if isinstance(spec, str):
+        return palette.get(spec, palette.get(default_key))
+    return spec
+
+
 def table(slide, *, headers: list[str], rows: list[list[str]],
           left, top, width, height,
           palette, fonts, type_scale,
-          first_col_emphasis: bool = False):
+          first_col_emphasis: bool = False,
+          header_fill=None, valign: str = "middle"):
     """Native python-pptx `MSO_SHAPE_TYPE.TABLE` — a real, editable
     PowerPoint table (todo 009 C). For tabular data (personnel,
     equipment, timelines, parameter sweeps) the native table beats
@@ -589,9 +621,19 @@ def table(slide, *, headers: list[str], rows: list[list[str]],
     in the editor, headers + body get distinct styling, and the
     structure is grep-able.
 
-    Headers render in display font + accent color. Body cells in body
-    font + foreground. `first_col_emphasis=True` styles the first
-    column in display font (useful for personnel / timeline labels).
+    The header row gets a **solid background** (`header_fill`, default
+    `palette["accent"]`) with auto-contrasting text — accent-on-white
+    headers were nearly invisible on light themes (todo table-fix).
+    Pass `header_fill="surface"` (or any palette key / RGBColor) to
+    override; the text color follows the fill's luminance.
+
+    Every cell is **vertically centered** by default (`valign`:
+    "middle" | "top" | "bottom"). Top-anchored cells made mixed
+    number/Hangul rows look misaligned, like they spilled their box.
+
+    Body cells in body font + foreground. `first_col_emphasis=True`
+    styles the first column in display font (personnel / timeline
+    labels).
 
     Returns the table shape so the caller can post-tweak (column
     widths, individual cell merges, etc.) if needed.
@@ -607,18 +649,24 @@ def table(slide, *, headers: list[str], rows: list[list[str]],
     body_pt = max(10, type_scale.get("body_small",
                                        type_scale.get("body", 20) - 4))
     fg = palette["foreground"]
-    accent = palette["accent"]
+    head_bg = _resolve_color(header_fill, palette, "accent")
+    head_fg = _contrast_text(head_bg, palette)
+    anchor = _VALIGN.get(valign, MSO_ANCHOR.MIDDLE)
     # Header row
     for c, header in enumerate(headers):
         cell = tbl.cell(0, c)
         cell.text = ""
+        cell.vertical_anchor = anchor
+        if head_bg is not None:
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = head_bg
         tf = cell.text_frame
         p = tf.paragraphs[0]
         run = p.add_run()
         run.text = str(header)
         run.font.size = Pt(head_pt)
         run.font.bold = True
-        run.font.color.rgb = accent
+        run.font.color.rgb = head_fg
         if fonts.get("display"):
             run.font.name = fonts["display"]
     # Body rows
@@ -626,6 +674,7 @@ def table(slide, *, headers: list[str], rows: list[list[str]],
         for c in range(cols):
             cell = tbl.cell(r, c)
             cell.text = ""
+            cell.vertical_anchor = anchor
             value = row[c] if c < len(row) else ""
             tf = cell.text_frame
             p = tf.paragraphs[0]
@@ -670,6 +719,13 @@ def text(slide, content: str, *, left, top, width, height,
     _autoshrink(tf)
     if anchor is not None:
         tf.vertical_anchor = anchor
+        # Zero the top/bottom insets when centering/bottom-anchoring so
+        # the text sits symmetrically — the default 0.05" insets plus
+        # line-spacing leading skewed centered text upward (todo
+        # text-block). For multi-line + per-line color, prefer text_block.
+        if anchor in (MSO_ANCHOR.MIDDLE, MSO_ANCHOR.BOTTOM):
+            tf.margin_top = 0
+            tf.margin_bottom = 0
     p = tf.paragraphs[0]
     p.line_spacing = line_spacing
     if align is not None:
@@ -685,6 +741,100 @@ def text(slide, content: str, *, left, top, width, height,
     if name:
         run.font.name = name
     return tb
+
+
+def text_block(slide, *, lines, left, top, width, height,
+               palette, fonts=None, size_pt: int = 14,
+               valign: str = "middle", align=None,
+               mono: bool = False, font_name=None,
+               line_spacing: float = 1.15, fill=None,
+               pad_pt: int = 8, bold: bool = False):
+    """Multi-line text in a **fixed** box, vertically centered, with
+    optional per-line color and an optional solid fill behind it (todo
+    text-block). Solves the "filled box + centered multi-color lines"
+    pattern — code snippets, badges, table-like cells — that otherwise
+    needs a raw python-pptx textbox overlaid on a rectangle with the
+    insets zeroed and one paragraph+run per line. One call:
+
+      h.text_block(slide,
+          lines=[("def f():", palette["accent"]),
+                 ("    return 1", palette["foreground"])],
+          left=.., top=.., width=.., height=..,
+          palette=palette, mono=True, fill="surface")
+
+    Each `lines` item is one rendered line:
+      - str                → default color/size/bold
+      - (text, color)      → per-line color (RGBColor or palette key)
+      - {text, color?, bold?, size_pt?, align?, font_name?, line_spacing?}
+
+    `fill` (RGBColor or palette key, e.g. "surface" / "foreground") draws
+    a solid rectangle and the text goes into *that shape's own* frame, so
+    box and text can never drift apart. Omit `fill` for a transparent
+    textbox. `valign`: "middle" (default) | "top" | "bottom" — top/bottom
+    insets are zeroed so centering is symmetric (unlike a default textbox,
+    which skews multi-line text upward). `mono=True` uses a monospace face
+    for code; override it with `font_name`.
+
+    Unlike h.vstack / h.callout (which auto-size to content), this keeps
+    the box at the size you pass and centers within it — use it when the
+    box dimensions are fixed (a cell, a fixed code panel).
+
+    Returns the shape carrying the text (the filled rect, or the textbox).
+    """
+    fonts = fonts or {}
+    if fill is not None:
+        bg = _resolve_color(fill, palette, "surface")
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, left, top, width, height,
+        )
+        shape.line.fill.background()
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = bg
+        shape.shadow.inherit = False
+    else:
+        shape = slide.shapes.add_textbox(left, top, width, height)
+    tf = shape.text_frame
+    tf.word_wrap = True
+    tf.vertical_anchor = _VALIGN.get(valign, MSO_ANCHOR.MIDDLE)
+    pad = Pt(pad_pt)
+    tf.margin_left = pad
+    tf.margin_right = pad
+    tf.margin_top = 0
+    tf.margin_bottom = 0
+    default_color = palette.get("foreground") if palette else None
+    default_font = font_name or (_MONO_FONT if mono else fonts.get("body"))
+    first = True
+    for item in lines:
+        if isinstance(item, dict):
+            spec = item
+        elif isinstance(item, (tuple, list)):
+            spec = {"text": item[0],
+                    "color": item[1] if len(item) > 1 else None}
+        else:
+            spec = {"text": str(item)}
+        para = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        para.line_spacing = spec.get("line_spacing", line_spacing)
+        item_align = spec.get("align", align)
+        if item_align is not None:
+            para.alignment = item_align
+        run = para.add_run()
+        run.text = str(spec.get("text", "") or "")
+        run.font.size = Pt(spec.get("size_pt", size_pt))
+        run.font.bold = spec.get("bold", bold)
+        color = spec.get("color")
+        if isinstance(color, str) and palette:
+            color = palette.get(color, color)
+        if color is None:
+            color = default_color
+        if color is not None:
+            run.font.color.rgb = color
+        face = spec.get("font_name", default_font)
+        if face in ("display", "body") and fonts:
+            face = fonts.get(face)
+        if face:
+            run.font.name = face
+    return shape
 
 
 def vstack(slide, lines, *, left, top, width, palette,

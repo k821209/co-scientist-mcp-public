@@ -216,22 +216,27 @@ def _infer_render_mode(slide: dict) -> str:
     """Pick a render mode from which fields the agent populated (todo
     010 — defer the design decision to authoring time). Priority:
 
+      code has python-pptx signal  → "code" (wins over regions[])
       regions[]                    → "hybrid"
-      code has python-pptx signal  → "code"
       figure_number                → "paper-figure"
       image_blob_path              → "ai-image" (already-rendered image)
       prompt (no blob yet)         → "ai-image" (will be generated)
       code (no python-pptx signal) → "code-shape" (external PNG script)
       otherwise                    → "text"
 
+    A python-pptx `code` snippet beats `regions[]`: a code slide
+    references its regions as placeholders via `h.image_region`, so
+    "code + regions" must run the code — the hybrid path ignores `code`
+    and would silently drop the slide's text/shape overlay.
+
     Explicit `render_mode` on the slide always wins — call this only
     when `slide.get("render_mode")` is None / missing.
     """
-    if slide.get("regions"):
-        return "hybrid"
     code = (slide.get("code") or "").strip()
     if code and any(s in code for s in _PYPPTX_SNIPPET_SIGNALS):
         return "code"
+    if slide.get("regions"):
+        return "hybrid"
     if slide.get("figure_number") is not None:
         return "paper-figure"
     if slide.get("image_blob_path"):
@@ -245,9 +250,22 @@ def _infer_render_mode(slide: dict) -> str:
 
 def _resolve_mode(slide: dict) -> str:
     """Explicit `render_mode` if set; otherwise infer from populated
-    fields (todo 010)."""
+    fields (todo 010).
+
+    One exception to "explicit wins": a slide marked `hybrid` that also
+    carries a python-pptx `code` snippet is auto-corrected to `code`.
+    The hybrid export path ignores `code`, so leaving it hybrid would
+    silently drop the slide's text/shape overlay — the exact regression
+    that bit decks where `set_slide_regions` ran before `code` was added.
+    Code mode runs the snippet, which places each region via
+    `h.image_region`. This makes the mode order-independent: it no longer
+    matters whether you add regions or code first."""
     explicit = slide.get("render_mode")
     if explicit:
+        if explicit == "hybrid":
+            code = (slide.get("code") or "").strip()
+            if code and any(s in code for s in _PYPPTX_SNIPPET_SIGNALS):
+                return "code"
         return explicit
     return _infer_render_mode(slide)
 
@@ -1157,6 +1175,7 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
         autofit_pt=_h.autofit_pt,           # Korean-aware text autofit
         estimate_text_width_pt=_h.estimate_text_width_pt,
         text=_h.text,                       # todo 007 §D — one-call textbox
+        text_block=_h.text_block,           # todo text-block — fixed box, centered, per-line color
         vstack=_h.vstack,                   # todo 014 — auto-stacked text lines
         callout=_h.callout,                 # todo 014 — self-sizing filled box
         Cell=_h.Cell,                       # Grid.cell() return type

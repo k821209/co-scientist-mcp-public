@@ -384,12 +384,20 @@ Now you go slide-by-slide. For each slide:
 
 | What you authored                              | Mode inferred at export |
 | ---------------------------------------------- | ----------------------- |
-| `code` with `h.*` / `p.*` / `slide.shapes` etc. | `code`                  |
+| `code` with `h.*` / `p.*` / `slide.shapes` etc. | `code` (beats regions)  |
 | `figure_number`                                | `paper-figure`          |
 | `prompt` (no image yet)                        | `ai-image`              |
 | `regions[]` (via `set_slide_regions`)          | `hybrid`                |
 | `code` looking like an external PNG script     | `code-shape`            |
 | Just `title + body`                            | `text`                  |
+
+   **Code beats regions, in either order.** A slide that carries *both* a
+   python-pptx `code` snippet and `regions[]` resolves to `code` — the
+   snippet places each region via `h.image_region`, whereas the `hybrid`
+   path ignores `code` and would silently drop your text/shape overlay.
+   This holds even if you explicitly set `render_mode="hybrid"` and add
+   code later: the export auto-corrects `hybrid + code → code`. So you can
+   `set_slide_regions` first then add code, or vice versa — same result.
 
 So the simplest add+design loop is:
 
@@ -496,9 +504,17 @@ HELPERS  (h.* — primitives)
             # by background luminance.                      # fix)
   h.text(slide, content, *, left, top, width, height,    # one-call textbox
          palette, size_pt=20, color=None, bold=False,
-         italic=False, align=None, anchor=None,
-         line_spacing=1.22, autofit=True, min_pt=10,
-         fonts=None)                                      # todo 007 §D
+         italic=False, align=None, anchor=None,           # anchor=MSO_ANCHOR
+         line_spacing=1.22, autofit=True, min_pt=10,      # .MIDDLE now zeroes
+         fonts=None)                                      # insets → centers
+  h.text_block(slide, *, lines, left, top, width, height, # FIXED box, V-CENTER
+         palette, fonts=None, size_pt=14, valign="middle",# + per-line color
+         align=None, mono=False, font_name=None,          # + optional fill.
+         line_spacing=1.15, fill=None, pad_pt=8,          # lines: str |
+         bold=False)                                      # (text,color) | dict
+            # ← USE for code boxes / badges / table-like cells: filled box
+            # + symmetric vertical centering + per-line color in ONE call
+            # (replaces raw pptx textbox-over-rect). fill: RGBColor|palette key.
   h.vstack(slide, lines, *, left, top, width, palette,    # auto-stack lines
            fonts=None, gap_pt=4)                          # ← USE THIS when
             # lines: list[{text, size_pt?, color?, bold?,    you'd otherwise
@@ -517,7 +533,8 @@ HELPERS  (h.* — primitives)
                                                           # (todo 009 B)
   h.table(slide, *, headers, rows, left, top, width,      # native pptx TABLE
           height, palette, fonts, type_scale,             # (todo 009 C)
-          first_col_emphasis=False)
+          first_col_emphasis=False,                       # header: solid bg
+          header_fill=None, valign="middle")              # +auto-contrast text
   h.image_path([slide,] path, *, left, top, width,        # embed local PNG
                height, fit="contain")
   h.image_region([slide,] region_id, *, left, top, width, # row.regions[id]
@@ -613,7 +630,8 @@ focus on actual layout:
 | `h.image_path([slide,] path, *, left, top, width, height, fit="contain")` | slide optional | Embed an image from a filesystem path. `slide` is optional (falls back to the snippet's bound slide); pass it explicitly for consistency with other helpers. |
 | `h.image_region([slide,] region_id, *, left, top, width, height, fit="contain")` | slide optional | Resolve `row.regions[id]` → embed that image. |
 | `h.image_figure([slide,] figure_number, *, left, top, width, height, fit="contain")` | slide optional | Resolve a paper figure → embed. |
-| `h.text(slide, content, *, left, top, width, height, palette, size_pt=20, color=None, font_name=None, bold=False, italic=False, align=None, anchor=None, line_spacing=1.22, autofit=True, min_pt=10, fonts=None)` | one-call textbox | DX helper: drops the 5-line `add_textbox + text_frame + paragraph + run + font` ceremony to a single call. `color` defaults to `palette["foreground"]`; pass `palette["muted"]` for captions, `palette["accent"]` for emphasis. Autofit-shrinks Korean-aware. (todo 007 §D) |
+| `h.text(slide, content, *, left, top, width, height, palette, size_pt=20, color=None, font_name=None, bold=False, italic=False, align=None, anchor=None, line_spacing=1.22, autofit=True, min_pt=10, fonts=None)` | one-call textbox | DX helper: drops the 5-line `add_textbox + text_frame + paragraph + run + font` ceremony to a single call. `color` defaults to `palette["foreground"]`; pass `palette["muted"]` for captions, `palette["accent"]` for emphasis. Autofit-shrinks Korean-aware. `anchor=MSO_ANCHOR.MIDDLE`/`.BOTTOM` zeroes the top/bottom insets so centered text is symmetric. (todo 007 §D) |
+| `h.text_block(slide, *, lines, left, top, width, height, palette, fonts=None, size_pt=14, valign="middle", align=None, mono=False, font_name=None, line_spacing=1.15, fill=None, pad_pt=8, bold=False)` | `lines`: list of `str` \| `(text, color)` \| `{text, color?, bold?, size_pt?, align?, font_name?, line_spacing?}` | Multi-line text in a **fixed** box, vertically centered, with optional per-line color and an optional solid `fill` (RGBColor or palette key). When `fill` is set the text lives in that rect's own frame so box + text can't drift. Insets zeroed for symmetric centering. `mono=True` → monospace (default `Consolas`). Use for code boxes / badges / table-like cells instead of overlaying a raw textbox on a rectangle. Unlike `h.vstack`/`h.callout` it does **not** auto-size — keeps the box you pass. (todo text-block) |
 | `h.grid(*, sw, sh, cols=12, rows=6, gutter=Pt(8), margin_x=Inches(0.6), margin_top=Inches(1.8), margin_bot=Inches(0.6), row_gap=Pt(8), row_h=None)` | — | Build a 12-col × 6-row design grid. Returns a `Grid` with `.cell(col, span, row, row_span)` → `(left, top, width, height)`. (todo 004 §D) |
 | `h.SPACING_UNIT_PT` | constant `8` | 8pt vertical rhythm. Vertical gaps should be `Pt(SPACING_UNIT_PT * N)`. |
 | `h.icon(slide, name, *, left, top, size, palette, color=None, fonts=None)` | name = semantic key | Place a named icon at `(left, top)` with `size×size` bounding box. Native MSO_SHAPE auto-shape when available (`arrow-right`, `lightning`, `database`, `warning`, `decision`, `molecule`, `sun`, `moon`, `gear`, `star`, `heart`, `cloud`, `document`, `brace-*`, …) — recolorable + scalable + editable in PowerPoint. Unicode-glyph fallback for `check`, `x`, `info`, `dna`, `microscope`, `flask`, `chart`, `lock`, etc. Color defaults to `palette["accent"]`. (todo 004 §C) |
