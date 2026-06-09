@@ -104,6 +104,54 @@ Two modes:
 - `mono-chrome-scholarly` — black/white/grey, hairline rules, prose-heavy
 - `data-botanical` — earth tones, organic shapes (plant biology talks)
 - `tricolor-brief` — red/yellow/black, 3-min lightning talks
+- `data-infra-console` — cool blue + teal, mono numerals, dark-header tables (technical / systems / data-infra talks)
+
+Most preset slugs are a one-line hint — fill the palette/type from the
+name + your taste. `data-infra-console` is **fully specified** below
+(confirmed on the mcp-ecosystem-breeding deck); reproduce it verbatim
+when the slug is chosen:
+
+```
+Palette:
+  bg: #F7F8FA  surface: #FFFFFF  text: #161B22
+  accent: #1F6FEB      # precise blue — protocol names + the figure-of-merit only
+  secondary: #0E7C66   # deep teal — biology / cultivar / trait labels
+  muted: #6B7280       # slate grey — captions, grid, footer
+  highlight: #E8590C   # signal orange — ONE decisive number / bottleneck per slide
+Typography:
+  # Noto Sans KR for display + body (shared Hangul/Latin metrics → no
+  # mixed-script seam). JetBrains Mono for tool names / code / numerals /
+  # markers / DB stats only.
+  display: Noto Sans KR   body: Noto Sans KR   mono: JetBrains Mono
+Type scale:
+  title: 28  head: 22  body: 17  line_spacing: 1.30
+  cover_title: 48  caption: 11  hybrid_head: 22  hybrid_body: 15
+  display_cover: 48  headline_section: 28  title_slide: 28
+  body_standard: 17  body_small: 14  label_tag: 11  label_caption: 11
+Motif:
+  Top accent_stripe + a thin accent rule under each title.
+  Bottom chrome via h.deck_chrome: eyebrow (top-left section label, secondary
+  mono) · footer (centered, muted) · page number (bottom-right). page_number
+  defaults to the slide's own number — omit it. Exempt cover / closing /
+  pull-quote slides from chrome.
+Design language:
+  Tables: header row = dark (foreground) bg + white bold text, body cells
+    vertically centered, first column emphasized. Use
+    h.table(..., header_fill="foreground", valign="middle",
+    first_col_emphasis=True) — the default accent header is too low-contrast
+    for this tone.
+  Code / console blocks: a foreground-filled box, mono text, per-line color
+    (keywords in accent), vertically centered. Use
+    h.text_block(..., fill="foreground", mono=True, valign="middle",
+    lines=[(code, accent_or_surface), ...]).
+  Body copy in Korean (~합니다체); keep only field English abbreviations
+    (MCP, LLM, marker, …) in English.
+image_style:
+  "isometric technical line illustration on cool off-white, single deep-blue
+  accent (#1F6FEB) with one teal data-color (#0E7C66), thin precise strokes,
+  generous whitespace, no text/labels/logos/human faces"
+  — set via update_deck(image_style=...). Full-bleed on cover + closing only.
+```
 
 Write a SHORT narrative-arc concept and call:
 
