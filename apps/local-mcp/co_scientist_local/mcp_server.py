@@ -156,11 +156,19 @@ def build_mcp(state: State) -> FastMCP:
         title: str | None = None,
         journal: str | None = None,
         status: str | None = None,
+        target_date: str | None = None,
+        authors: list[str] | None = None,
+        abstract: str | None = None,
         doc_type: str | None = None,
     ) -> dict[str, Any]:
-        """Patch a paper's metadata. doc_type is one of "paper"/"report"/"other"."""
+        """Patch a paper's metadata. doc_type is one of "paper"/"report"/"other".
+
+        `abstract` updates the metadata field and mirrors into the abstract
+        section body (the text the dashboard renders and export reads).
+        """
         return _papers.update_paper(
             state, slug, title=title, journal=journal, status=status,
+            target_date=target_date, authors=authors, abstract=abstract,
             doc_type=doc_type,
         )
 

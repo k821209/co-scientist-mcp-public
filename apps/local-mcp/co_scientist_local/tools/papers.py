@@ -148,9 +148,15 @@ def update_paper(
     status: str | None = None,
     target_date: str | None = None,
     authors: list[str] | None = None,
+    abstract: str | None = None,
     doc_type: str | None = None,
 ) -> dict:
-    """Patch a paper's metadata fields. Only non-None values are applied."""
+    """Patch a paper's metadata fields. Only non-None values are applied.
+
+    `abstract` updates the paper-doc metadata field AND mirrors into the
+    `abstract` section body (the source of truth the dashboard renders and
+    export/word-count read), so the two never drift apart.
+    """
     path = _paper_path(state, slug)
     existing = state.backend.get_doc(path)
     if existing is None:
@@ -161,13 +167,22 @@ def update_paper(
     if status is not None: fields["status"] = status
     if target_date is not None: fields["target_date"] = target_date
     if authors is not None: fields["authors"] = list(authors)
+    if abstract is not None: fields["abstract"] = abstract
     if doc_type is not None:
         dt = doc_type.strip().lower()
         if dt not in DOC_TYPES:
             raise ValueError(f"doc_type must be one of {DOC_TYPES}, got {doc_type!r}")
         fields["doc_type"] = dt
     state.backend.update_doc(path, fields)
-    if title is not None:
+    if abstract is not None:
+        sec_path = _section_path(state, slug, "abstract")
+        if state.backend.get_doc(sec_path) is not None:
+            state.backend.update_doc(sec_path, {
+                "body": abstract,
+                "word_count": word_count(abstract),
+                "updated_at": fields["updated_at"],
+            })
+    if title is not None or abstract is not None:
         _regenerate_manuscript(state, slug)
     return state.backend.get_doc(path)
 
