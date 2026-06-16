@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-06-05a"
+GUIDE_VERSION = "2026-06-16a"
 
 
 def render_guide() -> str:
@@ -53,6 +53,27 @@ On every session start:
    and offer to fix. If `configured` is false and the paper has a
    target `journal` set, suggest `/journal-requirements` so the
    journal's word/figure/section limits get tracked.
+5. Call `mcp__co_scientist__list_servers()` — the project's registered
+   compute (HPC nodes, workstations). Treat this as the inventory of
+   where analyses can run. See "## Compute resources" below.
+
+## Compute resources
+
+The user's compute — HPC nodes, lab workstations, their cores/RAM/GPUs
+and conda/venv/module environments — is **structured data**, not memory.
+It lives in the servers registry (`/projects/{{pid}}/servers`) and drives
+the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
+
+- When the user describes a machine they compute on (host, login user,
+  cores, GPUs, an HPC alias from their `~/.ssh/config`), register it with
+  `add_server(...)`; register each environment with `add_server_env(...)`.
+  Update specs with `update_server(...)` when they change.
+- **NEVER** write hardware specs, hostnames, core counts, or env names
+  into project memory. That is the single most common mistake — memory is
+  for *soft* knowledge, the registry is for *machines*. If you catch
+  compute details sitting in memory, move them to the registry and prune
+  the memory entry.
+- `ssh_key` stores a *path on the user's disk*, never key material.
 
 ## Available skills
 
@@ -125,9 +146,21 @@ why, approaches tried and rejected, domain gotchas, target-journal
 history — knowledge NOT recoverable from the papers / sections /
 reviews / figures themselves.
 
-WHAT does NOT: anything already in the structured data (section text,
-review comments, figure captions, citations) — never duplicate it.
-Keep entries concrete and short.
+WHAT does NOT belong here — each of these has a structured home; put it
+there, never in memory:
+  - compute servers / HPC specs / hostnames / env names → `add_server`,
+    `add_server_env` (servers registry → Runs tab)
+  - analysis runs, commands, results, log output → the run records
+    created by `/analysis-run` (Runs tab)
+  - section text, review comments, figure captions, citations → already
+    in the structured data; never duplicate it
+  - transient session state ("currently editing X", "next I'll do Y") —
+    that is task tracking, not durable knowledge
+
+Memory is a **curated digest, not an append-only log.** Before adding,
+check whether the fact has a structured home (above) or already exists in
+memory. Keep entries concrete and short, and `update_project_memory` to
+prune stale/duplicate lines — don't just keep appending.
 
 This is separate from Claude Code's own local auto-memory (a harness
 feature, machine-local). Project knowledge goes HERE — cloud-backed, so
