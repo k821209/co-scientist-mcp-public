@@ -71,6 +71,8 @@ CSL_JOURNAL_MAP = {
     "molecular plant": "molecular-plant",
     "plant communications": "plant-communications",
     "theoretical and applied genetics": "theoretical-and-applied-genetics",
+    "database the journal of biological databases and curation": "database",
+    "database": "database",
 }
 
 

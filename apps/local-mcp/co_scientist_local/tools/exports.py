@@ -102,6 +102,40 @@ def _rewrite_inline_figure_refs(
     return _INLINE_FIGURE_RE.sub(repl, text)
 
 
+def _rewrite_inline_citations(
+    text: str, refs: list[dict]
+) -> tuple[str, list[str]]:
+    """Rewrite body `{doi:DOI}` markers to pandoc citations `[@citation_key]`.
+
+    Without this, --citeproc never sees a citation: the literal `{doi:…}`
+    string passes straight through into the .docx and no bibliography is
+    emitted (the web renderer turns the marker into a link, so the gap only
+    surfaces on export). Matching is case-insensitive on the DOI — refs from
+    CrossRef are stored lowercased, but a manually-added DOI may not be, and
+    the body marker may use either case.
+
+    DOIs with no registered reference are left literal and returned so the
+    caller can warn; they're the same set prepare_export already reports as
+    `unresolved_citations`.
+    """
+    key_by_doi = {
+        (r.get("doi") or "").strip().lower(): r["citation_key"]
+        for r in refs
+        if r.get("doi") and r.get("citation_key")
+    }
+    unmatched: list[str] = []
+
+    def repl(m: re.Match) -> str:
+        doi = m.group(1).strip()
+        key = key_by_doi.get(doi.lower())
+        if key:
+            return f"[@{key}]"
+        unmatched.append(doi)
+        return m.group(0)
+
+    return _DOI_INLINE_RE.sub(repl, text), unmatched
+
+
 def _figures_appendix(figures: list[dict], supp_figures: list[dict]) -> str:
     """Markdown that embeds each registered figure's image as a Pandoc figure.
 
@@ -461,6 +495,13 @@ def export_to_path(
         )
         if fig_appendix:
             manuscript_text = manuscript_text.rstrip() + "\n\n" + fig_appendix
+        # Convert `{doi:…}` markers to pandoc `[@key]` citations so --citeproc
+        # renders them + emits a bibliography. Pandoc-only: docx_native has no
+        # citeproc, so its markers stay literal (already warned at prepare).
+        if engine == "pandoc":
+            manuscript_text, _unmatched_cites = _rewrite_inline_citations(
+                manuscript_text, bundle["references"],
+            )
         (tmp_path / "manuscript.md").write_text(manuscript_text, encoding="utf-8")
         has_bib = bool(bundle["bibtex"].strip())
         csl_arg: str | None = None
