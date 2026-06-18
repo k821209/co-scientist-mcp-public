@@ -5,6 +5,19 @@ their first paper. Three commands on their machine, the rest in the browser.
 
 ## 1. Install the MCP (one-time, ~30s)
 
+**Requires Python ≥ 3.11** (the `mcp` dependency needs ≥ 3.10). Check with
+`python3 --version`. On Ubuntu/WSL with an older Python, install a newer one
+first — otherwise pip fails with `No matching distribution found for mcp`:
+
+```bash
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install -y python3.11 python3.11-venv
+```
+
+Then run the install with `python3.11 -m pip …` (or inside a `python3.11 -m venv`;
+if you use a venv, point `.mcp.json`'s `command` at that venv's `python`):
+
 ```bash
 git clone https://github.com/k821209/co-scientist-mcp-public.git ~/co-scientist-mcp-public
 pip install -e ~/co-scientist-mcp-public/apps/local-mcp
