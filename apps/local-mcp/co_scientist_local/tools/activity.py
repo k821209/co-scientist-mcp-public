@@ -29,6 +29,7 @@ def log_event(
 ) -> None:
     """Append an activity entry. Best-effort — failures are swallowed so a
     bad activity write never blocks the primary tool operation."""
+    now = now_iso()
     try:
         state.backend.set_doc(
             state.project_path(
@@ -38,8 +39,18 @@ def log_event(
                 "action": action,
                 "detail": detail or {},
                 "actor": actor,
-                "created_at": now_iso(),
+                "created_at": now,
             },
         )
+    except Exception:  # pragma: no cover — non-critical path
+        pass
+
+    # Bump the project's own updated_at so the dashboard can sort projects by
+    # recent activity. Guard on existence (the doc is created by the web app)
+    # to avoid phantom project docs and NotFound; best-effort, never blocks.
+    try:
+        project_path = state.project_path()
+        if state.backend.get_doc(project_path) is not None:
+            state.backend.update_doc(project_path, {"updated_at": now})
     except Exception:  # pragma: no cover — non-critical path
         pass
