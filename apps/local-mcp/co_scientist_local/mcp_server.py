@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .guide import GUIDE_VERSION, render_guide
 from .state import State
+from .tools import activity as _activity
 from .tools import analyses as _analyses
 from .tools import csl as _csl
 from .tools import decks as _decks
@@ -26,6 +27,7 @@ from .tools import sections as _sections
 from .tools import servers as _servers
 from .tools import ssh_ops as _ssh_ops
 from .tools import tables as _tables
+from .tools import todos as _todos
 from .tools import verification as _verification
 
 
@@ -94,6 +96,60 @@ def build_mcp(state: State) -> FastMCP:
         append_project_memory.
         """
         return _memory.update_project_memory(state, content)
+
+    # ─── project to-dos & activity timeline ──────────────────────────────────
+    @mcp.tool()
+    def add_todo(text: str, paper_slug: str | None = None) -> dict[str, Any]:
+        """Add a to-do item to this project's shared checklist, visible on the
+        dashboard's Activity tab. Use it to record planned work so the human
+        collaborator sees what's queued. Optionally tie it to a paper via
+        `paper_slug`. Returns the created item (with its id).
+        """
+        return _todos.add_todo(state, text, paper_slug=paper_slug)
+
+    @mcp.tool()
+    def list_todos(status: str | None = None) -> list[dict[str, Any]]:
+        """List the project's to-do items (oldest first). Optionally filter by
+        status: "open", "in_progress", or "done".
+        """
+        return _todos.list_todos(state, status=status)
+
+    @mcp.tool()
+    def update_todo(
+        todo_id: str,
+        status: str | None = None,
+        text: str | None = None,
+    ) -> dict[str, Any]:
+        """Update a to-do's status ("open"/"in_progress"/"done") and/or text.
+        Marking one "done" also records it on the project timeline.
+        """
+        return _todos.update_todo(state, todo_id, status=status, text=text)
+
+    @mcp.tool()
+    def log_activity(
+        title: str,
+        detail: str | None = None,
+        paper_slug: str | None = None,
+    ) -> dict[str, Any]:
+        """Post a free-form note to the project's activity timeline (a "what I
+        did / decided" entry the human sees on the Activity tab). For routine
+        writes (creating papers, editing sections, comments) the timeline is
+        populated automatically — use this for milestones or decisions that
+        wouldn't otherwise show up.
+        """
+        _activity.log_timeline(
+            state, event_type="note", title=title,
+            detail={"text": detail} if detail else None, paper_slug=paper_slug,
+        )
+        return {"ok": True}
+
+    @mcp.tool()
+    def list_activity(limit: int = 30) -> list[dict[str, Any]]:
+        """Return the most recent project timeline entries (newest first):
+        automatic events (paper/section/review changes, todo activity) plus any
+        notes logged with log_activity.
+        """
+        return _activity.list_timeline(state, limit=limit)
 
     # ─── papers ──────────────────────────────────────────────────────────────
     @mcp.tool()

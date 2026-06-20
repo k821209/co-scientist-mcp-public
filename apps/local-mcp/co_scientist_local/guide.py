@@ -122,7 +122,16 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
 
 papers · sections · reviews · figures · tables · references · materials
 · analyses · runs · servers (HPC) · exports · journal CSL · requirements
-· project memory · image gen · whoami · project_guide
+· project memory · todos + activity · image gen · whoami · project_guide
+
+**To-dos + activity timeline** — the dashboard's **Activity tab** shows a
+shared checklist and a unified, reverse-chronological feed of what's
+happening. Record planned work with `add_todo(text)` and flip items with
+`update_todo(todo_id, status="in_progress"|"done")` so the human sees
+progress. Routine writes (papers/sections/reviews) post to the timeline
+automatically; use `log_activity(title, detail)` for milestones or decisions
+that wouldn't otherwise appear. Read it back with `list_todos()` /
+`list_activity()`.
 
 **Materials** are user-uploaded source files shared across the project
 (PDFs to read, datasets, prior drafts, notes) — distinct from `references`
@@ -261,7 +270,8 @@ Function (Cloud Run gen2) backed by OpenAI gpt-image-2.
 **Plan gating** — the function enforces:
   - `plan_id="free"`   → HTTP 403 (`PermissionError` on the client).
   - `plan_id="pro"`    → up to 200 images / month
-  - `plan_id="enterprise"` → up to 2000 / month
+  - `plan_id="max"`    → up to 2000 / month
+    (`enterprise` is a legacy alias for `max`, same 2000 quota)
 
 Free-tier users who want image generation do it OUTSIDE this MCP —
 wire up another image-gen MCP / built-in Claude Code tool with their
