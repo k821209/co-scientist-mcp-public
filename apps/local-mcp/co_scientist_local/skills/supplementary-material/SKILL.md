@@ -115,5 +115,10 @@ ask.
   table / section doc — not a `TODO` comment in the manuscript.
 - **+100 offset, always.** A supplementary figure is never
   `figure_number < 101`.
+- **Reordering / renumbering** — don't delete-and-re-add to change order.
+  Use `reorder_supplementary(slug, kind, order)` (or `/reorder-supplementary`):
+  it renumbers the docs, moves figure blobs server-side, and rewrites
+  `{fig:N}`/`{tab:N}` + `![](figure:N)` refs, returning freeform prose mentions
+  for you to fix.
 - **Don't auto-export.** Registering supplementary content and
   exporting are separate steps.

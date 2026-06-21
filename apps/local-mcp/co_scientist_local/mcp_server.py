@@ -20,6 +20,7 @@ from .tools import materials as _materials
 from .tools import memory as _memory
 from .tools import papers as _papers
 from .tools import references as _references
+from .tools import reorder as _reorder
 from .tools import requirements as _requirements
 from .tools import reviews as _reviews
 from .tools import runs as _runs
@@ -632,6 +633,21 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def delete_table(slug: str, table_number: int) -> dict[str, Any]:
         return {"deleted": _tables.delete_table(state, slug, table_number)}
+
+    @mcp.tool()
+    def reorder_supplementary(slug: str, kind: str, order: list[int]) -> dict[str, Any]:
+        """Renumber the supplementary figures or tables into a new order.
+
+        kind: 'figure' or 'table'. order: the CURRENT supplementary numbers
+        (≥101) in the desired new sequence; they are reassigned to 101,102,…
+        accordingly. Moves the docs (and copies figure image blobs server-side —
+        no re-upload), and auto-rewrites deterministic body refs ({fig:N}/{tab:N}
+        tokens and ![](figure:N) embeds). Freeform prose mentions
+        ("Supplementary Figure 1", "Fig. S2"…) are NOT rewritten — they're
+        returned in `prose_mentions` so you can update them precisely. Returns
+        {mapping, tokens_updated, embeds_updated, sections_changed,
+        prose_mentions}."""
+        return _reorder.reorder_supplementary(state, slug, kind, order)
 
     # ─── references ──────────────────────────────────────────────────────────
     @mcp.tool()

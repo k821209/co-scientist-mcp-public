@@ -137,6 +137,10 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   output files onto manuscript figures/tables (map mode → promote mode).
 - `/supplementary-material [slug]` — identify + register supplementary
   figures/tables/text (the +100 figure_number offset convention).
+- `/reorder-supplementary [slug]` — renumber/reorder SFigs or STables
+  (`reorder_supplementary`): moves docs + figure blobs server-side and
+  rewrites `{fig:N}`/`{tab:N}` + `![](figure:N)` refs; reports prose
+  mentions to fix.
 - `/analysis-audit [slug]` — scan analysis scripts for hardcoded
   literals + verify cited manuscript numbers against live data.
 - `/release-publish [slug] [analysis]` — audit + publish an analysis
