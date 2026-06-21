@@ -41,6 +41,19 @@ If you can't find the corresponding location in the current manuscript:
 - Ask whether to discard the comment as stale, or to find an analogous
   passage to update
 
+If the dashboard flags *several* comments it "couldn't locate" but the
+sentences are clearly still there, the stored `section` is likely wrong
+rather than the text being gone — run `/reconcile-reviews [slug]` (wraps
+`mcp__co_scientist__reconcile_review_anchors`) to re-align them in bulk.
+
+## After editing sections
+
+Editing sections regenerates the manuscript blob, which can leave some
+comments pointing at the wrong section. Before you report done, run
+`mcp__co_scientist__reconcile_review_anchors(slug, dry_run=True)`; if it
+reports any `relocated`, apply it (`dry_run=False`) so the user's remaining
+highlights resolve correctly. See `/reconcile-reviews`.
+
 ## AI vs External vs User
 
 `list_reviews` can also surface `source='ai'` (from `/paper-review`) and
