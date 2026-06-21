@@ -101,6 +101,11 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   manuscript: `import_document` converts to markdown, the agent splits
   it into canonical sections, registers figures + references.
 - `/paper-revision` — address open user comments (anchor_text-anchored)
+- `/response-letter` — turn a journal's decision letter into a point-by-point
+  response. Real reviewer points are registered as `source='reviewer'`
+  comments (with `reviewer_name` + `round`), triaged like any comment
+  (accept→revise, reject→rebuttal in `response`), then compiled into the
+  letter. Internal `/paper-review` (`source='ai'`) is never included.
 - `/journal-requirements` — capture a target journal's submission spec
   for a paper type (Article / Short Communication / Letter / Review …):
   the agent reads the journal's live author guidelines and stores word

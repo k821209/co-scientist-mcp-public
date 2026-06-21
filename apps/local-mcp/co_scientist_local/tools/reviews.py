@@ -2,8 +2,13 @@
 
 Source values:
     'user'      — comment authored by the human via the web dashboard
-    'ai'        — comment produced by /paper-review (virtual reviewer)
-    'external'  — imported from journal reviewer feedback
+    'ai'        — comment produced by /paper-review (internal self-review)
+    'reviewer'  — a REAL journal reviewer's point, from a decision letter.
+                  This is the only source a response letter is built from
+                  (/response-letter). Carries `reviewer_name` ("Reviewer 1")
+                  and an optional `round` (submission round, 1-based).
+    'external'  — anonymous share-link visitor comment (collaborator), NOT a
+                  journal reviewer.
 
 Status flow:
     open → accepted | rejected | resolved
@@ -18,7 +23,7 @@ from ..util import new_id, now_iso
 from .activity import log_event
 from .papers import _paper_path
 
-_VALID_SOURCES = {"user", "ai", "external"}
+_VALID_SOURCES = {"user", "ai", "reviewer", "external"}
 _VALID_SEVERITY = {"major", "minor", "suggestion"}
 _VALID_STATUS = {"open", "accepted", "rejected", "resolved"}
 # User triage, orthogonal to status: does the author intend to act on this
@@ -70,8 +75,12 @@ def add_review(
     anchor_suffix: str | None = None,
     anchor_occurrence: int | None = None,
     manuscript_snapshot: str | None = None,
+    round: int | None = None,
 ) -> dict:
-    """Create a new review/comment. Returns the created doc."""
+    """Create a new review/comment. Returns the created doc.
+
+    `round` (submission round, 1-based) is for source='reviewer' comments so a
+    response letter can group / scope by review round; leave None otherwise."""
     if state.backend.get_doc(_paper_path(state, slug)) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
     if source not in _VALID_SOURCES:
@@ -99,6 +108,7 @@ def add_review(
         "anchor_suffix": anchor_suffix,
         "anchor_occurrence": anchor_occurrence,
         "manuscript_snapshot": manuscript_snapshot,
+        "round": round,
         "created_at": now,
         "resolved_at": None,
     }

@@ -89,13 +89,17 @@ comments pointing at the wrong section. Before you report done, run
 reports any `relocated`, apply it (`dry_run=False`) so the user's remaining
 highlights resolve correctly. See `/reconcile-reviews`.
 
-## AI vs External vs User
+## Comment sources
 
-`list_reviews` can also surface `source='ai'` (from `/paper-review`) and
-`source='external'` (imported journal reviewers). The /paper-revision skill
-defaults to `source='user'` because those are the live comments waiting on
-you; if the user asks "address the reviewer feedback for resubmission" the
-filter should be `source='external'`.
+`list_reviews` surfaces several sources. This skill defaults to
+`source='user'` (the author's live dashboard comments). Also:
+- `source='reviewer'` — REAL journal reviewer points from a decision letter.
+  When the user says "address the reviewer feedback for resubmission," work
+  this set; accepted points get revised + a `response` describing the change,
+  rejected points get a rebuttal in `response`. Then run `/response-letter`.
+- `source='ai'` — internal `/paper-review` self-review (never goes in a
+  response letter).
+- `source='external'` — anonymous share-link visitors (collaborators).
 
 ## After Addressing All Open Comments
 

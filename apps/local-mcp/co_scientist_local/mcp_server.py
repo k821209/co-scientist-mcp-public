@@ -353,8 +353,15 @@ def build_mcp(state: State) -> FastMCP:
         anchor_suffix: str | None = None,
         anchor_occurrence: int | None = None,
         manuscript_snapshot: str | None = None,
+        round: int | None = None,
     ) -> dict[str, Any]:
         """Create a new review/comment. Use source='user' for dashboard comments.
+
+        For REAL journal reviewer points (a decision letter), use
+        source='reviewer' with reviewer_name="Reviewer 1" etc. and `round`
+        (submission round) — these are the only comments /response-letter builds
+        from. source='ai' is internal self-review (/paper-review) and is never
+        in a response letter.
 
         anchor_prefix/anchor_suffix are the text just before/after anchor_text;
         when anchor_text repeats in a section they let the dashboard highlight
@@ -366,7 +373,7 @@ def build_mcp(state: State) -> FastMCP:
             section=section, severity=severity, manuscript_ref=manuscript_ref,
             anchor_text=anchor_text, anchor_prefix=anchor_prefix,
             anchor_suffix=anchor_suffix, anchor_occurrence=anchor_occurrence,
-            manuscript_snapshot=manuscript_snapshot,
+            manuscript_snapshot=manuscript_snapshot, round=round,
         )
 
     @mcp.tool()
