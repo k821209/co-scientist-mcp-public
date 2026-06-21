@@ -299,6 +299,65 @@ def reconcile_review_anchors(state: State, slug: str, dry_run: bool = True) -> d
             "truly_missing": missing}
 
 
+def review_triage_summary(state: State, slug: str) -> dict:
+    """One-call snapshot of where every comment sits in the triage lifecycle,
+    for the submission gate and the "remaining work" check at session start.
+
+    A comment is "rejected" if either its `decision` or its `status` is
+    'rejected' (the dashboard sets both; an agent-rejected comment may carry
+    only the status). Rejected comments need a rebuttal in `response` — academic
+    response letters must say *why* a reviewer point was not adopted — so a
+    rejected comment with an empty `response` is flagged. Accepted comments
+    still open are not yet reflected in the manuscript.
+
+    Returns counts plus the offending review_ids so callers can act:
+        {
+          accepted, accepted_unresolved, rejected, rejected_without_rationale,
+          pending,                         # plain counts
+          accepted_unresolved_items: [...],
+          rejected_without_rationale_items: [{review_id, section, reviewer, comment}],
+        }
+    """
+    reviews = list_reviews(state, slug)  # validates the paper exists
+    accepted = accepted_unresolved = rejected = pending = 0
+    unresolved_items: list[dict] = []
+    no_rationale_items: list[dict] = []
+    for r in reviews:
+        decision = r.get("decision") or "pending"
+        status = r.get("status")
+        is_rejected = decision == "rejected" or status == "rejected"
+        has_response = bool((r.get("response") or "").strip())
+        rid = r.get("id") or r.get("review_id")
+        preview = (r.get("comment") or "")[:80]
+        if is_rejected:
+            rejected += 1
+            if not has_response:
+                no_rationale_items.append({
+                    "review_id": rid,
+                    "section": r.get("section"),
+                    "reviewer": r.get("reviewer_name"),
+                    "comment": preview,
+                })
+        elif decision == "accepted":
+            accepted += 1
+            if status == "open":
+                accepted_unresolved += 1
+                unresolved_items.append({
+                    "review_id": rid, "section": r.get("section"), "comment": preview,
+                })
+        elif status == "open":
+            pending += 1
+    return {
+        "accepted": accepted,
+        "accepted_unresolved": accepted_unresolved,
+        "rejected": rejected,
+        "rejected_without_rationale": len(no_rationale_items),
+        "pending": pending,
+        "accepted_unresolved_items": unresolved_items,
+        "rejected_without_rationale_items": no_rationale_items,
+    }
+
+
 def count_open_user_comments(state: State, slug: str) -> int:
     """Open, human-authored comments — both dashboard ('user') and shared/public
     page ('external') feedback. Excludes 'ai' (virtual reviewer) comments.

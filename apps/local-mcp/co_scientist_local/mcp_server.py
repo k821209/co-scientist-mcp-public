@@ -431,6 +431,17 @@ def build_mcp(state: State) -> FastMCP:
         return _reviews.reconcile_review_anchors(state, slug, dry_run=dry_run)
 
     @mcp.tool()
+    def review_triage_summary(slug: str) -> dict[str, Any]:
+        """One-call snapshot of comment triage for the submission gate / a
+        session-start "what's left" check. Returns counts of accepted,
+        accepted_unresolved (approved but not yet in the manuscript), rejected,
+        rejected_without_rationale (rejected but no rebuttal in `response` —
+        the response letter needs one), and pending, plus the offending
+        review_ids. Address rejected_without_rationale with /paper-revision
+        before exporting."""
+        return _reviews.review_triage_summary(state, slug)
+
+    @mcp.tool()
     def count_open_user_comments(slug: str) -> int:
         """How many unresolved human comments exist — dashboard ('user') AND
         shared/public-page ('external') feedback, excluding AI reviewer notes.

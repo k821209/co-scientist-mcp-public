@@ -34,6 +34,7 @@ from . import figures as _figures
 from . import papers as _papers
 from . import references as _references
 from . import requirements as _requirements
+from . import reviews as _reviews
 from . import sections as _sections
 from . import tables as _tables
 
@@ -232,6 +233,10 @@ def prepare_export(state: State, slug: str) -> dict:
     # Journal / paper-type requirement check (word limits, item caps, …).
     req_check = _requirements.check_requirements(state, slug)
 
+    # Review-triage gate: accepted comments must be resolved, and rejected
+    # comments must carry a rebuttal (response) for the response letter.
+    triage = _reviews.review_triage_summary(state, slug)
+
     warnings: list[str] = []
     if placeholders:
         warnings.append(f"{len(placeholders)} placeholder marker(s) in manuscript")
@@ -244,6 +249,16 @@ def prepare_export(state: State, slug: str) -> dict:
         warnings.append(
             f"{len(req_check['violations'])} journal-requirement violation(s) "
             f"— see requirements_check"
+        )
+    if triage["rejected_without_rationale"]:
+        warnings.append(
+            f"{triage['rejected_without_rationale']} rejected comment(s) missing a "
+            f"rebuttal (response) — see review_triage / run /paper-revision"
+        )
+    if triage["accepted_unresolved"]:
+        warnings.append(
+            f"{triage['accepted_unresolved']} accepted comment(s) not yet resolved "
+            f"— see review_triage"
         )
 
     return {
@@ -264,6 +279,7 @@ def prepare_export(state: State, slug: str) -> dict:
         "csl_source": csl["csl_source"],
         "csl_status": csl["csl_status"],
         "requirements_check": req_check,
+        "review_triage": triage,
         "warnings": warnings,
     }
 

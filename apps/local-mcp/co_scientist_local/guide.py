@@ -58,6 +58,10 @@ On every session start:
    act only on `accepted` ones, never on `rejected`, and ask before
    touching `pending` ones. `list_reviews(slug, status="open",
    decision="accepted")` is the approved work list.
+   `mcp__co_scientist__review_triage_summary(slug)` gives the whole
+   picture in one call — including `rejected_without_rationale`, the
+   rejected comments still missing a rebuttal (those block a clean export
+   and need a `response` via /paper-revision).
    For any deck on the paper, also call
    `mcp__co_scientist__list_deck_comments(slug, deck_id)` — open slide
    comments are the deck's revision to-do list; revise the slide, then

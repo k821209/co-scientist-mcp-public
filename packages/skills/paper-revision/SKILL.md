@@ -23,6 +23,27 @@ This is separate from `status` (open → resolved).
   author to Accept / Reject (in the dashboard, or tell you), then proceed.
   If they say "just handle all of them," treat pending as accepted.
 
+## Rejected comments need a rebuttal (don't skip them)
+
+A `rejected` comment is NOT done — academic response letters must state *why*
+a reviewer point was not adopted, so every rejected comment needs a rebuttal
+in its `response`. Treat this as the symmetric half of the accepted workflow.
+
+Run `mcp__co_scientist__review_triage_summary(slug)` to see the gap in one
+call — `rejected_without_rationale` lists rejected comments whose `response`
+is empty. For each:
+
+1. Draft a polite rebuttal: why the change isn't being made, and — if the
+   manuscript already addresses the point — cite where (section / lines).
+2. Show the draft to the author for confirmation (don't invent a stance on
+   their behalf for substantive points).
+3. Record it WITHOUT reopening: `update_review(slug, review_id,
+   response='…')` — leave `status='rejected'`.
+
+`prepare_export` also surfaces `rejected_without_rationale` as a warning, so an
+unaddressed rejection blocks a clean export. Do this pass before you tell the
+author the revision is done, and again right before any export / submission.
+
 ## Flow
 
 1. `mcp__co_scientist__list_reviews(slug, status='open', source='user')`
