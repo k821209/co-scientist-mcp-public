@@ -10,10 +10,24 @@ the user leave comments on paragraphs, figures, or specific claims. Those
 comments land in Firestore as `reviews` rows with `source='user'`. This
 skill walks through them one by one.
 
+## Triage (decision) comes first
+
+Each comment carries a `decision` the author sets in the dashboard:
+`accepted` (act on it), `pending` (not triaged yet), or `rejected` (declined).
+This is separate from `status` (open → resolved).
+
+- If the author has triaged, your work list is the **accepted** ones:
+  `list_reviews(slug, status='open', decision='accepted')`. Address those.
+- **Never act on a `rejected` comment** — the author declined it. Leave it.
+- For `pending` comments, don't silently rewrite. Surface them and ask the
+  author to Accept / Reject (in the dashboard, or tell you), then proceed.
+  If they say "just handle all of them," treat pending as accepted.
+
 ## Flow
 
 1. `mcp__co_scientist__list_reviews(slug, status='open', source='user')`
-   to fetch every open user comment, newest first.
+   to fetch every open user comment, newest first. Read each comment's
+   `decision` and split into accepted / pending / rejected per the rule above.
 2. For each comment, show the user:
    - The section / figure / claim it refers to (from `manuscript_ref` and
      `anchor_text`)

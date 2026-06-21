@@ -21,6 +21,9 @@ from .papers import _paper_path
 _VALID_SOURCES = {"user", "ai", "external"}
 _VALID_SEVERITY = {"major", "minor", "suggestion"}
 _VALID_STATUS = {"open", "accepted", "rejected", "resolved"}
+# User triage, orthogonal to status: does the author intend to act on this
+# comment? Set from the dashboard; new comments start "pending".
+_VALID_DECISION = {"pending", "accepted", "rejected"}
 
 # ── anchor normalization (mirrors the web renderer's stripRenderArtifacts +
 #    placeAnchors matching) so reconcile finds a sentence wherever it lives,
@@ -87,6 +90,7 @@ def add_review(
         "section": section,
         "severity": severity,
         "status": "open",
+        "decision": "pending",
         "comment": comment,
         "response": None,
         "manuscript_ref": manuscript_ref,
@@ -113,8 +117,11 @@ def list_reviews(
     *,
     status: str | None = None,
     source: str | None = None,
+    decision: str | None = None,
 ) -> list[dict]:
-    """List reviews for a paper, optionally filtered by status and/or source.
+    """List reviews for a paper, optionally filtered by status, source, and/or
+    the user's triage `decision` ("pending" | "accepted" | "rejected"; comments
+    with no stored decision count as "pending").
 
     Sorted by created_at descending (most recent first).
     """
@@ -130,6 +137,8 @@ def list_reviews(
         reviews = [r for r in reviews if r.get("status") == status]
     if source is not None:
         reviews = [r for r in reviews if r.get("source") == source]
+    if decision is not None:
+        reviews = [r for r in reviews if (r.get("decision") or "pending") == decision]
     reviews.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return reviews
 
@@ -141,6 +150,7 @@ def update_review(
     *,
     status: str | None = None,
     response: str | None = None,
+    decision: str | None = None,
     section: str | None = None,
     anchor_text: str | None = None,
     anchor_prefix: str | None = None,
@@ -170,6 +180,10 @@ def update_review(
             fields["resolved_at"] = None
     if response is not None:
         fields["response"] = response
+    if decision is not None:
+        if decision not in _VALID_DECISION:
+            raise ValueError(f"invalid decision: {decision!r}")
+        fields["decision"] = decision
     if section is not None:
         fields["section"] = section
     if anchor_text is not None:

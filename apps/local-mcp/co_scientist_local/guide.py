@@ -53,7 +53,11 @@ On every session start:
    call `mcp__co_scientist__list_reviews(slug, status="open")` to get
    the open comments with their `anchor_text` — use that quoted passage
    to locate the exact place in the manuscript the user is pointing at,
-   then offer `/paper-revision`.
+   then offer `/paper-revision`. Each comment also carries a `decision`
+   the author sets in the dashboard (`accepted` / `pending` / `rejected`):
+   act only on `accepted` ones, never on `rejected`, and ask before
+   touching `pending` ones. `list_reviews(slug, status="open",
+   decision="accepted")` is the approved work list.
    For any deck on the paper, also call
    `mcp__co_scientist__list_deck_comments(slug, deck_id)` — open slide
    comments are the deck's revision to-do list; revise the slide, then

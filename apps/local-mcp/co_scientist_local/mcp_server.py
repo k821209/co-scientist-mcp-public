@@ -374,9 +374,14 @@ def build_mcp(state: State) -> FastMCP:
         slug: str,
         status: str | None = None,
         source: str | None = None,
+        decision: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List reviews for a paper, optionally filtered."""
-        return _reviews.list_reviews(state, slug, status=status, source=source)
+        """List reviews for a paper, optionally filtered by status, source, and/
+        or the user's triage `decision` ('pending'|'accepted'|'rejected'). The
+        author triages comments in the dashboard; `decision='accepted'` is the
+        set they've approved you to act on (no decision == 'pending')."""
+        return _reviews.list_reviews(
+            state, slug, status=status, source=source, decision=decision)
 
     @mcp.tool()
     def update_review(
@@ -384,21 +389,26 @@ def build_mcp(state: State) -> FastMCP:
         review_id: str,
         status: str | None = None,
         response: str | None = None,
+        decision: str | None = None,
         section: str | None = None,
         anchor_text: str | None = None,
         anchor_prefix: str | None = None,
         anchor_suffix: str | None = None,
         anchor_occurrence: int | None = None,
     ) -> dict[str, Any]:
-        """Update a review's status / response, or correct where it points.
+        """Update a review's status / response, its triage `decision`, or
+        correct where it points.
 
+        `decision` ('pending'|'accepted'|'rejected') is normally set by the
+        author in the dashboard — only set it from here if they tell you to.
         Pass `section` / `anchor_*` to fix a mis-anchored comment (wrong
-        section, or a sentence that moved). For bulk section repair after edits
+        section, or a sentence that moved); for bulk section repair after edits
         use reconcile_review_anchors instead. Args left None are unchanged."""
         return _reviews.update_review(
             state, slug, review_id, status=status, response=response,
-            section=section, anchor_text=anchor_text, anchor_prefix=anchor_prefix,
-            anchor_suffix=anchor_suffix, anchor_occurrence=anchor_occurrence,
+            decision=decision, section=section, anchor_text=anchor_text,
+            anchor_prefix=anchor_prefix, anchor_suffix=anchor_suffix,
+            anchor_occurrence=anchor_occurrence,
         )
 
     @mcp.tool()
@@ -432,19 +442,23 @@ def build_mcp(state: State) -> FastMCP:
         slug: str,
         status: str | None = "open",
         source: str | None = None,
+        decision: str | None = None,
     ) -> list[dict[str, Any]]:
         """Full text of comments on a paper — dashboard ('user') and shared/
         public-page ('external') feedback, plus AI reviewer ('ai') notes. Each
         item carries section, anchor_text, reviewer_name, source, severity,
-        comment, and status.
+        comment, status, and the author's triage `decision`.
 
         status='open' (default) is the agent's revision to-do list; pass None
-        for all. Optionally filter by source ('user'|'external'|'ai'). Read
-        these, revise the manuscript, then resolve_paper_comment — the
-        manuscript analogue of the list_deck_comments / resolve_deck_comment
-        loop. (Same data as list_reviews, named for the comment workflow.)
+        for all. Optionally filter by source ('user'|'external'|'ai') or by
+        `decision` ('accepted' = the author approved you to act on it; 'pending'
+        = not yet triaged; 'rejected' = declined — skip it). When the author has
+        triaged, prefer decision='accepted' as your work list. Read these,
+        revise the manuscript, then resolve_paper_comment — the manuscript
+        analogue of the list_deck_comments / resolve_deck_comment loop.
         """
-        return _reviews.list_reviews(state, slug, status=status, source=source)
+        return _reviews.list_reviews(
+            state, slug, status=status, source=source, decision=decision)
 
     @mcp.tool()
     def resolve_paper_comment(
