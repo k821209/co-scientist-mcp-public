@@ -25,7 +25,18 @@ in Firestore as a `review` with `source='user'`, `status='open'`, plus an
 `anchor_text` field containing the exact selected passage and a
 `manuscript_ref` like `section:<key>`. The dashboard renders the anchor
 as a yellow highlight in the rendered manuscript; clicking the highlight
-opens a popover with the comment.
+opens a popover with the comment. The highlight is re-matched against the
+*current* text on every render (not pinned to a stored offset), so editing
+elsewhere never breaks it — but a comment whose stored `section` points at
+the wrong section can still fail to highlight. After bulk edits (import,
+mass section rewrites, `/paper-revision`) run
+`mcp__co_scientist__reconcile_review_anchors(slug, dry_run=True)` to preview
+which comments need their `section` corrected, then re-run with
+`dry_run=False` to apply; comments reported as `truly_missing` are ones
+whose passage is genuinely gone — review those with the user. To correct a
+single comment by hand use `update_review(slug, review_id, section=…,
+anchor_text=…)`, and to retract a wrong AI reviewer note use
+`delete_paper_comment(slug, review_id)`.
 
 On every session start:
 

@@ -384,9 +384,41 @@ def build_mcp(state: State) -> FastMCP:
         review_id: str,
         status: str | None = None,
         response: str | None = None,
+        section: str | None = None,
+        anchor_text: str | None = None,
+        anchor_prefix: str | None = None,
+        anchor_suffix: str | None = None,
+        anchor_occurrence: int | None = None,
     ) -> dict[str, Any]:
-        """Update a review's status / response text."""
-        return _reviews.update_review(state, slug, review_id, status=status, response=response)
+        """Update a review's status / response, or correct where it points.
+
+        Pass `section` / `anchor_*` to fix a mis-anchored comment (wrong
+        section, or a sentence that moved). For bulk section repair after edits
+        use reconcile_review_anchors instead. Args left None are unchanged."""
+        return _reviews.update_review(
+            state, slug, review_id, status=status, response=response,
+            section=section, anchor_text=anchor_text, anchor_prefix=anchor_prefix,
+            anchor_suffix=anchor_suffix, anchor_occurrence=anchor_occurrence,
+        )
+
+    @mcp.tool()
+    def delete_paper_comment(slug: str, review_id: str) -> bool:
+        """Permanently delete a comment. Use to retract a wrong/obsolete AI
+        reviewer ('ai') note — there is otherwise no way to remove one."""
+        return _reviews.delete_review(state, slug, review_id)
+
+    @mcp.tool()
+    def reconcile_review_anchors(slug: str, dry_run: bool = True) -> dict[str, Any]:
+        """Re-align open comments' stored `section` with where their anchor
+        text actually lives now — fixes highlights that broke because a comment
+        was stamped with the wrong section (or a title instead of a key), or
+        the manuscript was edited. Run after import_paper, bulk section edits,
+        or /paper-revision.
+
+        dry_run=True (default) previews; dry_run=False applies. Returns
+        {relocated, ok, truly_missing}. `truly_missing` = text no longer in any
+        section (genuinely edited away) — left untouched for you to review."""
+        return _reviews.reconcile_review_anchors(state, slug, dry_run=dry_run)
 
     @mcp.tool()
     def count_open_user_comments(slug: str) -> int:
