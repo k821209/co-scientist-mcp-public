@@ -165,7 +165,11 @@ that wouldn't otherwise appear. Read it back with `list_todos()` /
 (PDFs to read, datasets, prior drafts, notes) — distinct from `references`
 (cited works). Call `list_materials()` at session start; pull any you need
 with `get_material(material_id)` (downloads to disk), then read the
-returned path with your file tools.
+returned path with your file tools. Each material has two separate notes:
+`user_note` (the user's — NEVER write or overwrite it) and `ai_note` (yours).
+Once you've figured out what a file is, record it with
+`update_material(material_id, ai_note=…)` so it shows in the dashboard; never
+touch `user_note`.
 
 ## Project memory
 

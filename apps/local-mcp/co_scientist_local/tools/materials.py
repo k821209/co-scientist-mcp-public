@@ -49,9 +49,17 @@ def add_material(
     state: State,
     *,
     local_path: str,
+    ai_note: str | None = None,
     description: str | None = None,
 ) -> dict:
-    """Upload a local file as a project reference material."""
+    """Upload a local file as a project reference material.
+
+    Each material carries TWO separate notes, kept apart on purpose:
+      - `user_note` — the user's own note, written ONLY from the dashboard.
+        Agents must NEVER write or overwrite it.
+      - `ai_note` — the agent's metadata about the file (what it is, columns,
+        how it's relevant). Set it here or later with `update_material`.
+    `description` is a legacy alias for `ai_note`."""
     p = pathlib.Path(local_path)
     if not p.is_file():
         raise FileNotFoundError(f"material file not found: {local_path}")
@@ -64,6 +72,7 @@ def add_material(
     blob_path = _material_path(state, f"{material_id}__{_safe_filename(p.name)}")
     state.backend.put_blob(blob_path, data)
 
+    note = ai_note if ai_note is not None else description
     now = now_iso()
     doc = {
         "material_id": material_id,
@@ -71,13 +80,29 @@ def add_material(
         "content_type": _guess_content_type(filename),
         "size_bytes": len(data),
         "blob_path": blob_path,
-        "description": description,
+        "description": note,   # legacy field (mirrors ai_note for old readers)
+        "ai_note": note,       # agent-authored metadata
+        "user_note": None,     # user-authored; never set by the agent
         "uploaded_by": "agent",
         "created_at": now,
         "updated_at": now,
     }
     state.backend.set_doc(_material_path(state, material_id), doc)
     return {**doc, "dashboard_url": state.dashboard_url("materials")}
+
+
+def update_material(state: State, material_id: str, *, ai_note: str) -> dict:
+    """Set/replace the agent's metadata note (`ai_note`) on a material — works
+    on any material, including ones the user uploaded. ONLY touches `ai_note`;
+    the user's `user_note` is never read or modified here, so the agent can't
+    clobber what the user wrote. Returns the updated doc."""
+    path = _material_path(state, material_id)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(f"material {material_id!r} not found")
+    fields = {"ai_note": ai_note, "updated_at": now_iso()}
+    state.backend.update_doc(path, fields)
+    return {**existing, **fields}
 
 
 def list_materials(state: State) -> list[dict]:
