@@ -142,7 +142,16 @@ def list_reviews(
     # Comments written by the web dashboard via addDoc carry no `id` field in
     # their data — only the Firestore doc key — so surface the key as both
     # `id` and `review_id` (dev-todo CMT-3).
-    reviews = [{**data, "id": doc_id, "review_id": doc_id} for doc_id, data in pairs]
+    #
+    # ALWAYS emit an explicit `decision`. Older / dashboard-created comments may
+    # not store the field; omitting it from the output is a silent-failure trap
+    # (an agent can't distinguish "pending" from "field missing" and may treat
+    # an untriaged comment as approved). Normalize absent → "pending".
+    reviews = [
+        {**data, "id": doc_id, "review_id": doc_id,
+         "decision": data.get("decision") or "pending"}
+        for doc_id, data in pairs
+    ]
     if status is not None:
         reviews = [r for r in reviews if r.get("status") == status]
     if source is not None:
