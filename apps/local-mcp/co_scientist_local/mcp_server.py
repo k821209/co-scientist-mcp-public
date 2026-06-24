@@ -403,6 +403,7 @@ def build_mcp(state: State) -> FastMCP:
         anchor_prefix: str | None = None,
         anchor_suffix: str | None = None,
         anchor_occurrence: int | None = None,
+        anchors: list[str] | None = None,
     ) -> dict[str, Any]:
         """Update a review's status / response, its triage `decision`, or
         correct where it points.
@@ -411,12 +412,15 @@ def build_mcp(state: State) -> FastMCP:
         author in the dashboard — only set it from here if they tell you to.
         Pass `section` / `anchor_*` to fix a mis-anchored comment (wrong
         section, or a sentence that moved); for bulk section repair after edits
-        use reconcile_review_anchors instead. Args left None are unchanged."""
+        use reconcile_review_anchors instead. Pass `anchors` (a list of verbatim
+        passages) when one comment was addressed in several spots — each gets
+        its own highlight/jump and the first becomes the primary anchor_text.
+        Args left None are unchanged."""
         return _reviews.update_review(
             state, slug, review_id, status=status, response=response,
             decision=decision, section=section, anchor_text=anchor_text,
             anchor_prefix=anchor_prefix, anchor_suffix=anchor_suffix,
-            anchor_occurrence=anchor_occurrence,
+            anchor_occurrence=anchor_occurrence, anchors=anchors,
         )
 
     @mcp.tool()
@@ -487,6 +491,7 @@ def build_mcp(state: State) -> FastMCP:
         response: str | None = None,
         new_anchor_text: str | None = None,
         new_section: str | None = None,
+        new_anchor_texts: list[str] | None = None,
     ) -> dict[str, Any]:
         """Close a paper comment once addressed: status 'resolved' (done),
         'accepted' / 'rejected', or 'open' to reopen. Optionally attach a
@@ -497,11 +502,16 @@ def build_mcp(state: State) -> FastMCP:
         longer matches and the dashboard can't point at the revised passage.
         Pass `new_anchor_text` = a verbatim phrase from the REVISED text (and
         `new_section` if it moved to another section) so the highlight follows
-        to the new location. Use the rendered wording (no markdown markers), a
-        distinctive ~5–15 word span."""
+        to the new location.
+
+        If you addressed the comment in SEVERAL places, pass `new_anchor_texts`
+        = a list of one verbatim phrase per edited spot; the dashboard then
+        highlights each and lets the reviewer cycle through them. Use rendered
+        wording (no markdown markers), distinctive ~5–15 word spans."""
         return _reviews.update_review(
             state, slug, review_id, status=status, response=response,
             anchor_text=new_anchor_text, section=new_section,
+            anchors=new_anchor_texts,
         )
 
     # ─── figures ─────────────────────────────────────────────────────────────

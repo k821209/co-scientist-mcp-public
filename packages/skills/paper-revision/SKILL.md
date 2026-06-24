@@ -71,6 +71,9 @@ author the revision is done, and again right before any export / submission.
      reader sees exactly what changed.
    - Use the rendered wording (no `**`/`{doi:…}` markers), a distinctive
      ~5–15 word span that exists verbatim in the new body.
+   - **Edited several spots for one comment?** Pass `new_anchor_texts=[…]`
+     instead — one verbatim phrase per edited location. The dashboard then
+     highlights each and lets the reviewer cycle through them ("N spots").
    - `response` is what the human sees alongside the "✓ Addressed" badge.
 
 ## Anchor Drift

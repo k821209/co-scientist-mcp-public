@@ -175,6 +175,7 @@ def update_review(
     anchor_prefix: str | None = None,
     anchor_suffix: str | None = None,
     anchor_occurrence: int | None = None,
+    anchors: list[str] | None = None,
 ) -> dict:
     """Update a review's status, response, and/or its anchor placement.
 
@@ -182,7 +183,12 @@ def update_review(
     resolved_at automatically. The `section` and `anchor_*` arguments let an
     operator correct where a comment points — e.g. fix a wrong `section` or
     re-anchor a moved sentence (see also reconcile_review_anchors, which does
-    this in bulk). Any argument left None is unchanged.
+    this in bulk).
+
+    `anchors` re-anchors a comment to SEVERAL passages at once — pass it when
+    one comment was addressed across multiple spots so each gets its own
+    highlight/jump. The first becomes the primary `anchor_text`. Any argument
+    left None is unchanged.
     """
     path = _review_path(state, slug, review_id)
     existing = state.backend.get_doc(path)
@@ -213,6 +219,11 @@ def update_review(
         fields["anchor_suffix"] = anchor_suffix
     if anchor_occurrence is not None:
         fields["anchor_occurrence"] = anchor_occurrence
+    if anchors is not None:
+        cleaned = [a for a in anchors if a and a.strip()]
+        if cleaned:
+            fields["anchors"] = cleaned
+            fields["anchor_text"] = cleaned[0]  # first is the primary anchor
     if not fields:
         return existing
     state.backend.update_doc(path, fields)
