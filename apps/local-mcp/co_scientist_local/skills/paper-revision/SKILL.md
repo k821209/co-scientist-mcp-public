@@ -23,6 +23,15 @@ This is separate from `status` (open → resolved).
   author to Accept / Reject (in the dashboard, or tell you), then proceed.
   If they say "just handle all of them," treat pending as accepted.
 
+## Reopened comments (follow-up replies)
+
+An addressed comment can be reopened by the author replying to it — it comes
+back as `status='open'`, `decision='accepted'`, with a `replies` array. The
+LAST entry in `replies` is the author's new request; read the whole thread for
+context, make the further change, then re-resolve (with `new_anchor_text` as
+usual). Don't treat a reopened comment as already done just because it has a
+`response` from the previous round.
+
 ## Rejected comments need a rebuttal (don't skip them)
 
 A `rejected` comment is NOT done — academic response letters must state *why*
