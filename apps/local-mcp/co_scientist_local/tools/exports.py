@@ -40,6 +40,9 @@ from . import tables as _tables
 
 
 _DOI_INLINE_RE = re.compile(r"\{doi:([^}]+)\}")
+# A run of adjacent {doi:…} markers (optionally whitespace-separated), so a
+# stacked citation collapses into a single pandoc group instead of [@a][@b].
+_DOI_RUN_RE = re.compile(r"\{doi:[^}]+\}(?:\s*\{doi:[^}]+\})*")
 _PLACEHOLDER_RE = re.compile(r"\b(TBD|TK|XXX|TODO|FIXME)\b", re.IGNORECASE)
 _BRACKET_PLACEHOLDER_RE = re.compile(r"\[(?:\.{3}|placeholder|tbd|tk|xxx|todo|fixme)\]", re.IGNORECASE)
 
@@ -118,6 +121,11 @@ def _rewrite_inline_citations(
     DOIs with no registered reference are left literal and returned so the
     caller can warn; they're the same set prepare_export already reports as
     `unresolved_citations`.
+
+    A RUN of adjacent markers `{doi:A}{doi:B}` must collapse into ONE pandoc
+    citation group `[@a; @b]`, not `[@a][@b]` — pandoc parses `[@a][@b]` as a
+    markdown link `[text](target)` and mangles the output (the canonical body
+    form is adjacent tokens, so this hits every stacked citation).
     """
     key_by_doi = {
         (r.get("doi") or "").strip().lower(): r["citation_key"]
@@ -127,14 +135,20 @@ def _rewrite_inline_citations(
     unmatched: list[str] = []
 
     def repl(m: re.Match) -> str:
-        doi = m.group(1).strip()
-        key = key_by_doi.get(doi.lower())
-        if key:
-            return f"[@{key}]"
-        unmatched.append(doi)
-        return m.group(0)
+        keys: list[str] = []
+        leftover: list[str] = []
+        for doi in _DOI_INLINE_RE.findall(m.group(0)):
+            d = doi.strip()
+            key = key_by_doi.get(d.lower())
+            if key:
+                keys.append(key)
+            else:
+                unmatched.append(d)
+                leftover.append("{doi:%s}" % doi)
+        cite = "[%s]" % "; ".join("@" + k for k in keys) if keys else ""
+        return cite + "".join(leftover)
 
-    return _DOI_INLINE_RE.sub(repl, text), unmatched
+    return _DOI_RUN_RE.sub(repl, text), unmatched
 
 
 def _figures_appendix(figures: list[dict], supp_figures: list[dict]) -> str:

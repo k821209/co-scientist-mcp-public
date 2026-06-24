@@ -128,6 +128,20 @@ def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
     return _normalize_crossref(msg, doi)
 
 
+def _fix_mojibake(s: str) -> str:
+    """Repair double-encoded UTF-8 (utf-8 bytes decoded as latin-1 then stored),
+    e.g. "FÃ¼rst" → "Fürst". Guarded: only attempts the round-trip when the
+    tell-tale mojibake markers are present, and only keeps the result if it
+    decodes cleanly — so correctly-encoded names (Stefanović) are untouched."""
+    if not s or not any(m in s for m in ("Ã", "Â", "â\x80")):
+        return s
+    try:
+        repaired = s.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+    return repaired
+
+
 def _normalize_crossref(msg: dict, doi: str) -> dict:
     """Flatten CrossRef's response. Includes abstract + subjects so the
     agent can judge citation context without an extra round-trip."""
@@ -137,13 +151,24 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
     journal = container[0] if container else None
     issued = (msg.get("issued") or {}).get("date-parts") or [[]]
     year = issued[0][0] if issued and issued[0] else None
-    authors = []
+    # Split person authors (given/family) from institutional ones (CrossRef
+    # gives orgs as {"name": …} with no family). Mixing orgs into the author
+    # list mangles citations — "University of California" → "California". Keep
+    # the people; fall back to orgs only when there are no person authors.
+    persons: list[str] = []
+    orgs: list[str] = []
     for a in msg.get("author") or []:
-        given = a.get("given") or ""
-        family = a.get("family") or ""
-        full = (given + " " + family).strip() or a.get("name") or ""
-        if full:
-            authors.append(full)
+        given = (a.get("given") or "").strip()
+        family = (a.get("family") or "").strip()
+        if family:
+            persons.append(_fix_mojibake((given + " " + family).strip()))
+        else:
+            name = (a.get("name") or "").strip()
+            if name:
+                orgs.append(_fix_mojibake(name))
+    authors = persons if persons else orgs
+    title = _fix_mojibake(title)
+    journal = _fix_mojibake(journal) if journal else journal
     abstract = msg.get("abstract") or ""
     # CrossRef abstracts arrive as JATS XML — strip tags so the agent sees plain text.
     if abstract:
