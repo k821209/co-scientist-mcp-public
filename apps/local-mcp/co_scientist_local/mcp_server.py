@@ -485,12 +485,23 @@ def build_mcp(state: State) -> FastMCP:
         review_id: str,
         status: str = "resolved",
         response: str | None = None,
+        new_anchor_text: str | None = None,
+        new_section: str | None = None,
     ) -> dict[str, Any]:
         """Close a paper comment once addressed: status 'resolved' (done),
         'accepted' / 'rejected', or 'open' to reopen. Optionally attach a
-        `response`. The manuscript analogue of resolve_deck_comment."""
+        `response`. The manuscript analogue of resolve_deck_comment.
+
+        IMPORTANT — re-anchor when you edited the text. If addressing the
+        comment changed the sentence it was anchored to, the old anchor no
+        longer matches and the dashboard can't point at the revised passage.
+        Pass `new_anchor_text` = a verbatim phrase from the REVISED text (and
+        `new_section` if it moved to another section) so the highlight follows
+        to the new location. Use the rendered wording (no markdown markers), a
+        distinctive ~5–15 word span."""
         return _reviews.update_review(
             state, slug, review_id, status=status, response=response,
+            anchor_text=new_anchor_text, section=new_section,
         )
 
     # ─── figures ─────────────────────────────────────────────────────────────

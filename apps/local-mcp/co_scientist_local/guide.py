@@ -38,6 +38,13 @@ single comment by hand use `update_review(slug, review_id, section=…,
 anchor_text=…)`, and to retract a wrong AI reviewer note use
 `delete_paper_comment(slug, review_id)`.
 
+When you ADDRESS a comment by rewriting the sentence it pointed at, re-anchor
+it in the same step so the highlight follows to the revised text:
+`resolve_paper_comment(slug, review_id, status="accepted", response=…,
+new_anchor_text="<verbatim phrase from the new text>")`. Without this the old
+anchor no longer matches and the dashboard can only fall back to the top of
+the section.
+
 On every session start:
 
 1. Call `mcp__co_scientist__whoami()` once — verifies the MCP is bound to

@@ -60,10 +60,18 @@ author the revision is done, and again right before any export / submission.
    - **Need more info** — pause that one and come back later.
 4. For accepted comments, edit the relevant section via
    `mcp__co_scientist__update_section(slug, key, body=...)`.
-5. Mark the comment resolved:
-   `mcp__co_scientist__update_review(slug, review_id, status='accepted', response='...')`
-   The response field is what the human will see in the dashboard alongside
-   the "✓ Addressed" badge.
+5. Mark the comment resolved AND re-anchor it to the revised text:
+   `mcp__co_scientist__resolve_paper_comment(slug, review_id,
+   status='accepted', response='...', new_anchor_text='<a verbatim phrase
+   from the REVISED passage>', new_section='<key if it moved>')`
+   - **Always pass `new_anchor_text` when your edit changed the anchored
+     sentence.** Otherwise the old anchor no longer matches and the dashboard
+     can't show *where* the comment was addressed — it falls back to the top of
+     the section. Re-anchoring moves the highlight to the new wording, so the
+     reader sees exactly what changed.
+   - Use the rendered wording (no `**`/`{doi:…}` markers), a distinctive
+     ~5–15 word span that exists verbatim in the new body.
+   - `response` is what the human sees alongside the "✓ Addressed" badge.
 
 ## Anchor Drift
 
