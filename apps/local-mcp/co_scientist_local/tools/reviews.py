@@ -52,6 +52,21 @@ def _normalize_anchor(text: str) -> str:
     return s
 
 
+def _anchor_present(state: State, slug: str, text: str) -> bool:
+    """Whether `text` can still be located in any section body (normalized,
+    markdown-marker tolerant) — mirrors the dashboard's matcher closely enough
+    to gate re-anchoring on resolve."""
+    na = _normalize_anchor(text)
+    if len(na) < 2:
+        return True  # too short to judge — don't block
+    for _, d in state.backend.list_collection(
+        state.project_path("papers", slug, "sections")
+    ):
+        if na in _normalize_anchor(d.get("body") or ""):
+            return True
+    return False
+
+
 def _reviews_path(state: State, slug: str) -> str:
     return state.project_path("papers", slug, "reviews")
 
@@ -194,6 +209,29 @@ def update_review(
     existing = state.backend.get_doc(path)
     if existing is None:
         raise NotFound(f"review not found: {slug!r}/{review_id!r}")
+
+    # Forcing function: when CLOSING a comment (accepted/rejected/resolved)
+    # whose anchored text has been edited away — and no re-anchor is supplied in
+    # this call — refuse. Otherwise the dashboard loses the spot and can only
+    # fall back to the section top. The agent revised the text, so it knows the
+    # new wording; make it say where. (LLMs forget the skill instruction; this
+    # makes it impossible to forget silently.)
+    terminal = status in ("accepted", "rejected", "resolved")
+    reanchoring = anchor_text is not None or anchors is not None or section is not None
+    if terminal and not reanchoring:
+        old = existing.get("anchor_text")
+        sec = existing.get("section")
+        is_figure = isinstance(sec, str) and sec.startswith("figure:")
+        if old and len(old) >= 2 and not is_figure and not _anchor_present(state, slug, old):
+            raise ValueError(
+                f"comment {review_id!r}: its anchored text is no longer in the "
+                f"manuscript (you revised it), so the dashboard would lose the spot. "
+                f"Re-resolve with new_anchor_text='<verbatim phrase from the revised "
+                f"passage>' (resolve_paper_comment) — or new_anchor_texts=[...] for "
+                f"several edited spots. If the passage was removed entirely, pass "
+                f"new_anchor_text='' to clear the anchor."
+            )
+
     fields: dict = {}
     if status is not None:
         if status not in _VALID_STATUS:

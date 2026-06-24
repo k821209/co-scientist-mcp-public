@@ -74,6 +74,10 @@ author the revision is done, and again right before any export / submission.
    - **Edited several spots for one comment?** Pass `new_anchor_texts=[…]`
      instead — one verbatim phrase per edited location. The dashboard then
      highlights each and lets the reviewer cycle through them ("N spots").
+   - This is ENFORCED: if you revised the anchored sentence and resolve WITHOUT
+     a new anchor, the MCP refuses with "anchored text is no longer in the
+     manuscript" — re-run with `new_anchor_text(s)`. If the passage was removed
+     entirely, pass `new_anchor_text=''` to clear it.
    - `response` is what the human sees alongside the "✓ Addressed" badge.
 
 ## Anchor Drift
