@@ -11,6 +11,7 @@ from ..backends.base import NotFound
 from ..manuscript import DOC_TYPES, compile_manuscript, sections_for_doc_type
 from ..state import State
 from ..util import now_iso, slugify, word_count
+from . import limits as _limits
 from .activity import log_event
 
 
@@ -71,6 +72,11 @@ def create_paper(
     path = _paper_path(state, slug)
     if state.backend.get_doc(path) is not None:
         raise ValueError(f"paper already exists: {slug!r}")
+
+    _limits.enforce_cap(
+        len(state.backend.list_collection(state.project_path("papers"))),
+        _limits.PAPERS_PER_PROJECT, "papers per project",
+    )
 
     now = now_iso()
     paper = {

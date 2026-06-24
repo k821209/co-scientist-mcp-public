@@ -11,6 +11,7 @@ from __future__ import annotations
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
+from . import limits as _limits
 from .figures import SUPPLEMENTARY_NUMBER_OFFSET
 from .papers import _paper_path
 
@@ -38,6 +39,10 @@ def add_table(
     path = _table_path(state, slug, table_number)
     if state.backend.get_doc(path) is not None:
         raise ValueError(f"table {table_number} already exists for {slug!r}")
+    _limits.enforce_cap(
+        len(state.backend.list_collection(state.project_path("papers", slug, "tables"))),
+        _limits.TABLES_PER_PAPER, "tables per paper",
+    )
     now = now_iso()
     doc = {
         "table_number": table_number,

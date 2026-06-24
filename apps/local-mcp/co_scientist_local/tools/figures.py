@@ -20,6 +20,7 @@ import pathlib
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
+from . import limits as _limits
 from .papers import _paper_path
 
 SUPPLEMENTARY_NUMBER_OFFSET = 100
@@ -72,6 +73,11 @@ def add_figure(
     existing = state.backend.get_doc(path)
     if existing is not None and not overwrite:
         raise ValueError(f"figure {figure_number} already exists for {slug!r}")
+    if existing is None:  # adding a NEW figure (not overwriting) → cap applies
+        _limits.enforce_cap(
+            len(state.backend.list_collection(state.project_path("papers", slug, "figures"))),
+            _limits.FIGURES_PER_PAPER, "figures per paper",
+        )
 
     blob_path: str | None = None
     if local_path:

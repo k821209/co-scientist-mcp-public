@@ -43,6 +43,7 @@ from __future__ import annotations
 from ..backends.base import NotFound
 from ..state import State
 from ..util import new_id, now_iso, slugify
+from . import limits as _limits
 from .activity import log_event
 from .papers import _paper_path
 
@@ -116,6 +117,10 @@ def create_deck(
     existing = state.backend.get_doc(path)
     if existing is not None:
         return existing
+    _limits.enforce_cap(
+        len(state.backend.list_collection(state.project_path("papers", slug, "decks"))),
+        _limits.DECKS_PER_PAPER, "decks per paper",
+    )
     now = now_iso()
     doc = {
         "id": deck_id,
