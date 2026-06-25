@@ -13,6 +13,7 @@ from .tools import csl as _csl
 from .tools import decks as _decks
 from .tools import deck_render as _deck_render
 from .tools import exports as _exports
+from .tools import feedback as _feedback
 from .tools import imports as _imports
 from .tools import figures as _figures
 from .tools import images as _images
@@ -1489,5 +1490,25 @@ def build_mcp(state: State) -> FastMCP:
         return _deck_render.export_deck_to_pptx(
             state, slug, deck_id, output_path=output_path,
         )
+
+    # ─── feedback (bug / feature reports → developer triage) ─────────────────
+    @mcp.tool()
+    def report_feedback(
+        type: str,
+        title: str,
+        body: str | None = None,
+    ) -> dict[str, Any]:
+        """File a bug / error / feature report for this project so the
+        developer can triage it. `type` is one of bug | error | feature |
+        other. Use when you hit a tool bug or limitation, or the user describes
+        a problem worth reporting. Appears in the dashboard's Feedback tab."""
+        return _feedback.report_feedback(state, type=type, title=title, body=body)
+
+    @mcp.tool()
+    def list_feedback(status: str | None = None) -> list[dict[str, Any]]:
+        """List this project's feedback items (newest first); optional status
+        filter (open | in_progress | addressed | declined). Check before
+        filing a duplicate."""
+        return _feedback.list_feedback(state, status=status)
 
     return mcp
