@@ -52,6 +52,12 @@ On every session start:
    the user — they likely mixed `.mcp.json` and `CLAUDE.md` from two
    different dashboard projects. (The MCP also prints a stderr warning
    banner on startup when this mismatch is detected.)
+   whoami also returns `update_available` / `update_hint`: if
+   `update_available` is true this install is behind the latest published
+   build — tell the user to run the `update_hint` command (`git pull` +
+   `pip install -e` in the public checkout) and restart before you rely on
+   tool behavior, since a bug you're about to hit (or report) may already
+   be fixed upstream.
 2. Call `mcp__co_scientist__get_project_memory()` — the project's durable
    knowledge (user preferences, decisions, gotchas). Treat it as standing
    context for the whole session. See "## Project memory" below.

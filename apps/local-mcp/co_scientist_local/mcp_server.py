@@ -59,6 +59,13 @@ def build_mcp(state: State) -> FastMCP:
                 info["project_description"] = proj.get("description")
         except Exception as e:
             info["project_lookup_error"] = str(e)
+        # Staleness check: nudge the user to update if this install is behind
+        # the latest published build (recently-fixed bugs may already be gone).
+        try:
+            from .version_check import check_version
+            info.update(check_version())
+        except Exception:
+            pass
         return info
 
     @mcp.tool()

@@ -46,10 +46,24 @@ def build_banner(paper_slug: str | None) -> str:
     )
 
 
+def version_warning() -> str:
+    """Best-effort 'your MCP is out of date' nudge. Fully guarded: if
+    co_scientist_local isn't importable in this env, or the network probe
+    fails/times out, returns '' so the hook never slows or breaks startup."""
+    try:
+        from co_scientist_local.version_check import check_version
+        v = check_version(timeout=1.5)
+        if v.get("update_available"):
+            return "\n\n⚠️  " + v.get("update_hint", "co-scientist-local is out of date — update it.")
+    except Exception:
+        pass
+    return ""
+
+
 def main() -> None:
     cwd = Path.cwd()
     paper = detect_paper(cwd)
-    banner = build_banner(paper)
+    banner = build_banner(paper) + version_warning()
     print(json.dumps({"additionalContext": banner}))
 
 
