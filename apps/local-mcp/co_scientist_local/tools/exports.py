@@ -188,6 +188,40 @@ def _figures_appendix(figures: list[dict], supp_figures: list[dict]) -> str:
     return "## Figures\n\n" + "\n\n".join(blocks) + "\n"
 
 
+def _tables_appendix(tables: list[dict], supp_tables: list[dict]) -> str:
+    """Markdown that appends each registered table after the body.
+
+    Like figures, the body only carries 'Table N' text references — the table
+    markup itself lives in each table doc's `content` (a pandoc/GFM pipe table)
+    and was never concatenated into the manuscript, so pandoc/python-docx never
+    saw it and every export dropped all tables (dev-todo: tables-appendix). We
+    emit a Tables section: a bold 'Table N.' caption line followed by the
+    stored pipe-table markdown, mirroring `_figures_appendix`.
+    """
+    def block(tbl: dict, supplementary: bool) -> str | None:
+        content = (tbl.get("content") or "").strip()
+        if not content:
+            return None
+        num = tbl.get("table_number")
+        if supplementary and isinstance(num, int):
+            label = f"Table S{num - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
+        else:
+            label = f"Table {num}"
+        caption = (tbl.get("caption") or tbl.get("title") or "").strip()
+        caption = " ".join(caption.split())  # collapse newlines for the caption line
+        head = f"**{label}.** {caption}".rstrip() if caption else f"**{label}.**"
+        # Blank line between the caption and the table so it parses as a block.
+        return f"{head}\n\n{content}"
+
+    blocks = [b for b in (
+        *(block(t, False) for t in tables),
+        *(block(t, True) for t in supp_tables),
+    ) if b]
+    if not blocks:
+        return ""
+    return "## Tables\n\n" + "\n\n".join(blocks) + "\n"
+
+
 def _ref_to_bibtex(ref: dict) -> str:
     """Build a minimal @article BibTeX entry from a reference doc.
 
@@ -520,6 +554,13 @@ def export_to_path(
         manuscript_text = _rewrite_inline_figure_refs(
             manuscript_text, bundle["figures"], bundle["supplementary_figures"],
         )
+        # Tables before figures (conventional manuscript order). Both
+        # appendices carry markup the body only text-references.
+        tbl_appendix = _tables_appendix(
+            bundle["tables"], bundle["supplementary_tables"],
+        )
+        if tbl_appendix:
+            manuscript_text = manuscript_text.rstrip() + "\n\n" + tbl_appendix
         fig_appendix = _figures_appendix(
             bundle["figures"], bundle["supplementary_figures"],
         )
