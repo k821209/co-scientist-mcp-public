@@ -1138,11 +1138,18 @@ def build_mcp(state: State) -> FastMCP:
         fmt: str | None = None,
         csl_path: str | None = None,
         upload_to_storage: bool = True,
+        scope: str = "main",
     ) -> dict[str, Any]:
-        """Run pandoc to produce a document; upload result to Cloud Storage."""
+        """Run pandoc to produce a document; upload result to Cloud Storage.
+
+        `scope`: "main" (default) = manuscript + MAIN figures/tables only;
+        "supplementary" = a standalone Supplementary Material file with only
+        the supplementary (≥101) figures/tables; "all" = everything in one
+        file. To deliver a journal package, export scope="main" and then
+        scope="supplementary" to a second path."""
         return _exports.export_to_path(
             state, slug, output_path=output_path, fmt=fmt,
-            csl_path=csl_path, upload_to_storage=upload_to_storage,
+            csl_path=csl_path, upload_to_storage=upload_to_storage, scope=scope,
         )
 
     @mcp.tool()

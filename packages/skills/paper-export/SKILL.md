@@ -74,8 +74,22 @@ mcp__co_scientist__export_to_path(
   slug,
   output_path="<absolute path or ./{slug}.{ext}>",
   fmt="docx" | "tex" | "pdf" | "md",
+  scope="main",   # "main" | "supplementary" | "all"
 )
 ```
+
+**Main vs supplementary (`scope`).** A journal receives a main manuscript
+containing only the MAIN figures/tables; supplementary items (figure/table
+number ≥ 101) belong in a separate file. So:
+- `scope="main"` (default) — manuscript text + main figures/tables only.
+- `scope="supplementary"` — a standalone *Supplementary Material* document
+  with only the supplementary figures/tables (no main body).
+- `scope="all"` — everything in one file (legacy; use only if asked).
+
+If `prepare_export` shows any `supplementary_figures` / `supplementary_tables`,
+deliver BOTH files: run once with `scope="main"` to `{slug}.{ext}` and again
+with `scope="supplementary"` to `{slug}_supplementary.{ext}`. Tell the user
+both paths.
 
 The tool:
 - Re-runs `prepare_export` (so warnings are fresh)
@@ -174,7 +188,8 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
 - "Strip references" → call `delete_reference` for each; warnings will
   shift to "unresolved citations" instead. Decide with the user
   whether to leave inline DOI markers as plain text or remove them.
-- "Add supplementary figures only" → there's no separate supplementary
-  export yet; the main export already includes supplementary figures
-  (`figure_number >= 101`) and tables at the end. Future iteration:
-  a separate `--supplementary` flag.
+- "Export the supplementary only" → `export_to_path(..., scope="supplementary")`
+  produces a standalone Supplementary Material file with just the
+  supplementary figures/tables (≥ 101). The default `scope="main"` export
+  excludes them; export both files when supplementary content exists (see
+  step 4).

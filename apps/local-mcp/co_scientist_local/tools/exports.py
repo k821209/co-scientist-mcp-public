@@ -151,7 +151,9 @@ def _rewrite_inline_citations(
     return _DOI_RUN_RE.sub(repl, text), unmatched
 
 
-def _figures_appendix(figures: list[dict], supp_figures: list[dict]) -> str:
+def _figures_appendix(
+    figures: list[dict], supp_figures: list[dict], heading: str = "Figures"
+) -> str:
     """Markdown that embeds each registered figure's image as a Pandoc figure.
 
     The body only carries 'Figure N' text references, so without this pandoc
@@ -185,10 +187,12 @@ def _figures_appendix(figures: list[dict], supp_figures: list[dict]) -> str:
     ) if b]
     if not blocks:
         return ""
-    return "## Figures\n\n" + "\n\n".join(blocks) + "\n"
+    return f"## {heading}\n\n" + "\n\n".join(blocks) + "\n"
 
 
-def _tables_appendix(tables: list[dict], supp_tables: list[dict]) -> str:
+def _tables_appendix(
+    tables: list[dict], supp_tables: list[dict], heading: str = "Tables"
+) -> str:
     """Markdown that appends each registered table after the body.
 
     Like figures, the body only carries 'Table N' text references — the table
@@ -219,7 +223,7 @@ def _tables_appendix(tables: list[dict], supp_tables: list[dict]) -> str:
     ) if b]
     if not blocks:
         return ""
-    return "## Tables\n\n" + "\n\n".join(blocks) + "\n"
+    return f"## {heading}\n\n" + "\n\n".join(blocks) + "\n"
 
 
 def _ref_to_bibtex(ref: dict) -> str:
@@ -509,6 +513,9 @@ def _strip_problem_docx_parts(path: pathlib.Path) -> bool:
     return True
 
 
+_VALID_SCOPES = {"main", "supplementary", "all"}
+
+
 def export_to_path(
     state: State,
     slug: str,
@@ -517,6 +524,7 @@ def export_to_path(
     fmt: str | None = None,
     csl_path: str | None = None,
     upload_to_storage: bool = True,
+    scope: str = "main",
 ) -> dict:
     """Full export pipeline.
 
@@ -524,10 +532,28 @@ def export_to_path(
     The citation style is auto-resolved from the paper's journal and
     downloaded from the CSL styles repo; pass `csl_path` to override with a
     local CSL file.
+
+    `scope` controls main-vs-supplementary content (a journal receives a main
+    manuscript with only the main figures/tables; supplementary items belong
+    in a separate file):
+      - "main" (default) — full manuscript text + MAIN figures/tables only
+        (figure_number / table_number < 100). Supplementary items are excluded.
+      - "supplementary" — a standalone 'Supplementary Material' document with
+        ONLY the supplementary figures/tables (≥ 101), no main manuscript text.
+      - "all" — everything in one file (the pre-split legacy behavior).
+    To deliver both, export twice: once with scope="main" and once with
+    scope="supplementary" to a second path.
+
     Returns metadata: local path, blob path (if uploaded), pandoc rc/stderr,
     csl status, plus the prepare_export warnings so the caller can surface
     them.
     """
+    scope = (scope or "main").lower()
+    if scope not in _VALID_SCOPES:
+        raise ValueError(f"invalid scope {scope!r}; choose from {_VALID_SCOPES}")
+    include_main = scope in ("main", "all")
+    include_supp = scope in ("supplementary", "all")
+
     bundle = prepare_export(state, slug)
     export_warnings = list(bundle["warnings"])
     out = pathlib.Path(output_path).expanduser()
@@ -547,23 +573,36 @@ def export_to_path(
     with tempfile.TemporaryDirectory(prefix=f"export-{slug}-") as tmp:
         tmp_path = pathlib.Path(tmp)
 
+        # Which figures/tables go in this file depends on `scope`. The main
+        # manuscript carries only main items; the supplementary export carries
+        # only supplementary items (in its own document a journal stores
+        # separately). "all" keeps both together (legacy).
+        main_figs = bundle["figures"] if include_main else []
+        supp_figs = bundle["supplementary_figures"] if include_supp else []
+        main_tbls = bundle["tables"] if include_main else []
+        supp_tbls = bundle["supplementary_tables"] if include_supp else []
+        staged_figs = [*main_figs, *supp_figs]
+
         # Lay out manuscript + bib. Escape '---' rules (dev-todo P1-3), then
-        # append a Figures section so registered figure images get embedded
-        # (dev-todo EXP-1).
-        manuscript_text = _escape_thematic_breaks(bundle["manuscript"])
-        manuscript_text = _rewrite_inline_figure_refs(
-            manuscript_text, bundle["figures"], bundle["supplementary_figures"],
-        )
+        # append Tables/Figures sections so registered items get embedded
+        # (dev-todo EXP-1 + tables-appendix). For a supplementary-only export
+        # there is no main manuscript text — start from a heading.
+        if include_main:
+            manuscript_text = _escape_thematic_breaks(bundle["manuscript"])
+            manuscript_text = _rewrite_inline_figure_refs(
+                manuscript_text, staged_figs, [],
+            )
+            tbl_heading, fig_heading = "Tables", "Figures"
+        else:
+            manuscript_text = "# Supplementary Material\n"
+            tbl_heading, fig_heading = "Supplementary Tables", "Supplementary Figures"
+
         # Tables before figures (conventional manuscript order). Both
         # appendices carry markup the body only text-references.
-        tbl_appendix = _tables_appendix(
-            bundle["tables"], bundle["supplementary_tables"],
-        )
+        tbl_appendix = _tables_appendix(main_tbls, supp_tbls, heading=tbl_heading)
         if tbl_appendix:
             manuscript_text = manuscript_text.rstrip() + "\n\n" + tbl_appendix
-        fig_appendix = _figures_appendix(
-            bundle["figures"], bundle["supplementary_figures"],
-        )
+        fig_appendix = _figures_appendix(main_figs, supp_figs, heading=fig_heading)
         if fig_appendix:
             manuscript_text = manuscript_text.rstrip() + "\n\n" + fig_appendix
         # Convert `{doi:…}` markers to pandoc `[@key]` citations so --citeproc
@@ -586,8 +625,8 @@ def export_to_path(
             )
             export_warnings.extend(csl_warnings)
 
-        # Download figure blobs into tmp dir (main + supplementary)
-        for fig in (*bundle["figures"], *bundle["supplementary_figures"]):
+        # Download figure blobs into tmp dir (only those included in this scope)
+        for fig in staged_figs:
             bp = fig.get("blob_path")
             if not bp:
                 continue
@@ -658,6 +697,7 @@ def export_to_path(
         meta = {
             "filename": out.name,
             "format": fmt,
+            "scope": scope,
             "blob_path": blob_path,
             "size_bytes": len(output_bytes),
             "csl_filename": csl_filename,
@@ -673,6 +713,7 @@ def export_to_path(
     return {
         "slug": slug,
         "format": fmt,
+        "scope": scope,
         "doc_type": doc_type,
         "engine": engine,
         "local_path": str(out),
