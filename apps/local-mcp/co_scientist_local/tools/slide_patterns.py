@@ -510,10 +510,10 @@ def figure_full(slide, *, image_path: str = None, image_callable=None,
     Pass EXACTLY ONE image source:
         - `image_path` (str): a filesystem path. The pattern embeds
             via Keynote-safe normalization (RGBA→RGB JPEG ≤ 1920px).
-        - `image_callable`: a callable that takes `slide, *, left,
-            top, width, height` and adds the picture. Use this when
-            embedding a paper figure or region from inside a code
-            slide, e.g.
+        - `image_callable`: a keyword-only callable `(*, left, top,
+            width, height)` that adds the picture into the given box.
+            It closes over `slide` itself (not passed in), so the
+            natural form just forwards the box kwargs, e.g.
                 p.figure_full(slide,
                     image_callable=lambda **kw: h.image_figure(slide, 3, **kw),
                     caption="Fig 3 · ...", palette=palette, fonts=fonts,
@@ -554,8 +554,10 @@ def figure_full(slide, *, image_path: str = None, image_callable=None,
         pic.left = img_left + (img_w - new_w) // 2
         pic.top = img_top + (img_h - new_h) // 2
     else:
-        # image_callable is responsible for embedding into the given box.
-        image_callable(slide, left=img_left, top=img_top,
+        # image_callable closes over `slide`; we only hand it the box. (It is
+        # keyword-only — passing slide positionally broke the documented
+        # `lambda **kw: ...` form with a TypeError — dev-todo deck API-1.)
+        image_callable(left=img_left, top=img_top,
                        width=img_w, height=img_h)
 
     if caption:

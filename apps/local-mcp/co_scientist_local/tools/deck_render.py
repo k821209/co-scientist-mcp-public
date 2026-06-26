@@ -595,6 +595,11 @@ def _theme_colors(concept: str | None) -> dict[str, str]:
         "accent": accent,
         "background": background,
         "foreground": foreground,
+        # Alias: the concept's `Palette:` block names this key `text:`, so
+        # snippets naturally reach for palette["text"]. Expose it as a synonym
+        # of foreground so that doesn't KeyError (the documented key name and
+        # the runtime dict were out of sync — dev-todo deck API-1).
+        "text": foreground,
         "surface": surface,
         "muted": muted,
         "secondary": secondary,
@@ -1342,9 +1347,12 @@ def _add_code_slide(slide, row, state, slug, tmpd, *, sw, sh,
     code = (row.get("code") or "").strip()
     if not code:
         return "no code on slide", [], []
-    # Full 7-key palette as RGBColor objects (todo 007 axis 4).
+    # Full 7-key palette as RGBColor objects (todo 007 axis 4). `text` is an
+    # alias of foreground: the concept's Palette block names the key `text:`,
+    # so snippets reach for palette["text"] — expose it here too or it
+    # KeyErrors at render time (dev-todo deck API-1).
     palette = {
-        "accent": accent, "background": bg, "foreground": fg,
+        "accent": accent, "background": bg, "foreground": fg, "text": fg,
         "surface": _hex_to_rgb(palette_full["surface"], "#FFFFFF"),
         "muted": _hex_to_rgb(palette_full["muted"], "#6C757D"),
         "secondary": _hex_to_rgb(palette_full["secondary"], "#2E7D32"),

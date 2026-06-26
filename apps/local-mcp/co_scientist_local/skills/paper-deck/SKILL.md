@@ -515,6 +515,8 @@ NAMESPACE (always bound in code snippets)
   slide, title, body, notes, row
   palette = {accent, background, foreground, surface, muted,
              secondary, highlight}    # 7 RGBColor keys, todo 007
+             # `text` is accepted as an alias of `foreground` (the concept's
+             # Palette block names it `text:`); both resolve to the same color.
   fonts   = {display, body, mono}
   type_scale = {legacy: title/head/body/cover_title/caption/...
                  canonical roles: display_chapter/cover/hero,
