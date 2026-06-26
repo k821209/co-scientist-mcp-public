@@ -1489,6 +1489,18 @@ the budget is `content_w = sw - left_margin - right_margin` (typically
 size each as a fraction of `content_w` — never start at a margin and
 then add full-width segments. Re-export until `bounds_warnings == []`.
 
+**Also check `result["font_warnings"]`** — each entry is `{role, font,
+note}` for a concept Typography font (display/body/mono) NOT installed on
+the render host. LibreOffice silently substitutes a missing face, so the
+exported PDF/PNG (and the dashboard preview) diverge from PowerPoint — the
+"PPT looks right but the PDF is misaligned" trap. Two gotchas: (a) the font
+isn't installed at all → pick one that is; (b) it's a **variable** font
+(e.g. some `Noto Sans KR` builds) → LibreOffice may pick the wrong weight,
+so prefer a static build or a host-bundled family. Safe cross-platform
+picks: macOS `Apple SD Gothic Neo` + `Menlo`; otherwise a static Noto
+build. Fix the concept Typography and re-export until `font_warnings == []`.
+(Empty when `fc-list` isn't on the host — then it can't be checked.)
+
 ```
 res = mcp__co_scientist__export_deck_to_pptx(slug, deck_id)
 for png in res["slide_pngs"]:

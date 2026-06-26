@@ -27,6 +27,7 @@ not a Keynote workaround. python-pptx ships in the base install.
 """
 from __future__ import annotations
 
+import functools
 import os
 import pathlib
 import re
@@ -839,6 +840,66 @@ def _theme_fonts(concept: str | None) -> dict[str, str | None]:
     )
     mono = _font_family(kv.get("mono") or kv.get("code_font"))
     return {"display": display or body, "body": body or display, "mono": mono}
+
+
+@functools.lru_cache(maxsize=1)
+def _installed_font_families() -> frozenset[str] | None:
+    """Lowercased font family names known to fontconfig on the render host,
+    or None if `fc-list` is unavailable (then we skip the check rather than
+    emit false warnings). Cached — the font set doesn't change mid-process."""
+    try:
+        proc = subprocess.run(
+            ["fc-list", ":", "family"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    fams: set[str] = set()
+    for line in proc.stdout.splitlines():
+        # "Family One,Alias Two:..." — the family list is before the first ':'
+        for fam in line.split(":", 1)[0].split(","):
+            f = fam.strip().lower()
+            if f:
+                fams.add(f)
+    return frozenset(fams)
+
+
+def _font_warnings(fonts: dict) -> list[dict]:
+    """Flag concept fonts (display/body/mono) not installed on the render
+    host. LibreOffice silently substitutes a missing face, so the exported
+    PDF/PNG previews diverge from PowerPoint — the "PPT is fine but the PDF is
+    misaligned" failure mode (dev-todo deck font-availability). Best-effort:
+    empty when fc-list is unavailable."""
+    installed = _installed_font_families()
+    if not installed:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for role in ("display", "body", "mono"):
+        fam = fonts.get(role)
+        if not fam:
+            continue
+        key = fam.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        # Installed if some fontconfig family equals the request or starts with
+        # it (covers "Noto Sans KR" matching an installed "Noto Sans KR <wght>").
+        if any(f == key or f.startswith(key) for f in installed):
+            continue
+        out.append({
+            "role": role,
+            "font": fam,
+            "note": (
+                f"'{fam}' is not installed on the render host — LibreOffice "
+                "will substitute it, so the exported PDF/PNG previews may not "
+                "match PowerPoint. Use a font present on this host (a static, "
+                "non-variable build is safest) in the concept Typography."
+            ),
+        })
+    return out
 
 
 def _render_simple_body(slide, body: str, *, box, fg, fonts, Pt,
@@ -1698,6 +1759,7 @@ def export_deck_to_pptx(
         "code_errors": code_errors,
         "overlap_warnings": overlap_warnings,
         "bounds_warnings": bounds_warnings,
+        "font_warnings": _font_warnings(fonts),
         "local_path": str(out),
         "blob_path": pptx_blob,
         "pdf_local_path": str(pdf_path) if pdf_path else None,
