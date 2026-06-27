@@ -109,6 +109,14 @@ def apply_base_font_to_docx(path) -> None:
         normal.paragraph_format.line_spacing = _BODY_LINE_SPACING
     except KeyError:
         pass
+    # Pandoc's figure-caption styles default to italic; drop it so captions
+    # read as regular text (the bold "Figure N." label comes from the alt
+    # markdown, and any genuine *italics* keep their direct run formatting).
+    for style_name in ("Image Caption", "Caption"):
+        try:
+            doc.styles[style_name].font.italic = False
+        except KeyError:
+            pass
     doc.save(str(path))
 
 
@@ -286,8 +294,11 @@ def _render_block(doc, node: SyntaxTreeNode, asset_dir: pathlib.Path | None,
             _render_inline(heading, inline, asset_dir)
     elif t == "paragraph":
         inline = node.children[0] if node.children else None
-        # A paragraph that is a single image becomes a centered figure with an
-        # italic caption underneath (the image's alt text).
+        # A paragraph that is a single image becomes a centered figure with a
+        # caption underneath (the image's alt text). The caption renders its
+        # markdown — so a "**Figure N.**" label is bold and the rest regular,
+        # while genuine *italics* (e.g. species names) are preserved — instead
+        # of force-italicizing the whole line.
         if inline is not None and _is_lone_image(inline):
             img = inline.children[0]
             resolved = _resolve_image(str(img.attrs.get("src", "")), asset_dir)
@@ -299,9 +310,12 @@ def _render_block(doc, node: SyntaxTreeNode, asset_dir: pathlib.Path | None,
                 if caption:
                     cap = doc.add_paragraph()
                     cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    run = cap.add_run(caption)
-                    run.italic = True
-                    run.font.size = Pt(9)
+                    if img.children:
+                        _render_inline(cap, img, asset_dir)
+                    else:
+                        cap.add_run(caption)
+                    for run in cap.runs:
+                        run.font.size = Pt(9)
             else:
                 run = p.add_run(img.content or str(img.attrs.get("src", "")))
                 run.italic = True

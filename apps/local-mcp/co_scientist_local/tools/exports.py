@@ -171,7 +171,10 @@ def _figures_appendix(
             label = f"Figure S{num - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
         else:
             label = f"Figure {num}"
-        parts = [label.rstrip(".") + "."]
+        # Bold the "Figure N." label; the caption/legend stay regular weight
+        # (the markdown is honored by both engines — pandoc parses the alt,
+        # the native renderer renders the alt's inline tokens).
+        parts = [f"**{label.rstrip('.')}.**"]
         for field in ("caption", "legend"):
             val = (fig.get(field) or "").strip()
             if val:
