@@ -340,8 +340,7 @@ _VALID_FORMATS = {"docx", "tex", "pdf", "md"}
 
 
 def _format_pandoc_args(fmt: str, manuscript_filename: str, output_filename: str,
-                       has_bib: bool, csl_path: str | None,
-                       reference_doc: str | None = None) -> list[str]:
+                       has_bib: bool, csl_path: str | None) -> list[str]:
     # Disable yaml_metadata_block so a body-level `---` (thematic break /
     # section divider) isn't mis-parsed as YAML front matter and crash the
     # export (dev-todo P1-3). Everything else in pandoc's markdown stays on.
@@ -357,10 +356,10 @@ def _format_pandoc_args(fmt: str, manuscript_filename: str, output_filename: str
         pass
     elif fmt == "md":
         args.extend(["-t", "markdown"])
-    # docx is the implicit default when output ext is .docx. A reference doc
-    # carries the base typography (Times New Roman, 1.15 line spacing).
-    if reference_doc:
-        args.extend(["--reference-doc", reference_doc])
+    # docx is the implicit default when output ext is .docx. We do NOT pass a
+    # --reference-doc: pandoc's built-in reference carries the "Table" style
+    # (borders/shading) and other style mappings; the base font is instead
+    # swapped afterwards (apply_base_font_to_docx) so table styling survives.
     if has_bib:
         args.extend(["--bibliography", "references.bib", "--citeproc"])
     if csl_path:
@@ -658,19 +657,10 @@ def export_to_path(
                     "references section if needed"
                 )
         else:
-            # For DOCX, hand pandoc a reference doc so the body defaults to
-            # Times New Roman at 1.15 line spacing (matches the native path).
-            reference_doc: str | None = None
-            if fmt == "docx":
-                try:
-                    _docx_export.build_reference_docx(tmp_path / "reference.docx")
-                    reference_doc = "reference.docx"
-                except Exception as e:  # non-fatal — fall back to pandoc default
-                    export_warnings.append(f"export font template skipped: {e!s}")
             # Run pandoc; it writes the output file inside tmp dir, we copy out.
             args = _format_pandoc_args(
                 fmt, "manuscript.md", out.name,
-                has_bib=has_bib, csl_path=csl_arg, reference_doc=reference_doc,
+                has_bib=has_bib, csl_path=csl_arg,
             )
             rc, stdout, stderr = state.require_pandoc().run(args, cwd=str(tmp_path))
             if rc != 0:
@@ -683,6 +673,16 @@ def export_to_path(
                     "error": "pandoc reported success but produced no output file",
                     "warnings": export_warnings,
                 }
+
+            # Swap the base font to Times New Roman / 1.15 line spacing in
+            # place — AFTER pandoc, so its "Table" style (borders/shading) and
+            # all other style mappings are preserved (a --reference-doc would
+            # have dropped pandoc's table style). Non-fatal.
+            if fmt == "docx":
+                try:
+                    _docx_export.apply_base_font_to_docx(tmp_output)
+                except Exception as e:
+                    export_warnings.append(f"export font swap skipped: {e!s}")
 
             # Make the .docx open in Hancom Office (dev-todo P0-1): prefer a
             # LibreOffice round-trip (normalizes the whole OOXML package); fall

@@ -93,26 +93,22 @@ def _set_doc_default_font(doc, latin: str, eastasia: str) -> None:
     rFonts.set(qn("w:eastAsia"), eastasia)
 
 
-def build_reference_docx(path) -> None:
-    """Write a pandoc `--reference-doc` that defaults body + headings to the
-    export font (Times New Roman) at 1.15 line spacing. Pandoc copies the
-    document defaults + matching styles from here, so the paper (pandoc) DOCX
-    picks up the same base typography as the native report path."""
-    doc = Document()
+def apply_base_font_to_docx(path) -> None:
+    """Swap an existing .docx's base font to the export font (Times New Roman)
+    at 1.15 line spacing, WITHOUT touching any other style — so a pandoc-
+    generated doc keeps its "Table" style (borders/shading), headings, etc.,
+    and only the default typeface changes. Sets the document-wide default font
+    (so table cells + body inherit it) plus the Normal style's font + spacing.
+    """
+    doc = Document(str(path))
     _set_doc_default_font(doc, _BODY_FONT_LATIN, _BODY_FONT_EASTASIA)
-    normal = doc.styles["Normal"]
-    normal.font.name = _BODY_FONT_LATIN
-    _set_eastasia_font(normal, _BODY_FONT_EASTASIA)
-    normal.paragraph_format.line_spacing = _BODY_LINE_SPACING
-    # Keep headings on the same family (plain — no report navy) so the whole
-    # manuscript reads as one typeface.
-    for level in range(1, 7):
-        try:
-            style = doc.styles[f"Heading {level}"]
-        except KeyError:
-            continue
-        style.font.name = _BODY_FONT_LATIN
-        _set_eastasia_font(style, _BODY_FONT_EASTASIA)
+    try:
+        normal = doc.styles["Normal"]
+        normal.font.name = _BODY_FONT_LATIN
+        _set_eastasia_font(normal, _BODY_FONT_EASTASIA)
+        normal.paragraph_format.line_spacing = _BODY_LINE_SPACING
+    except KeyError:
+        pass
     doc.save(str(path))
 
 
