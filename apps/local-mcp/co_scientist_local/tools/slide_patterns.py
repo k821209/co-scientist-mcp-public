@@ -590,12 +590,19 @@ def _normalize_for_helper(path: str):
 
 def title_slide(slide, *, title: str, subtitle: str = "",
                 eyebrow: str = "",
-                palette, fonts, type_scale, sw, sh):
-    """Deck opener / cover (PowerPoint base 1 — Title Slide). Centered
-    eyebrow + large title + short accent rule + subtitle.
+                palette, fonts, type_scale, sw, sh, align: str = "auto"):
+    """Deck opener / cover (PowerPoint base 1 — Title Slide). Eyebrow +
+    large title + short accent rule + subtitle.
 
     Distinct from `chapter_divider` (a *mid-deck* section break) — this
     is the *opener* at slide 1 with author / venue / date metadata.
+
+    `align`: "auto" (default) | "center" | "left". A title that wraps to
+    two+ lines reads as a "ragged center" when centered (each line starts
+    at a different x); "auto" left-aligns it onto a single baseline in that
+    case and centers a short one-line title (dev-todo deck cover-align). A
+    multi-line Korean title is the common trigger. Pass "center"/"left" to
+    force it.
 
     Contract: **Owns the whole slide.** Do NOT call h.accent_stripe or
     h.title_block before; this pattern is the slide.
@@ -615,6 +622,19 @@ def title_slide(slide, *, title: str, subtitle: str = "",
     margin_x = sw // 12
     box_w = sw - 2 * margin_x
 
+    # Resolve alignment. "auto" → left when the title wraps to >= 2 lines
+    # (ragged-center avoidance), else center.
+    a = (align or "auto").lower()
+    if a not in ("auto", "left", "center"):
+        a = "auto"
+    if a == "auto":
+        box_w_pt = max(1.0, box_w / 12700)
+        title_w_pt = _h.estimate_text_width_pt(title, title_pt)
+        wraps = int((title_w_pt + box_w_pt - 1) // box_w_pt)
+        a = "left" if wraps >= 2 else "center"
+    title_align = PP_ALIGN.LEFT if a == "left" else PP_ALIGN.CENTER
+    left_aligned = a == "left"
+
     title_h = Pt(title_pt * 1.25)
     rule_gap = Pt(_h.SPACING_UNIT_PT * 2)
     rule_h = Pt(6)
@@ -633,18 +653,21 @@ def title_slide(slide, *, title: str, subtitle: str = "",
                    width=box_w, height=eyebrow_h,
                    size_pt=eyebrow_pt, color=accent,
                    font_name=fonts.get("body"), bold=True,
-                   align=PP_ALIGN.CENTER)
+                   align=title_align)
         cursor += eyebrow_h + Pt(4)
     _emit_text(slide, title,
                left=margin_x, top=cursor,
                width=box_w, height=title_h,
                size_pt=title_pt, color=fg,
                font_name=fonts.get("display"), bold=True,
-               align=PP_ALIGN.CENTER, line_spacing=1.05)
+               align=title_align, line_spacing=1.05)
     cursor += title_h
     if subtitle:
         rule_w = max(Inches(1.2), sw // 8)
-        _accent_rule(slide, left=(sw - rule_w) // 2,
+        # Left-aligned cover: anchor the rule + subtitle on the same left
+        # margin as the title so everything shares one baseline.
+        rule_left = margin_x if left_aligned else (sw - rule_w) // 2
+        _accent_rule(slide, left=rule_left,
                      top=cursor + rule_gap,
                      width=rule_w, height=rule_h, color=accent)
         _emit_text(slide, subtitle,
@@ -652,7 +675,7 @@ def title_slide(slide, *, title: str, subtitle: str = "",
                    width=box_w, height=sub_h,
                    size_pt=sub_pt, color=fg_muted,
                    font_name=fonts.get("body"),
-                   align=PP_ALIGN.CENTER)
+                   align=title_align)
 
 
 def title_and_image_grid(slide, *, title: str,

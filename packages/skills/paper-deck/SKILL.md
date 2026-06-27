@@ -607,7 +607,8 @@ MECHANICAL LAYOUTS  (p.* — structural scaffolds ONLY; see note below)
   # comparison, do NOT reach for a pattern — compose it bespoke from
   # h.* primitives (see proposal_dense / personnel_equipment exemplars).
   p.title_slide(slide, *, title, subtitle="", eyebrow="", # OWNS SLIDE
-                palette, fonts, type_scale, sw, sh)
+                palette, fonts, type_scale, sw, sh,
+                align="auto")  # auto: left if title wraps 2+ lines, else center
   p.chapter_divider(slide, *, chapter_label, summary="",  # OWNS SLIDE
                     palette, fonts, type_scale, sw, sh)
   p.title_and_image_grid(slide, *, title, images, cols=2, # under title
@@ -858,7 +859,7 @@ the preamble before it.
 
 | Pattern | Contract | Intent / when to use | Content shape |
 |---|---|---|---|
-| `p.title_slide(slide, *, title, subtitle="", eyebrow="")` | **owns slide** | Deck opener / cover at slide 1. Centered eyebrow + title + accent rule + subtitle. Distinct from `chapter_divider` (mid-deck). | `title`, `subtitle` (author/venue/date), `eyebrow` (≤ ~24 chars) |
+| `p.title_slide(slide, *, title, subtitle="", eyebrow="", align="auto")` | **owns slide** | Deck opener / cover at slide 1. Eyebrow + title + accent rule + subtitle. `align="auto"` left-aligns a title that wraps to 2+ lines (avoids ragged-center; common for long Korean titles) and centers a short one — pass `"center"`/`"left"` to force. Distinct from `chapter_divider` (mid-deck). | `title`, `subtitle` (author/venue/date), `eyebrow` (≤ ~24 chars) |
 | `p.chapter_divider(slide, *, chapter_label, summary="")` | **owns slide** | Section opener (Era I/II/III). Big centered label + accent rule + summary. | `chapter_label` (≤ 12 chars), `summary` (≤ 50 chars) |
 | `p.title_and_image_grid(slide, *, title, images, cols=2)` | under title | N images in a `cols`-column grid (1 = half-bleed, 2 = side-by-side, 4 = 2×2). Optional per-image captions. | `images: [{path, caption?}]`, `cols` (1/2/4) |
 | `p.figure_full(slide, *, image_path=None, image_callable=None, caption="")` | under title | Single figure that owns the FULL grid (~85% slide height); caption rides in the bottom-margin strip outside the grid. Pass `image_path` for filesystem PNGs or `image_callable=lambda **kw: h.image_figure(slide, N, **kw)` for paper figures. (todo 008 §A) | one image + ≤ 120-char caption |
@@ -1281,6 +1282,18 @@ h.callout(slide,
 
 Same content lands differently depending on arrangement. The patterns
 encode these rules; when you build a custom layout, mirror them.
+
+**Centered vs left-aligned titles (ragged center).** A title that wraps
+to two+ lines reads as misaligned when centered — each line is a
+different width, so their left edges stagger ("ragged center"), which the
+eye registers as "not aligned" even after you tune the line breaks. A
+long Korean cover title hits this almost every time. Rule: **center only
+short one-line titles; left-align any multi-line title** onto a single
+left baseline (eyebrow → title lines → accent rule → subtitle all share
+one left margin). `p.title_slide(align="auto")` does this for you (left
+when it wraps, center otherwise); for a bespoke cover, follow the same
+rule by hand. This also keeps the cover consistent with body slides,
+whose `h.title_block` is already left-aligned.
 
 **Left vs right placement.** Western reading is L→R; the right side is
 where the audience arrives — the natural "this is the conclusion"
