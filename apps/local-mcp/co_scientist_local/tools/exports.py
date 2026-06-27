@@ -745,6 +745,61 @@ def export_to_path(
     }
 
 
+def attach_export(
+    state: State,
+    slug: str,
+    *,
+    local_path: str,
+    filename: str | None = None,
+    scope: str = "supplementary",
+) -> dict:
+    """Upload an arbitrary file (CSV / XLSX / TSV / ZIP / …) to a paper's
+    Exports area so it shows in the dashboard Exports tab next to the rendered
+    .docx/.pdf and ships as part of the submission package.
+
+    Use this for generated submission OUTPUTS that aren't pandoc-rendered —
+    e.g. a large numeric supplementary table best delivered as a data file
+    rather than a 200-row Word table. (For source/reference INPUTS use
+    add_material instead — that's the Materials tab.)
+
+    `scope` tags the file main | supplementary | all (default supplementary).
+    """
+    if state.backend.get_doc(state.project_path("papers", slug)) is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    scope = (scope or "supplementary").lower()
+    if scope not in _VALID_SCOPES:
+        raise ValueError(f"invalid scope {scope!r}; choose from {_VALID_SCOPES}")
+    src = pathlib.Path(local_path).expanduser()
+    if not src.is_file():
+        raise FileNotFoundError(local_path)
+
+    name = (filename or src.name).strip()
+    if not name or "/" in name or "\\" in name:
+        raise ValueError(f"invalid export filename: {name!r}")
+    data = src.read_bytes()
+    fmt = (src.suffix.lstrip(".") or "data").lower()
+    blob_path = state.project_path("papers", slug, "exports", name)
+    state.backend.put_blob(blob_path, data)
+
+    now = now_iso()
+    meta = {
+        "filename": name,
+        "format": fmt,
+        "scope": scope,
+        "kind": "data",          # distinguishes an attached file from a render
+        "blob_path": blob_path,
+        "size_bytes": len(data),
+        "updated_at": now,
+    }
+    existing = state.backend.get_doc(blob_path)
+    if existing is None:
+        meta["created_at"] = now
+        state.backend.set_doc(blob_path, meta)
+    else:
+        state.backend.update_doc(blob_path, meta)
+    return {**meta, "dashboard_url": state.dashboard_url("papers", slug)}
+
+
 def list_exports(state: State, slug: str) -> list[dict]:
     """List previously-exported files for a paper."""
     if state.backend.get_doc(state.project_path("papers", slug)) is None:

@@ -122,3 +122,11 @@ ask.
   for you to fix.
 - **Don't auto-export.** Registering supplementary content and
   exporting are separate steps.
+- **Large numeric tables → ship as data, not a giant Word table.** A
+  supplementary table that's hundreds of rows reads terribly rendered
+  inline. Keep a short `add_table` stub if it needs a number/caption, but
+  deliver the actual data with
+  `attach_export(slug, local_path="…/STable_S4.csv", scope="supplementary")`
+  — it uploads the file to the paper's **Exports** tab next to the
+  rendered docx/pdf so it's part of the submission package. (`add_material`
+  is for source/reference INPUTS, not generated submission outputs.)

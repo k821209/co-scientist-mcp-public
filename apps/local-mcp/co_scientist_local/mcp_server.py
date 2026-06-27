@@ -1153,6 +1153,24 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
+    def attach_export(
+        slug: str,
+        local_path: str,
+        filename: str | None = None,
+        scope: str = "supplementary",
+    ) -> dict[str, Any]:
+        """Upload a data file (CSV/XLSX/TSV/ZIP/…) to a paper's Exports tab so
+        it ships with the submission package next to the rendered docx/pdf.
+
+        For generated submission OUTPUTS that aren't pandoc-rendered (e.g. a
+        large numeric supplementary table better delivered as a CSV than a
+        200-row Word table). For source/reference INPUTS use add_material.
+        `scope`: main | supplementary | all (default supplementary)."""
+        return _exports.attach_export(
+            state, slug, local_path=local_path, filename=filename, scope=scope,
+        )
+
+    @mcp.tool()
     def list_exports(slug: str) -> list[dict[str, Any]]:
         """List previously-exported files for a paper."""
         return _exports.list_exports(state, slug)
