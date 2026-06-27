@@ -459,12 +459,13 @@ mcp__co_scientist__update_slide(
                   type_scale=type_scale, sw=sw, sh=sh)
     h.deck_chrome(slide, palette=palette, fonts=fonts,
                   type_scale=type_scale, sw=sw, sh=sh,
-                  eyebrow='HOW · 추진 방법', total=13,
+                  eyebrow='HOW · 추진 방법',
                   footer='기러기류 마커 발굴 · ㈜디보')
-    # page_number is auto-filled from this slide's slide_number when
-    # omitted — so inserting a slide only needs a renumber_deck, not a
-    # rewrite of every following slide's literal page number. Pass an
-    # explicit page_number=N to override, or page_number=None to hide it.
+    # Both page_number AND total auto-fill when omitted: page_number from
+    # this slide's slide_number, total from the deck's slide count. So
+    # inserting a slide only needs a renumber_deck — never a rewrite of
+    # every slide's literal "x / N". Pass page_number=N / total=N to
+    # override, or =None to hide either. (DON'T hardcode total=13.)
     p.flow_pipeline(slide, items=[...],
                     palette=palette, fonts=fonts,
                     type_scale=type_scale, sw=sw, sh=sh)
@@ -577,7 +578,7 @@ HELPERS  (h.* — primitives)
   h.icon_names() -> list[str]                             # vocabulary
   h.deck_chrome(slide, *, palette, fonts, type_scale,     # eyebrow + footer
                 sw, sh, eyebrow="", page_number=<auto>,   # + page number
-                total=None, footer="")                    # page_number omitted
+                total=<auto>, footer="")                  # page+total auto-fill
                                                           # → slide_number;
                                                           # =None hides it
                                                           # (todo 009 B)
@@ -1472,7 +1473,11 @@ rubric**. For each entry, find the two textboxes in the slide's
 of each box's text), and replace the manual `h.text(...)` /
 `add_textbox(...)` calls with `h.vstack(...)` for stacked content
 in a single column, or fix the y-coordinates so the boxes don't
-overlap. Re-export until `overlap_warnings == []`.
+overlap. Re-export until `overlap_warnings == []`. This also catches
+**wrap overflow** — a big number / long line in a narrow box that wraps
+to extra lines and spills onto the box below (the box's declared height
+is small but the rendered text is taller). Fix by shrinking the font
+(`h.autofit_pt`) or widening the box so the value stays on one line.
 
 **Also check `result["bounds_warnings"]`** (render-time off-slide
 detector). Same shape as above but each entry is `{slide_number,

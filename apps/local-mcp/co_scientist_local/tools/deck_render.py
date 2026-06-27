@@ -193,6 +193,9 @@ def _image_dims(data: bytes) -> dict:
 # given" (→ use the slide's slide_number) vs. "page_number=None" (→ skip
 # the page label). A plain None can't distinguish the two.
 _PAGE_AUTO = object()
+# Likewise for the page-count denominator: omitted → fill from the deck's
+# slide count; explicit None → no "/ N"; explicit int → that literal.
+_TOTAL_AUTO = object()
 
 
 # Tokens that signal a `code` field is an in-place python-pptx snippet
@@ -1137,7 +1140,8 @@ def _add_hybrid_slide(slide, row, state, tmpd, *, sw, sh, accent, fg, bg,
 
 
 def _build_code_namespace(slide, row, state, slug, tmpd, *,
-                          palette, fonts, type_scale, aspect, sw, sh):
+                          palette, fonts, type_scale, aspect, sw, sh,
+                          slide_count=None):
     """Build the namespace handed to a code slide's `exec()`. Pre-binds
     the slide object, theme primitives, python-pptx imports, and the
     `h` helpers namespace — including image-loading closures that
@@ -1213,15 +1217,19 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
         _place_picture(slide, str(tmp),
                        left=left, top=top, box_w=width, box_h=height, fit=fit)
 
-    def _deck_chrome(*args, page_number=_PAGE_AUTO, **kwargs):
+    def _deck_chrome(*args, page_number=_PAGE_AUTO, total=_TOTAL_AUTO, **kwargs):
         """Wrap h.deck_chrome to default `page_number` to this slide's
-        `slide_number`. Inserting a slide then only requires a renumber —
-        not a rewrite of every following slide's literal page number.
-        Pass `page_number=None` explicitly to skip the page label."""
+        `slide_number` and `total` to the deck's slide count. Inserting a
+        slide then only requires a renumber — not a rewrite of every
+        following slide's literal page number OR total. Pass
+        `page_number=None` / `total=None` explicitly to skip either."""
         target_slide = args[0] if args else slide
         if page_number is _PAGE_AUTO:
             page_number = row.get("slide_number")
-        return _h.deck_chrome(target_slide, page_number=page_number, **kwargs)
+        if total is _TOTAL_AUTO:
+            total = slide_count  # deck total (None for a lone-slide render)
+        return _h.deck_chrome(
+            target_slide, page_number=page_number, total=total, **kwargs)
 
     # Combine static helpers + state-aware image helpers into one `h`.
     h = SimpleNamespace(
@@ -1289,6 +1297,40 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
     }
 
 
+def _effective_text_bottom(shape, top: int, width: int, height: int) -> int:
+    """Bottom EMU of a textbox accounting for text that WRAPS taller than its
+    declared height (dev-todo deck wrap-overlap). A big number / long line in
+    a narrow box wraps to extra lines that spill below the box and collide with
+    whatever sits underneath — the declared bbox misses it.
+
+    Conservative: only extends the bottom when the box does NOT shrink text to
+    fit (auto_size != TEXT_TO_SHAPE), every run carries an explicit size, and
+    the measured height clearly exceeds the declared one (>1.2x, to stay clear
+    of estimator noise). Otherwise returns the plain declared bottom."""
+    declared = top + height
+    tf = shape.text_frame
+    try:
+        from pptx.enum.text import MSO_AUTO_SIZE  # type: ignore
+        if tf.auto_size == MSO_AUTO_SIZE.TEXT_TO_SHAPE:
+            return declared  # text shrinks to fit → no wrap overflow
+    except Exception:
+        pass
+    sizes = [run.font.size.pt for para in tf.paragraphs for run in para.runs
+             if run.font.size is not None]
+    if not sizes:
+        return declared  # unknown font size → don't guess
+    from pptx.util import Pt  # type: ignore
+    from .slide_render_helpers import measure_text_height_pt
+    measured_pt = measure_text_height_pt(
+        tf.text or "", max_width_emu=width, font_pt=int(round(max(sizes))),
+        line_spacing=1.15,
+    )
+    measured_emu = int(Pt(measured_pt))
+    if measured_emu > height * 1.2:
+        return top + measured_emu
+    return declared
+
+
 def _detect_text_overlaps(slide, *, min_overlap_ratio: float = 0.2) -> list[dict]:
     """Walk `slide.shapes` and find pairs of textbox shapes whose
     bounding boxes intersect by at least `min_overlap_ratio` of the
@@ -1317,7 +1359,11 @@ def _detect_text_overlaps(slide, *, min_overlap_ratio: float = 0.2) -> list[dict
         if w <= 0 or h <= 0:
             continue
         preview = text.splitlines()[0][:40]
-        boxes.append(((l, t, l + w, t + h), preview))
+        # Use the EFFECTIVE bottom so a box whose text wraps past its declared
+        # height (and spills onto the box below) is caught (dev-todo deck
+        # wrap-overlap), not just literal declared-bbox intersections.
+        bottom = _effective_text_bottom(shape, t, w, h)
+        boxes.append(((l, t, l + w, bottom), preview))
 
     out: list[dict] = []
     for i in range(len(boxes)):
@@ -1393,7 +1439,7 @@ def _detect_offslide_shapes(slide, *, sw: int, sh: int,
 
 def _add_code_slide(slide, row, state, slug, tmpd, *, sw, sh,
                     accent, fg, bg, fonts, palette_full, Inches, Pt,
-                    MSO_SHAPE,
+                    MSO_SHAPE, slide_count=None,
                     type_scale: dict = _DEFAULT_TYPE_SCALE) -> tuple[str | None, list[dict], list[dict]]:
     """Execute the slide's `code` against a prepared namespace.
 
@@ -1423,7 +1469,7 @@ def _add_code_slide(slide, row, state, slug, tmpd, *, sw, sh,
     ns = _build_code_namespace(
         slide, row, state, slug, tmpd,
         palette=palette, fonts=fonts, type_scale=type_scale,
-        aspect=aspect, sw=sw, sh=sh,
+        aspect=aspect, sw=sw, sh=sh, slide_count=slide_count,
     )
     try:
         exec(compile(code, f"<slide {row.get('id', '?')} code>", "exec"), ns)
@@ -1569,7 +1615,7 @@ def export_deck_to_pptx(
                     accent=accent, fg=fg, bg=bg, fonts=fonts,
                     palette_full=colors,
                     Inches=Inches, Pt=Pt, MSO_SHAPE=MSO_SHAPE,
-                    type_scale=type_scale,
+                    type_scale=type_scale, slide_count=len(slides),
                 )
                 if overlaps:
                     overlap_warnings.append({
