@@ -340,7 +340,8 @@ _VALID_FORMATS = {"docx", "tex", "pdf", "md"}
 
 
 def _format_pandoc_args(fmt: str, manuscript_filename: str, output_filename: str,
-                       has_bib: bool, csl_path: str | None) -> list[str]:
+                       has_bib: bool, csl_path: str | None,
+                       reference_doc: str | None = None) -> list[str]:
     # Disable yaml_metadata_block so a body-level `---` (thematic break /
     # section divider) isn't mis-parsed as YAML front matter and crash the
     # export (dev-todo P1-3). Everything else in pandoc's markdown stays on.
@@ -356,7 +357,10 @@ def _format_pandoc_args(fmt: str, manuscript_filename: str, output_filename: str
         pass
     elif fmt == "md":
         args.extend(["-t", "markdown"])
-    # docx is the implicit default when output ext is .docx
+    # docx is the implicit default when output ext is .docx. A reference doc
+    # carries the base typography (Times New Roman, 1.15 line spacing).
+    if reference_doc:
+        args.extend(["--reference-doc", reference_doc])
     if has_bib:
         args.extend(["--bibliography", "references.bib", "--citeproc"])
     if csl_path:
@@ -654,10 +658,19 @@ def export_to_path(
                     "references section if needed"
                 )
         else:
+            # For DOCX, hand pandoc a reference doc so the body defaults to
+            # Times New Roman at 1.15 line spacing (matches the native path).
+            reference_doc: str | None = None
+            if fmt == "docx":
+                try:
+                    _docx_export.build_reference_docx(tmp_path / "reference.docx")
+                    reference_doc = "reference.docx"
+                except Exception as e:  # non-fatal — fall back to pandoc default
+                    export_warnings.append(f"export font template skipped: {e!s}")
             # Run pandoc; it writes the output file inside tmp dir, we copy out.
             args = _format_pandoc_args(
                 fmt, "manuscript.md", out.name,
-                has_bib=has_bib, csl_path=csl_arg,
+                has_bib=has_bib, csl_path=csl_arg, reference_doc=reference_doc,
             )
             rc, stdout, stderr = state.require_pandoc().run(args, cwd=str(tmp_path))
             if rc != 0:

@@ -41,8 +41,9 @@ _LINK_COLOR = RGBColor(0x05, 0x63, 0xC1)
 # CJK-safe default font and style headings/tables for a polished, readable look.
 # The East Asian face drives Hangul glyphs; the Latin face drives ASCII.
 _BODY_FONT_EASTASIA = "맑은 고딕"          # Malgun Gothic — ships with Korean Windows/Hancom
-_BODY_FONT_LATIN = "Calibri"
+_BODY_FONT_LATIN = "Times New Roman"        # default export body face (Latin/ASCII)
 _BODY_FONT_SIZE = Pt(10.5)
+_BODY_LINE_SPACING = 1.15
 _HEADING_COLOR = RGBColor(0x1F, 0x38, 0x64)  # deep navy — reads as a section title
 # Built-in table style confirmed present in python-docx's default template;
 # gives header shading + banded rows out of the box.
@@ -65,6 +66,56 @@ def _set_eastasia_font(style, eastasia: str) -> None:
     rfonts.set(qn("w:eastAsia"), eastasia)
 
 
+def _set_doc_default_font(doc, latin: str, eastasia: str) -> None:
+    """Set the document-wide default run font (`w:docDefaults`), so EVERY
+    style/paragraph that doesn't override it inherits this face. This is the
+    most reliable way to force a base font across a whole docx (incl. one
+    pandoc generates from this file as its `--reference-doc`)."""
+    styles_el = doc.styles.element
+    docDefaults = styles_el.find(qn("w:docDefaults"))
+    if docDefaults is None:
+        docDefaults = styles_el.makeelement(qn("w:docDefaults"), {})
+        styles_el.insert(0, docDefaults)
+    rPrDefault = docDefaults.find(qn("w:rPrDefault"))
+    if rPrDefault is None:
+        rPrDefault = docDefaults.makeelement(qn("w:rPrDefault"), {})
+        docDefaults.append(rPrDefault)
+    rPr = rPrDefault.find(qn("w:rPr"))
+    if rPr is None:
+        rPr = rPrDefault.makeelement(qn("w:rPr"), {})
+        rPrDefault.append(rPr)
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = rPr.makeelement(qn("w:rFonts"), {})
+        rPr.append(rFonts)
+    for attr in ("w:ascii", "w:hAnsi", "w:cs"):
+        rFonts.set(qn(attr), latin)
+    rFonts.set(qn("w:eastAsia"), eastasia)
+
+
+def build_reference_docx(path) -> None:
+    """Write a pandoc `--reference-doc` that defaults body + headings to the
+    export font (Times New Roman) at 1.15 line spacing. Pandoc copies the
+    document defaults + matching styles from here, so the paper (pandoc) DOCX
+    picks up the same base typography as the native report path."""
+    doc = Document()
+    _set_doc_default_font(doc, _BODY_FONT_LATIN, _BODY_FONT_EASTASIA)
+    normal = doc.styles["Normal"]
+    normal.font.name = _BODY_FONT_LATIN
+    _set_eastasia_font(normal, _BODY_FONT_EASTASIA)
+    normal.paragraph_format.line_spacing = _BODY_LINE_SPACING
+    # Keep headings on the same family (plain — no report navy) so the whole
+    # manuscript reads as one typeface.
+    for level in range(1, 7):
+        try:
+            style = doc.styles[f"Heading {level}"]
+        except KeyError:
+            continue
+        style.font.name = _BODY_FONT_LATIN
+        _set_eastasia_font(style, _BODY_FONT_EASTASIA)
+    doc.save(str(path))
+
+
 def _apply_report_template(doc) -> None:
     """Style the document's Normal + Heading styles for report/other exports.
 
@@ -77,7 +128,7 @@ def _apply_report_template(doc) -> None:
     normal.font.size = _BODY_FONT_SIZE
     _set_eastasia_font(normal, _BODY_FONT_EASTASIA)
     pf = normal.paragraph_format
-    pf.line_spacing = 1.15
+    pf.line_spacing = _BODY_LINE_SPACING
     pf.space_after = Pt(6)
 
     for level, size, before, after in _HEADING_SPECS:
