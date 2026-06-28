@@ -905,6 +905,38 @@ def _font_warnings(fonts: dict) -> list[dict]:
     return out
 
 
+_DECK_PLACEHOLDER_RE = re.compile(
+    r"\b(?:lorem ipsum|TODO|FIXME|TBD|TK|XXXX+)\b", re.IGNORECASE
+)
+_DECK_BRACKET_PLACEHOLDER_RE = re.compile(
+    r"\[(?:\.{3}|placeholder|tbd|todo|your [^\]]{0,30}|insert [^\]]{0,30})\]",
+    re.IGNORECASE,
+)
+
+
+def _scan_deck_placeholders(prs) -> list[dict]:
+    """Catch leftover placeholder text in the RENDERED deck — 'Lorem ipsum',
+    'TODO', '[placeholder]', 'XXXX', etc. (inspired by the Anthropic pptx
+    skill's content-QA grep). Deterministic complement to the vision critique:
+    scans every shape's text in the built presentation, so it catches
+    placeholders regardless of whether the slide was code / text / hybrid.
+    Returns [{slide_number, markers:[...]}] for slides with hits."""
+    out: list[dict] = []
+    for i, slide in enumerate(prs.slides, start=1):
+        hits: set[str] = set()
+        for shape in slide.shapes:
+            if not getattr(shape, "has_text_frame", False):
+                continue
+            text = shape.text_frame.text or ""
+            for m in _DECK_PLACEHOLDER_RE.finditer(text):
+                hits.add(m.group(0))
+            for m in _DECK_BRACKET_PLACEHOLDER_RE.finditer(text):
+                hits.add(m.group(0))
+        if hits:
+            out.append({"slide_number": i, "markers": sorted(hits)})
+    return out
+
+
 def _render_simple_body(slide, body: str, *, box, fg, fonts, Pt,
                         body_pt: int = _BODY_PT,
                         line_spacing: float = _LINE_SPACING) -> None:
@@ -1806,6 +1838,7 @@ def export_deck_to_pptx(
         "overlap_warnings": overlap_warnings,
         "bounds_warnings": bounds_warnings,
         "font_warnings": _font_warnings(fonts),
+        "placeholder_warnings": _scan_deck_placeholders(prs),
         "local_path": str(out),
         "blob_path": pptx_blob,
         "pdf_local_path": str(pdf_path) if pdf_path else None,

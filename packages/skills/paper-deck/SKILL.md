@@ -1440,6 +1440,42 @@ PYTHONPATH=apps/local-mcp python \
 The corpus is checked in (small PNGs), so the agent has it locally
 without a network round-trip. Each PNG is < 100 KB.
 
+### 5e. Don'ts + palette library — avoid the AI-slide look (ref: Anthropic pptx skill)
+
+**Tells of an AI-generated deck — don't do these:**
+- **Don't reflexively underline every title with an accent line.** A short
+  rule under every title is the #1 AI tell. Use the deck's accent *motif*
+  purposefully (the top `h.accent_stripe`, ONE highlight number per slide) —
+  not a default underline on every heading.
+- **Don't center body text.** Left-align body/bullets; centering is only for
+  short cover/section hero lines (`p.title_slide` already left-aligns multi-
+  line titles).
+- **Don't repeat the same layout** slide after slide — vary: two-column,
+  icon+text rows, 2×2/2×3 grids, a big-stat callout, a half-bleed figure.
+- **Don't skimp on size contrast** — a hero number/headline should dwarf its
+  caption (use the `display_*` type-scale steps).
+- **Every content slide needs a visual anchor** — a figure, a chart, an icon,
+  a colored card, or a big number. A wall of bullets reads as a draft.
+- **Don't default to blue.** Pick a palette that fits the topic (below), and
+  keep it: accent + foreground + ONE neutral, ≤3 colors per slide.
+
+**Quick palette library** (host-safe hex — drop into the concept `Palette:`;
+remember `text:` = foreground, and keep `accent` for the ONE thing per slide):
+
+| Theme | accent | bg | foreground | surface | muted |
+|---|---|---|---|---|---|
+| Navy / ice (data, methods) | `#1F6FEB` | `#F7F8FA` | `#161B22` | `#FFFFFF` | `#6B7280` |
+| Forest / moss (ecology, plants) | `#2E7D32` | `#F6F8F4` | `#14210F` | `#FFFFFF` | `#5B6B57` |
+| Coral / gold (results, impact) | `#E8590C` | `#FFF9F3` | `#231209` | `#FFFFFF` | `#8A6D5A` |
+| Plum / slate (theory) | `#7C3AED` | `#F8F7FB` | `#1E1B2E` | `#FFFFFF` | `#6B6780` |
+| Teal / sand (clinical, env) | `#0D9488` | `#F4F8F7` | `#0F2420` | `#FFFFFF` | `#5E7370` |
+
+Fonts: keep to faces present on the render host — `export_deck_to_pptx`
+returns `font_warnings` for any missing one (a missing font → LibreOffice
+substitutes → the PDF diverges from PowerPoint). Safe picks: macOS
+`Apple SD Gothic Neo` (display+body) + `Menlo` (mono); for Korean decks the
+Noto Sans KR static build.
+
 ### 6. Renumber once at the end
 
 After adding all slides:
@@ -1518,6 +1554,12 @@ so prefer a static build or a host-bundled family. Safe cross-platform
 picks: macOS `Apple SD Gothic Neo` + `Menlo`; otherwise a static Noto
 build. Fix the concept Typography and re-export until `font_warnings == []`.
 (Empty when `fc-list` isn't on the host — then it can't be checked.)
+
+**Also check `result["placeholder_warnings"]`** — `[{slide_number,
+markers}]` for any leftover placeholder text in the rendered deck ("Lorem
+ipsum", "TODO", "[placeholder]", "XXXX", …). Every hit is real text the
+audience would see — replace it with the actual content and re-export until
+`placeholder_warnings == []`.
 
 ```
 res = mcp__co_scientist__export_deck_to_pptx(slug, deck_id)
