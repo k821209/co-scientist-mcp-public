@@ -426,10 +426,56 @@ def add_reference_by_doi(
     )
 
 
+def backfill_references(state: State, slug: str) -> dict:
+    """One pass over every reference: for each with a DOI, fetch CrossRef and
+    fill in any MISSING bibliographic fields — volume / issue / pages / issn /
+    publisher (and title/authors/journal/year if blank). Never overwrites
+    existing non-empty values.
+
+    This is the bulk form of `enrich_reference_from_doi` — use it after an
+    import or when exported citations are missing volume:pages, so the whole
+    bibliography is completed in a single call instead of one per reference.
+
+    Returns {total, enriched: [keys that gained locators], already_complete,
+    no_doi: [keys skipped], errors: [{citation_key, error}]}.
+    """
+    _ensure_paper(state, slug)
+    refs = list_references(state, slug)
+    enriched: list[str] = []
+    already_complete: list[str] = []
+    no_doi: list[str] = []
+    errors: list[dict] = []
+    for r in refs:
+        key = r.get("citation_key") or ""
+        if not (r.get("doi") or "").strip():
+            no_doi.append(key)
+            continue
+        had_locators = bool(r.get("volume") or r.get("pages"))
+        try:
+            out = enrich_reference_from_doi(state, slug, key)
+        except DoiNotFound:
+            errors.append({"citation_key": key, "error": "DOI not found in CrossRef"})
+            continue
+        except Exception as e:  # network/parse — keep going through the rest
+            errors.append({"citation_key": key, "error": str(e)})
+            continue
+        if bool(out.get("volume") or out.get("pages")) and not had_locators:
+            enriched.append(key)
+        else:
+            already_complete.append(key)
+    return {
+        "total": len(refs),
+        "enriched": enriched,
+        "already_complete": already_complete,
+        "no_doi": no_doi,
+        "errors": errors,
+    }
+
+
 def enrich_reference_from_doi(state: State, slug: str, citation_key: str) -> dict:
     """For an existing reference that has a DOI but lacks metadata, fetch
-    CrossRef and fill in missing fields (title, authors, journal, year).
-    Does not overwrite existing non-empty fields.
+    CrossRef and fill in missing fields — title/authors/journal/year plus
+    volume/issue/pages/issn/publisher. Does not overwrite non-empty fields.
     """
     _ensure_paper(state, slug)
     path = _ref_path(state, slug, citation_key)

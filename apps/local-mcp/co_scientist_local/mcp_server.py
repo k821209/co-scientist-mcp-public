@@ -803,10 +803,20 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def enrich_reference_from_doi(slug: str, citation_key: str) -> dict[str, Any]:
         """For an existing reference with only a DOI, fill in missing
-        title/authors/journal/year from CrossRef. Won't overwrite existing
-        non-empty fields.
+        title/authors/journal/year + volume/issue/pages/issn/publisher from
+        CrossRef. Won't overwrite existing non-empty fields.
         """
         return _references.enrich_reference_from_doi(state, slug, citation_key)
+
+    @mcp.tool()
+    def backfill_references(slug: str) -> dict[str, Any]:
+        """One pass over ALL references: fetch CrossRef for each with a DOI and
+        fill in any missing volume/issue/pages/issn/publisher (and
+        title/authors/journal/year if blank). Use this to complete a
+        bibliography whose exported citations end at the journal name with no
+        volume:pages. Never overwrites non-empty fields. Returns a per-key
+        summary (enriched / already_complete / no_doi / errors)."""
+        return _references.backfill_references(state, slug)
 
     @mcp.tool()
     def validate_references(slug: str) -> dict[str, Any]:
