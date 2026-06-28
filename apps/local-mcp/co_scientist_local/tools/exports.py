@@ -235,7 +235,46 @@ _HTML_ENTITIES = {
 }
 
 
-def _title_to_bibtex(title: str) -> str:
+_LATEX_SPAN_RE = re.compile(
+    r"\\text(?:it|bf|sc|subscript|superscript)\{[^{}]*\}"
+)
+
+
+def _italicize_taxa(s: str, taxa: list[str]) -> str:
+    """Wrap listed taxon names in \\textit{}, only OUTSIDE existing
+    \\textit{...} spans (so names CrossRef already italicized aren't doubled),
+    with word boundaries (so 'Cuscutaceae' and family/order ranks stay roman).
+
+    We italicize the genus/infrageneric NAME itself, plus the abbreviated
+    binomial form ("C. campestris"), which is an unambiguous signal. We do NOT
+    auto-italicize the word after a full genus ("Cuscuta chinensis") — too many
+    titles put an ordinary English word there ("Cuscuta species",
+    "Cuscuta-derived", "Cuscuta infection"), and wrongly italicizing one reads
+    as an error. The genus alone becoming consistent already fixes the report.
+    """
+    names = [t.strip() for t in (taxa or []) if t and t.strip()]
+    if not names:
+        return s
+    name_alt = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    initials = "".join(sorted({n[0] for n in names if n[:1].isalpha()}))
+    pats = []
+    if initials:
+        # Abbreviated binomial: "C. campestris" — single genus-initial + epithet.
+        pats.append(rf"\b[{re.escape(initials)}]\.\s+[a-z][a-z-]{{2,}}\b")
+    pats.append(rf"\b(?:{name_alt})\b")  # standalone genus / infrageneric name
+    rx = re.compile("|".join(pats))
+    repl = lambda m: "\\textit{" + m.group(0) + "}"
+
+    out, last = [], 0
+    for span in _LATEX_SPAN_RE.finditer(s):
+        out.append(rx.sub(repl, s[last:span.start()]))
+        out.append(span.group(0))  # leave already-italic spans untouched
+        last = span.end()
+    out.append(rx.sub(repl, s[last:]))
+    return "".join(out)
+
+
+def _title_to_bibtex(title: str, taxa: list[str] | None = None) -> str:
     """Convert a CrossRef title (which may carry JATS/HTML markup) into a
     BibTeX-safe title value (dev-todo bib-quality):
 
@@ -260,11 +299,13 @@ def _title_to_bibtex(title: str) -> str:
     s = re.sub(r"<\s*sup\s*>(.*?)<\s*/\s*sup\s*>", r"\\textsuperscript{\1}", s, flags=flags)
     s = re.sub(r"<[^>]+>", "", s)            # drop any remaining tags
     s = re.sub(r"\s+", " ", s).strip()       # collapse whitespace/newlines
+    # Auto-italicize project taxon names that the source didn't mark up.
+    s = _italicize_taxa(s, taxa or [])
     # Outer braces protect the whole title from CSL case transformation.
     return "{" + s + "}"
 
 
-def _ref_to_bibtex(ref: dict) -> str:
+def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
     """Build an @article BibTeX entry from a reference doc.
 
     If the ref carries a literal `bibtex` field, return that verbatim.
@@ -276,7 +317,7 @@ def _ref_to_bibtex(ref: dict) -> str:
     if ref.get("title"):
         # Note the double braces: outer = the field, inner (from
         # _title_to_bibtex) = case protection.
-        fields.append(f"  title = {{{_title_to_bibtex(ref['title'])}}}")
+        fields.append(f"  title = {{{_title_to_bibtex(ref['title'], taxa)}}}")
     authors = ref.get("authors")
     if isinstance(authors, list):
         author_str = " and ".join(authors)
@@ -327,7 +368,8 @@ def prepare_export(state: State, slug: str) -> dict:
     known_dois = {r["doi"] for r in refs if r.get("doi")}
     unresolved = sorted(set(cited_dois) - known_dois)
 
-    bibtex = "".join(_ref_to_bibtex(r) for r in refs)
+    taxa = _references.get_reference_taxa(state)
+    bibtex = "".join(_ref_to_bibtex(r, taxa) for r in refs)
 
     paper = bundle["paper"]
     # Resolve the journal's citation style (offline — registry → in-code map →

@@ -819,6 +819,20 @@ def build_mcp(state: State) -> FastMCP:
         return _references.backfill_references(state, slug)
 
     @mcp.tool()
+    def set_reference_taxa(taxa: list[str]) -> dict[str, Any]:
+        """Set the project's auto-italicize taxon list — genus + infrageneric
+        names (subgenus/section) that the bibliography renderer italicizes in
+        reference titles even when CrossRef didn't mark them up. Seed from the
+        paper's study genera. Family-and-above (-aceae/-ales) is never
+        italicized; matching is word-bounded. Empty list disables it."""
+        return _references.set_reference_taxa(state, taxa)
+
+    @mcp.tool()
+    def get_reference_taxa() -> list[str]:
+        """Return the project's auto-italicize taxon list (empty if unset)."""
+        return _references.get_reference_taxa(state)
+
+    @mcp.tool()
     def validate_references(slug: str) -> dict[str, Any]:
         """Gather facts the AGENT needs to judge every citation.
 

@@ -56,6 +56,13 @@ Recommended fixes BEFORE export:
   resolve them or strip the markers.
 - Unresolved DOIs → call `add_reference_by_doi(slug, doi)` for each
   missing DOI (CrossRef-backed; refuses fakes).
+- Incomplete citations (no volume/issue/pages) → run
+  `backfill_references(slug)` once; it fetches CrossRef for every DOI and
+  fills the missing locators across the whole bibliography.
+- Biology/botany papers → `set_reference_taxa([genus, …])` so genus and
+  infrageneric names in reference titles render italic even when CrossRef
+  didn't mark them up (seed from the paper's study species; family/order
+  ranks like -aceae/-ales are left roman automatically).
 - Empty sections → ask the user whether they're intentionally blank.
 
 If the user wants to proceed despite warnings, continue.

@@ -426,6 +426,33 @@ def add_reference_by_doi(
     )
 
 
+def _taxa_path(state: State) -> str:
+    # Project-level (applies to every paper in the project).
+    return state.project_path("settings", "reference_taxa")
+
+
+def set_reference_taxa(state: State, taxa: list[str]) -> dict:
+    """Set the per-project list of taxon names (genera + infrageneric names like
+    subgenus/section) that the bibliography renderer auto-italicizes in
+    reference titles — regardless of whether CrossRef marked them up.
+
+    Seed it from the paper's own study species/genera (e.g. for a Cuscuta
+    paper: Cuscuta, Cassytha, Ipomoea, …, plus infrageneric Grammica,
+    Monogynella, …). Family-and-above ranks (anything ending -aceae / -ales)
+    are NEVER italicized even if listed, and matching is word-bounded so
+    substrings (Cuscutaceae) are left roman. Empty list disables the feature.
+    """
+    clean = sorted({t.strip() for t in (taxa or []) if t and t.strip()})
+    state.backend.set_doc(_taxa_path(state), {"taxa": clean, "updated_at": now_iso()})
+    return {"taxa": clean}
+
+
+def get_reference_taxa(state: State) -> list[str]:
+    """Return the project's auto-italicize taxon list (empty if unset)."""
+    doc = state.backend.get_doc(_taxa_path(state)) or {}
+    return list(doc.get("taxa") or [])
+
+
 def backfill_references(state: State, slug: str) -> dict:
     """One pass over every reference: for each with a DOI, fetch CrossRef and
     fill in any MISSING bibliographic fields — volume / issue / pages / issn /
