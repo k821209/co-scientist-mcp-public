@@ -174,6 +174,7 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
     if abstract:
         abstract = re.sub(r"<[^>]+>", " ", abstract)
         abstract = re.sub(r"\s+", " ", abstract).strip()
+    issn = msg.get("ISSN") or []
     return {
         "doi": (msg.get("DOI") or doi).lower(),
         "title": title,
@@ -182,6 +183,13 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
         "authors": authors,
         "journal": journal,
         "year": year,
+        # Bibliographic locators — needed for a complete citation
+        # (volume:issue:pages). CrossRef gives `page` as "123-130".
+        "volume": (msg.get("volume") or None),
+        "issue": (msg.get("issue") or None),
+        "pages": (msg.get("page") or None),
+        "issn": (issn[0] if issn else None),
+        "publisher": (msg.get("publisher") or None),
         "url": msg.get("URL"),
         "type": msg.get("type"),
     }
@@ -224,6 +232,11 @@ def add_reference(
     pmid: str | None = None,
     bibtex: str | None = None,
     cited_in: list[str] | None = None,
+    volume: str | None = None,
+    issue: str | None = None,
+    pages: str | None = None,
+    issn: str | None = None,
+    publisher: str | None = None,
 ) -> dict:
     _ensure_paper(state, slug)
     if not citation_key or not citation_key.strip():
@@ -241,6 +254,11 @@ def add_reference(
         "doi": doi,
         "pmid": pmid,
         "bibtex": bibtex,
+        "volume": volume,
+        "issue": issue,
+        "pages": pages,
+        "issn": issn,
+        "publisher": publisher,
         "cited_in": list(cited_in or []),
         "created_at": now,
         "updated_at": now,
@@ -262,6 +280,11 @@ def update_reference(
     pmid: str | None = None,
     bibtex: str | None = None,
     cited_in: list[str] | None = None,
+    volume: str | None = None,
+    issue: str | None = None,
+    pages: str | None = None,
+    issn: str | None = None,
+    publisher: str | None = None,
 ) -> dict:
     _ensure_paper(state, slug)
     path = _ref_path(state, slug, citation_key)
@@ -276,6 +299,11 @@ def update_reference(
     if pmid is not None: fields["pmid"] = pmid
     if bibtex is not None: fields["bibtex"] = bibtex
     if cited_in is not None: fields["cited_in"] = list(cited_in)
+    if volume is not None: fields["volume"] = volume
+    if issue is not None: fields["issue"] = issue
+    if pages is not None: fields["pages"] = pages
+    if issn is not None: fields["issn"] = issn
+    if publisher is not None: fields["publisher"] = publisher
     state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
 
@@ -389,6 +417,11 @@ def add_reference_by_doi(
         journal=meta["journal"],
         year=meta["year"],
         doi=meta["doi"],
+        volume=meta.get("volume"),
+        issue=meta.get("issue"),
+        pages=meta.get("pages"),
+        issn=meta.get("issn"),
+        publisher=meta.get("publisher"),
         cited_in=cited_in,
     )
 
@@ -417,6 +450,12 @@ def enrich_reference_from_doi(state: State, slug: str, citation_key: str) -> dic
         fields["journal"] = meta["journal"]
     if not cur.get("year") and meta.get("year"):
         fields["year"] = meta["year"]
+    # Backfill bibliographic locators (volume/issue/pages/issn/publisher) —
+    # these were not captured by older add_reference_by_doi runs, so a complete
+    # citation needs them filled in for existing references.
+    for fld in ("volume", "issue", "pages", "issn", "publisher"):
+        if not cur.get(fld) and meta.get(fld):
+            fields[fld] = meta[fld]
     if len(fields) == 1:
         return cur  # nothing to add
     state.backend.update_doc(path, fields)

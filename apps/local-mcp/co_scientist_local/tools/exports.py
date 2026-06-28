@@ -229,8 +229,43 @@ def _tables_appendix(
     return f"## {heading}\n\n" + "\n\n".join(blocks) + "\n"
 
 
+_HTML_ENTITIES = {
+    "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"',
+    "&apos;": "'", "&#39;": "'", "&nbsp;": " ",
+}
+
+
+def _title_to_bibtex(title: str) -> str:
+    """Convert a CrossRef title (which may carry JATS/HTML markup) into a
+    BibTeX-safe title value (dev-todo bib-quality):
+
+    - `<i>`/`<em>` → \\textit{}, `<b>`/`<strong>` → \\textbf{},
+      `<scp>` → \\textsc{}, `<sub>`/`<sup>` → \\textsubscript/superscript;
+      strip any other tags. Genus names etc. thus render italic instead of
+      literal "<i>Cuscuta</i>".
+    - decode the few HTML entities CrossRef emits; collapse internal
+      whitespace/newlines (some titles arrive with indented tags).
+    - wrap the whole title in an extra brace group so CSL case-folding
+      (sentence-casing) does NOT down-case proper nouns / acronyms
+      (Cuscuta, DNA, ITS, Galápagos, …).
+    """
+    s = title
+    for ent, ch in _HTML_ENTITIES.items():
+        s = s.replace(ent, ch)
+    flags = re.IGNORECASE | re.DOTALL
+    s = re.sub(r"<\s*(?:i|em)\s*>(.*?)<\s*/\s*(?:i|em)\s*>", r"\\textit{\1}", s, flags=flags)
+    s = re.sub(r"<\s*(?:b|strong)\s*>(.*?)<\s*/\s*(?:b|strong)\s*>", r"\\textbf{\1}", s, flags=flags)
+    s = re.sub(r"<\s*scp\s*>(.*?)<\s*/\s*scp\s*>", r"\\textsc{\1}", s, flags=flags)
+    s = re.sub(r"<\s*sub\s*>(.*?)<\s*/\s*sub\s*>", r"\\textsubscript{\1}", s, flags=flags)
+    s = re.sub(r"<\s*sup\s*>(.*?)<\s*/\s*sup\s*>", r"\\textsuperscript{\1}", s, flags=flags)
+    s = re.sub(r"<[^>]+>", "", s)            # drop any remaining tags
+    s = re.sub(r"\s+", " ", s).strip()       # collapse whitespace/newlines
+    # Outer braces protect the whole title from CSL case transformation.
+    return "{" + s + "}"
+
+
 def _ref_to_bibtex(ref: dict) -> str:
-    """Build a minimal @article BibTeX entry from a reference doc.
+    """Build an @article BibTeX entry from a reference doc.
 
     If the ref carries a literal `bibtex` field, return that verbatim.
     """
@@ -239,7 +274,9 @@ def _ref_to_bibtex(ref: dict) -> str:
     key = ref.get("citation_key") or "unknown"
     fields: list[str] = []
     if ref.get("title"):
-        fields.append(f"  title = {{{ref['title']}}}")
+        # Note the double braces: outer = the field, inner (from
+        # _title_to_bibtex) = case protection.
+        fields.append(f"  title = {{{_title_to_bibtex(ref['title'])}}}")
     authors = ref.get("authors")
     if isinstance(authors, list):
         author_str = " and ".join(authors)
@@ -251,6 +288,18 @@ def _ref_to_bibtex(ref: dict) -> str:
         fields.append(f"  journal = {{{ref['journal']}}}")
     if ref.get("year"):
         fields.append(f"  year = {{{ref['year']}}}")
+    if ref.get("volume"):
+        fields.append(f"  volume = {{{ref['volume']}}}")
+    if ref.get("issue"):
+        fields.append(f"  number = {{{ref['issue']}}}")
+    if ref.get("pages"):
+        # CrossRef "123-130" → BibTeX en-dash page range.
+        pages = str(ref["pages"]).replace("--", "-").replace("-", "--")
+        fields.append(f"  pages = {{{pages}}}")
+    if ref.get("issn"):
+        fields.append(f"  issn = {{{ref['issn']}}}")
+    if ref.get("publisher"):
+        fields.append(f"  publisher = {{{ref['publisher']}}}")
     if ref.get("doi"):
         fields.append(f"  doi = {{{ref['doi']}}}")
     body = ",\n".join(fields)
