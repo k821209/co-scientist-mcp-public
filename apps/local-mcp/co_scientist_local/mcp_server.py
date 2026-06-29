@@ -1500,6 +1500,24 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
+    def preview_slide(
+        slug: str,
+        deck_id: str,
+        slide_id: str,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
+        """FAST single-slide preview for the iteration loop — render just this
+        `code` slide to a PNG (one LibreOffice pass) instead of re-exporting
+        the whole deck. Edit → preview_slide → Read the returned
+        `preview_png_local_path` → fix → repeat; run export_deck_to_pptx ONCE
+        at the end. Returns this slide's code_errors / overlap_warnings /
+        bounds_warnings / font_warnings / placeholder_warnings too. (Image-only
+        slides should use render_slide — already fast.)"""
+        return _deck_render.preview_slide(
+            state, slug, deck_id, slide_id, output_path=output_path,
+        )
+
+    @mcp.tool()
     def render_region(
         slug: str,
         deck_id: str,

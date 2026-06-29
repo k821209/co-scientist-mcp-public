@@ -1476,6 +1476,18 @@ substitutes → the PDF diverges from PowerPoint). Safe picks: macOS
 `Apple SD Gothic Neo` (display+body) + `Menlo` (mono); for Korean decks the
 Noto Sans KR static build.
 
+**Sizing ratios (so elements read at projection distance):**
+- **Card icon ≥ 40–50% of the card width.** A 72pt (1") icon in a 3" card
+  is a dot — make it big. (`h.icon(..., size=Inches(card_w*0.45))`.)
+- **Card padding 12–16pt** between the border and its content; never let
+  text touch the edge.
+- **Type hierarchy 1.5–2.5×**: a card/section header should be 1.5–2.5×
+  the body text under it (e.g. body 16 → head 28). Hero numbers larger
+  still (`display_*`).
+- **4-card row**: each card ≈ (content_width − 3×gap) / 4; keep cards
+  roughly square-to-portrait (height ≈ 0.9–1.3× width) — wider-than-tall
+  cards look empty.
+
 ### 6. Renumber once at the end
 
 After adding all slides:
@@ -1503,12 +1515,27 @@ Summary: "Deck `{deck_id}` drafted with N slides at status='drafted'.
 Run /paper-deck again to iterate, or wait for Phase 3 rendering to
 turn this into slide images + .pptx."
 
-### 9. Critique pass — vision review of the exported deck (todo 004 §A)
+### 9. Critique pass — vision review (todo 004 §A)
+
+**Iterate one slide at a time — don't re-export the whole deck per edit.**
+`export_deck_to_pptx` re-renders every slide (LibreOffice pass on all of
+them — tens of seconds on a 20-slide deck). While fixing a single `code`
+slide, loop with `preview_slide(slug, deck_id, slide_id)`: it renders just
+that slide to a PNG (`preview_png_local_path`) plus its
+code_errors/overlap/bounds/font/placeholder warnings. Edit
+(`update_slide`) → `preview_slide` → Read the PNG → fix → repeat; move to
+the next slide when it's clean. Run `export_deck_to_pptx` **once at the
+end** for the final bundle. (Image-only slides — paper-figure / ai-image /
+code-shape — use `render_slide`, already fast.) To scan the deck's
+structure cheaply without the bulky `code`/`notes` blobs, use
+`list_slides(fields=["title","role","render_mode"])`.
 
 After `export_deck_to_pptx` the result includes a `slide_pngs[]` list:
 one PNG per slide rendered from the sibling PDF (so what the agent
 sees is exactly what an opener of the .pptx / .pdf will see). Use them
-to **score and rewrite weak slides** before declaring the deck done.
+for the final whole-deck review; the same warning fields
+(`overlap_warnings`, `bounds_warnings`, `font_warnings`,
+`placeholder_warnings`) are on both `preview_slide` and the export.
 
 **First: check `result["overlap_warnings"]`** (todo 016 —
 render-time text-on-text detector). It's a list of

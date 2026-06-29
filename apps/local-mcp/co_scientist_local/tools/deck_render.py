@@ -31,6 +31,7 @@ import functools
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -1563,6 +1564,115 @@ def _pdf_via_soffice(pptx_path: pathlib.Path) -> pathlib.Path | None:
         pdf = pptx_path.with_suffix(".pdf")
         return pdf if (proc.returncode == 0 and pdf.is_file()) else None
     return None
+
+
+def preview_slide(
+    state: State,
+    slug: str,
+    deck_id: str,
+    slide_id: str,
+    *,
+    output_path: str | None = None,
+) -> dict:
+    """Fast single-slide preview for the iteration loop: build a ONE-slide PPTX
+    with just this slide, render it to a PNG via LibreOffice, and return the PNG
+    path + this slide's warnings — WITHOUT re-exporting the whole deck (which
+    re-renders every slide and is slow on a big deck).
+
+    Use this while iterating on a `code`/`hybrid` slide: edit → preview → Read
+    the PNG → fix → repeat; run `export_deck_to_pptx` once at the very end for
+    the final bundle. Image-only slides (paper-figure / ai-image / code-shape)
+    should use `render_slide`, which is already fast (no LibreOffice pass).
+
+    The PNG is written to `output_path` (a .png) if given, else a persistent
+    temp file; its path is returned so the agent can Read it. Returns
+    code_errors / overlap_warnings / bounds_warnings / font_warnings /
+    placeholder_warnings for this slide, plus preview_png_local_path."""
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        from pptx.enum.shapes import MSO_SHAPE
+        from pptx.oxml.ns import qn
+    except ImportError as e:
+        raise RuntimeError("python-pptx not installed") from e
+
+    deck = _decks.get_deck(state, slug, deck_id)
+    slides = _decks.list_slides(state, slug, deck_id)
+    target = next((s for s in slides if s.get("id") == slide_id), None)
+    if target is None:
+        raise NotFound(f"slide not found: {slide_id!r}")
+    mode = _resolve_mode(target)
+    if mode != "code":
+        return {
+            "slide_id": slide_id,
+            "slide_number": target.get("slide_number"),
+            "mode": mode,
+            "hint": "non-code slide — use render_slide (already fast; no "
+                    "LibreOffice pass needed).",
+        }
+
+    aspect = deck.get("aspect_ratio") or "16:9"
+    w_in, h_in = _ASPECT_TO_SIZE.get(aspect, _ASPECT_TO_SIZE["16:9"])
+    colors = _theme_colors(deck.get("concept"))
+    fg_hex = _ensure_contrast(colors["foreground"], colors["background"])
+    accent = _hex_to_rgb(colors["accent"], "#2E7D32")
+    fg = _hex_to_rgb(fg_hex, "#1A1A1A")
+    bg = _hex_to_rgb(colors["background"], "#FFFFFF")
+    fonts = _theme_fonts(deck.get("concept"))
+    type_scale = _theme_type_scale(deck.get("concept"))
+
+    prs = Presentation()
+    sw, sh = Inches(w_in), Inches(h_in)
+    prs.slide_width, prs.slide_height = sw, sh
+    _sldSz = prs._element.find(qn("p:sldSz"))
+    if _sldSz is not None and _sldSz.get("type") is not None:
+        del _sldSz.attrib["type"]
+
+    code_errors: list[dict] = []
+    overlap_warnings: list[dict] = []
+    bounds_warnings: list[dict] = []
+    png_local: str | None = None
+    sn = target.get("slide_number")
+    with tempfile.TemporaryDirectory() as tmpd:
+        slide_obj = prs.slides.add_slide(prs.slide_layouts[6])
+        err, overlaps, offslide = _add_code_slide(
+            slide_obj, target, state, slug, tmpd, sw=sw, sh=sh,
+            accent=accent, fg=fg, bg=bg, fonts=fonts, palette_full=colors,
+            Inches=Inches, Pt=Pt, MSO_SHAPE=MSO_SHAPE,
+            type_scale=type_scale, slide_count=len(slides),
+        )
+        if err:
+            code_errors.append({"slide_number": sn, "slide_id": slide_id, "error": err})
+        if overlaps:
+            overlap_warnings.append({"slide_number": sn, "slide_id": slide_id, "pairs": overlaps})
+        if offslide:
+            bounds_warnings.append({"slide_number": sn, "slide_id": slide_id, "shapes": offslide})
+
+        pptx_tmp = pathlib.Path(tmpd) / "preview.pptx"
+        prs.save(str(pptx_tmp))
+        pdf_path = _pdf_via_soffice(pptx_tmp)
+        if pdf_path is not None:
+            pngs = _render_pdf_to_pngs(pdf_path, pathlib.Path(tmpd))
+            if pngs:
+                dest = (pathlib.Path(output_path).expanduser() if output_path
+                        else pathlib.Path(tempfile.mkstemp(
+                            prefix=f"slide_{sn}_", suffix=".png")[1]))
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(pngs[0], dest)
+                png_local = str(dest)
+
+    return {
+        "slide_id": slide_id,
+        "slide_number": sn,
+        "mode": mode,
+        "code_errors": code_errors,
+        "overlap_warnings": overlap_warnings,
+        "bounds_warnings": bounds_warnings,
+        "font_warnings": _font_warnings(fonts),
+        "placeholder_warnings": _scan_deck_placeholders(prs),
+        "preview_png_local_path": png_local,
+        "pdf_skipped": png_local is None,
+    }
 
 
 def export_deck_to_pptx(
