@@ -943,24 +943,44 @@ _MIN_VISIBLE_IN = 0.7   # below this an image reads as invisible at projection d
 _HEADER_BAND_FRAC = 0.18  # top ~18% of the slide = title/eyebrow/accent-stripe zone
 
 
+_CORNER_LOGO_IN = 1.5  # a small image hugging the top-right corner = a logo
+
+
 def _scan_deck_layout(prs, sh: int) -> list[dict]:
     """Flag two layout problems the text-overlap detector misses (it only
     looks at text↔text): a picture that's too small to read, and a picture
-    that encroaches the title/header zone. Returns [{slide_number, issues}].
+    that actually overlaps the title text. Returns [{slide_number, issues}].
 
-    Reserved-zone collision is conservative: only flagged when the slide
-    actually HAS title-ish text in the top band (so full-bleed cover slides
-    with no title don't false-positive)."""
+    header_overlap requires a REAL bbox intersection with a header text box
+    (top of the slide) — not just sitting in the top y-band — so a left-
+    aligned title isn't flagged against a top-right corner logo. A small
+    top-right corner image (a logo, common deck chrome) is exempted outright.
+    """
     try:
         from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore
     except ImportError:
         return []
+    sw = int(prs.slide_width or 0)
     header_band = int(sh * _HEADER_BAND_FRAC)
     min_emu = int(_MIN_VISIBLE_IN * _EMU_PER_IN)
+    corner = int(_CORNER_LOGO_IN * _EMU_PER_IN)
+
+    def _overlap_area(a, b) -> int:
+        al, at, aw, ah = a
+        bl, bt, bw, bh = b
+        ix = max(0, min(al + aw, bl + bw) - max(al, bl))
+        iy = max(0, min(at + ah, bt + bh) - max(at, bt))
+        return ix * iy
+
+    def _is_corner_logo(l, t, w, h) -> bool:
+        # top-right corner, small → a chrome logo, not a title collision.
+        return (w < corner and h < corner and t < corner
+                and sw and (sw - (l + w)) < corner)
+
     out: list[dict] = []
     for idx, slide in enumerate(prs.slides, start=1):
         pics: list[tuple] = []
-        title_in_header = False
+        header_texts: list[tuple] = []
         for shape in slide.shapes:
             try:
                 l, t, w, h = shape.left, shape.top, shape.width, shape.height
@@ -972,10 +992,11 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                 pics.append((l, t, w, h))
             elif getattr(shape, "has_text_frame", False) and (
                     shape.text_frame.text or "").strip() and t < header_band:
-                title_in_header = True
+                header_texts.append((l, t, w, h))
 
         issues: list[dict] = []
-        for (l, t, w, h) in pics:
+        for pic in pics:
+            l, t, w, h = pic
             if w < min_emu and h < min_emu:
                 issues.append({
                     "kind": "tiny_image",
@@ -983,13 +1004,17 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                     "note": (f"image is under {_MIN_VISIBLE_IN}\" — too small to "
                              "read at projection distance; enlarge it"),
                 })
-            if title_in_header and t < header_band:
+            if _is_corner_logo(l, t, w, h):
+                continue  # a top-right corner logo never collides with the title
+            # Flag only a REAL overlap with a header text box (x AND y), >5%
+            # of the picture's area, so adjacency / different columns don't fire.
+            pic_area = max(1, w * h)
+            if any(_overlap_area(pic, ht) > 0.05 * pic_area for ht in header_texts):
                 issues.append({
                     "kind": "header_overlap",
                     "top_in": f'{t / _EMU_PER_IN:.2f}"',
-                    "note": ("image sits in the title/header band (top "
-                             f"~{sh * _HEADER_BAND_FRAC / _EMU_PER_IN:.1f}\") — "
-                             "move it below the title block"),
+                    "note": ("image overlaps the title text — move it below the "
+                             "title block or shrink/relocate it"),
                 })
         if issues:
             out.append({"slide_number": idx, "issues": issues})

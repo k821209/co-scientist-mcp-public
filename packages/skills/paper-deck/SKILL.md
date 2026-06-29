@@ -1619,8 +1619,9 @@ audience would see — replace it with the actual content and re-export until
 **Also check `result["layout_warnings"]`** — `[{slide_number, issues}]`
 catching image problems the text-overlap detector can't: `tiny_image` (a
 picture under ~0.7" — too small to read at projection distance; enlarge it)
-and `header_overlap` (a picture sitting in the title/header band — move it
-below the title block). On both `preview_slide` and the export.
+and `header_overlap` (a picture that actually overlaps the title text —
+move it below the title block). A small top-right corner logo is exempt, so
+deck-chrome logos don't false-positive. On both `preview_slide` and the export.
 
 ```
 res = mcp__co_scientist__export_deck_to_pptx(slug, deck_id)
