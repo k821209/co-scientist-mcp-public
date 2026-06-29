@@ -146,6 +146,11 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
 - `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
   full presentation pipeline: deck concept + slides + render
   (`render_deck`) + PPTX export (`export_deck_to_pptx`).
+  **Iteration discipline:** while editing slides, preview with
+  `preview_slide` (one slide → PNG, seconds). Call `export_deck_to_pptx`
+  only ONCE the deck is done (or when the user asks for the file) — it
+  re-renders every slide (tens of seconds to minutes). Don't re-export
+  after each edit.
 - `/promote-result [slug] [analysis]` — map an analysis group's
   output files onto manuscript figures/tables (map mode → promote mode).
 - `/supplementary-material [slug]` — identify + register supplementary

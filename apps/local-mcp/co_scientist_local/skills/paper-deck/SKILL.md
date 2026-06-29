@@ -62,6 +62,16 @@ unity header — ready for rendering.
      `~합니다` or all `~한다`, not mixed).
    - Self-check: "Could a native speaker mentally reverse-translate
      this to English word-for-word?" If yes, rewrite before delivery.
+6. **Iteration discipline — preview during work, export ONCE at the end.**
+   While editing slides, use `preview_slide(slug, deck_id, slide_id)` — it
+   renders just that slide to a PNG in seconds and updates the dashboard
+   preview (same `preview_png_blob_path`), so the user sees changes live.
+   `export_deck_to_pptx` re-renders the WHOLE deck (LibreOffice + a PNG per
+   slide → tens of seconds to minutes); call it only when (a) the deck is
+   done and you need the shareable .pptx/.pdf, or (b) the user asks to
+   "export". Do NOT re-export after each edit. `render_slide` is only for
+   when a region's image **prompt** changed — not for coordinate/size
+   tweaks (the existing image stays; `preview_slide` composes it). See §9.
 
 ## Flow
 
