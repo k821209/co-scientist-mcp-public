@@ -748,7 +748,8 @@ def text_block(slide, *, lines, left, top, width, height,
                valign: str = "middle", align=None,
                mono: bool = False, font_name=None,
                line_spacing: float = 1.15, fill=None,
-               pad_pt: int = 8, bold: bool = False):
+               pad_pt: int = 8, pad_y_pt: int | None = None,
+               border=None, bold: bool = False):
     """Multi-line text in a **fixed** box, vertically centered, with
     optional per-line color and an optional solid fill behind it (todo
     text-block). Solves the "filled box + centered multi-color lines"
@@ -769,11 +770,17 @@ def text_block(slide, *, lines, left, top, width, height,
 
     `fill` (RGBColor or palette key, e.g. "surface" / "foreground") draws
     a solid rectangle and the text goes into *that shape's own* frame, so
-    box and text can never drift apart. Omit `fill` for a transparent
-    textbox. `valign`: "middle" (default) | "top" | "bottom" — top/bottom
-    insets are zeroed so centering is symmetric (unlike a default textbox,
-    which skews multi-line text upward). `mono=True` uses a monospace face
-    for code; override it with `font_name`.
+    box and text can never drift apart. A filled box gets a subtle `muted`
+    border by default so it stays visible against the slide background —
+    pass `border=False` to drop it or `border=<color/key>` to set it. Omit
+    `fill` for a transparent textbox.
+
+    `align` defaults to LEFT and is always written explicitly (so the
+    LibreOffice/PDF render doesn't center an unset paragraph). `valign`:
+    "middle" (default) | "top" | "bottom". Insets: `pad_pt` (L/R, default 8)
+    and `pad_y_pt` (top/bottom, default `pad_pt//2`, min 2 — never 0, so CJK
+    text doesn't touch the edge). `mono=True` uses a monospace face;
+    override with `font_name`.
 
     Unlike h.vstack / h.callout (which auto-size to content), this keeps
     the box at the size you pass and centers within it — use it when the
@@ -787,20 +794,37 @@ def text_block(slide, *, lines, left, top, width, height,
         shape = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE, left, top, width, height,
         )
-        shape.line.fill.background()
         shape.fill.solid()
         shape.fill.fore_color.rgb = bg
         shape.shadow.inherit = False
+        # A filled box needs a visible edge — a `surface` fill is often nearly
+        # the slide background, so with no border the card disappears. Draw a
+        # subtle border by default (palette `muted`); pass border=False to
+        # suppress, or border=<color/palette-key> to override.
+        if border is False:
+            shape.line.fill.background()
+        else:
+            bcol = (_resolve_color(border, palette, "muted") if border is not None
+                    else (palette.get("muted") if palette else None))
+            if bcol is not None:
+                shape.line.color.rgb = bcol
+                shape.line.width = Pt(0.75)
+            else:
+                shape.line.fill.background()
     else:
         shape = slide.shapes.add_textbox(left, top, width, height)
     tf = shape.text_frame
     tf.word_wrap = True
     tf.vertical_anchor = _VALIGN.get(valign, MSO_ANCHOR.MIDDLE)
     pad = Pt(pad_pt)
+    # Vertical inset defaults to half the horizontal pad (never 0): CJK glyphs
+    # fill the line box top-to-bottom, so a 0 top/bottom inset reads as the
+    # text touching the border. Symmetric, so vertical centering is unaffected.
+    pad_y = Pt(pad_y_pt if pad_y_pt is not None else max(2, pad_pt // 2))
     tf.margin_left = pad
     tf.margin_right = pad
-    tf.margin_top = 0
-    tf.margin_bottom = 0
+    tf.margin_top = pad_y
+    tf.margin_bottom = pad_y
     default_color = palette.get("foreground") if palette else None
     default_font = font_name or (_MONO_FONT if mono else fonts.get("body"))
     first = True
@@ -815,9 +839,12 @@ def text_block(slide, *, lines, left, top, width, height,
         para = tf.paragraphs[0] if first else tf.add_paragraph()
         first = False
         para.line_spacing = spec.get("line_spacing", line_spacing)
-        item_align = spec.get("align", align)
-        if item_align is not None:
-            para.alignment = item_align
+        # Always set an explicit alignment — left by default. Without this,
+        # LibreOffice (preview_slide / export PDF) renders unset paragraphs
+        # CENTERED, silently breaking a layout authored as left-aligned.
+        ia = spec.get("align")
+        para.alignment = ia if ia is not None else (
+            align if align is not None else PP_ALIGN.LEFT)
         run = para.add_run()
         run.text = str(spec.get("text", "") or "")
         run.font.size = Pt(spec.get("size_pt", size_pt))

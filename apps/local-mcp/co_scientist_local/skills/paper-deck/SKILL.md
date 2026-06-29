@@ -1490,8 +1490,12 @@ Noto Sans KR static build.
      For a bespoke card set it explicitly:
      `tf.margin_top = tf.margin_bottom = Pt(6)` (and L/R if you zeroed them).
   **Simplest: don't hand-compose.** `h.card` / `h.callout` /
-  `h.text_block(fill=…)` already apply a proper pad AND autofit the text so
-  it never overflows the border — use them for any bordered text box.
+  `h.text_block(fill=…)` apply a proper pad for you. `h.text_block` now
+  defaults to **left align** (so the LibreOffice/PDF render doesn't center
+  an unset paragraph), draws a **visible muted border** on a filled box
+  (pass `border=False`/`border="accent"` to change), and uses a **non-zero
+  top/bottom inset** (`pad_y_pt`) so CJK text doesn't touch the edge. Use
+  them for any bordered text box.
   Bespoke `rectangle + h.text` risks both (text touching the inset edge AND
   wrapping past the bottom border) — the latter is flagged by
   `overlap_warnings` (wrap overflow).
