@@ -1549,6 +1549,9 @@ def build_mcp(state: State) -> FastMCP:
         slug: str,
         deck_id: str,
         output_path: str,
+        skip_pdf: bool = False,
+        skip_png: bool = False,
+        only_slides: list[int] | None = None,
     ) -> dict[str, Any]:
         """Emit a .pptx from a deck — and a sibling .pdf when LibreOffice
         is installed (the portable fallback; Keynote sometimes rejects
@@ -1560,9 +1563,16 @@ def build_mcp(state: State) -> FastMCP:
         Page size follows the deck's `aspect_ratio`. Both files upload to
         papers/{slug}/decks/{deck_id}/exports/. python-pptx ships in the
         base install.
+
+        Speed flags (a full export re-renders every slide): `skip_pdf` skips
+        the LibreOffice PDF pass (the dominant cost) and thus the PNGs —
+        PPTX only; `skip_png` keeps the PDF but skips per-slide PNGs;
+        `only_slides=[N,…]` renders PNGs for just those slides. For tight
+        single-slide iteration use `preview_slide` instead.
         """
         return _deck_render.export_deck_to_pptx(
             state, slug, deck_id, output_path=output_path,
+            skip_pdf=skip_pdf, skip_png=skip_png, only_slides=only_slides,
         )
 
     # ─── feedback (bug / feature reports → developer triage) ─────────────────

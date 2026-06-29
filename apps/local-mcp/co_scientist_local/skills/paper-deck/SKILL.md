@@ -1551,6 +1551,13 @@ code-shape — use `render_slide`, already fast.) To scan the deck's
 structure cheaply without the bulky `code`/`notes` blobs, use
 `list_slides(fields=["title","role","render_mode"])`.
 
+`export_deck_to_pptx` re-renders the whole deck (LibreOffice pass + a PNG
+per slide), so it's slow on a big deck. Speed flags when you don't need the
+full bundle: **`skip_pdf=True`** (PPTX only — skips the LibreOffice pass,
+the dominant cost, and the PNGs), **`skip_png=True`** (keep the PDF, skip
+per-slide PNGs), **`only_slides=[N,…]`** (render PNGs for just those
+slides). For a final shippable bundle, call it with no flags.
+
 After `export_deck_to_pptx` the result includes a `slide_pngs[]` list:
 one PNG per slide rendered from the sibling PDF (so what the agent
 sees is exactly what an opener of the .pptx / .pdf will see). Use them
@@ -1608,6 +1615,12 @@ markers}]` for any leftover placeholder text in the rendered deck ("Lorem
 ipsum", "TODO", "[placeholder]", "XXXX", …). Every hit is real text the
 audience would see — replace it with the actual content and re-export until
 `placeholder_warnings == []`.
+
+**Also check `result["layout_warnings"]`** — `[{slide_number, issues}]`
+catching image problems the text-overlap detector can't: `tiny_image` (a
+picture under ~0.7" — too small to read at projection distance; enlarge it)
+and `header_overlap` (a picture sitting in the title/header band — move it
+below the title block). On both `preview_slide` and the export.
 
 ```
 res = mcp__co_scientist__export_deck_to_pptx(slug, deck_id)

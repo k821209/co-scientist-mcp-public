@@ -938,6 +938,64 @@ def _scan_deck_placeholders(prs) -> list[dict]:
     return out
 
 
+_EMU_PER_IN = 914400
+_MIN_VISIBLE_IN = 0.7   # below this an image reads as invisible at projection distance
+_HEADER_BAND_FRAC = 0.18  # top ~18% of the slide = title/eyebrow/accent-stripe zone
+
+
+def _scan_deck_layout(prs, sh: int) -> list[dict]:
+    """Flag two layout problems the text-overlap detector misses (it only
+    looks at text↔text): a picture that's too small to read, and a picture
+    that encroaches the title/header zone. Returns [{slide_number, issues}].
+
+    Reserved-zone collision is conservative: only flagged when the slide
+    actually HAS title-ish text in the top band (so full-bleed cover slides
+    with no title don't false-positive)."""
+    try:
+        from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore
+    except ImportError:
+        return []
+    header_band = int(sh * _HEADER_BAND_FRAC)
+    min_emu = int(_MIN_VISIBLE_IN * _EMU_PER_IN)
+    out: list[dict] = []
+    for idx, slide in enumerate(prs.slides, start=1):
+        pics: list[tuple] = []
+        title_in_header = False
+        for shape in slide.shapes:
+            try:
+                l, t, w, h = shape.left, shape.top, shape.width, shape.height
+            except Exception:
+                continue
+            if w is None or h is None or t is None:
+                continue
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                pics.append((l, t, w, h))
+            elif getattr(shape, "has_text_frame", False) and (
+                    shape.text_frame.text or "").strip() and t < header_band:
+                title_in_header = True
+
+        issues: list[dict] = []
+        for (l, t, w, h) in pics:
+            if w < min_emu and h < min_emu:
+                issues.append({
+                    "kind": "tiny_image",
+                    "size_in": f'{w / _EMU_PER_IN:.2f}"×{h / _EMU_PER_IN:.2f}"',
+                    "note": (f"image is under {_MIN_VISIBLE_IN}\" — too small to "
+                             "read at projection distance; enlarge it"),
+                })
+            if title_in_header and t < header_band:
+                issues.append({
+                    "kind": "header_overlap",
+                    "top_in": f'{t / _EMU_PER_IN:.2f}"',
+                    "note": ("image sits in the title/header band (top "
+                             f"~{sh * _HEADER_BAND_FRAC / _EMU_PER_IN:.1f}\") — "
+                             "move it below the title block"),
+                })
+        if issues:
+            out.append({"slide_number": idx, "issues": issues})
+    return out
+
+
 def _render_simple_body(slide, body: str, *, box, fg, fonts, Pt,
                         body_pt: int = _BODY_PT,
                         line_spacing: float = _LINE_SPACING) -> None:
@@ -1670,6 +1728,7 @@ def preview_slide(
         "bounds_warnings": bounds_warnings,
         "font_warnings": _font_warnings(fonts),
         "placeholder_warnings": _scan_deck_placeholders(prs),
+        "layout_warnings": _scan_deck_layout(prs, int(sh)),
         "preview_png_local_path": png_local,
         "pdf_skipped": png_local is None,
     }
@@ -1681,8 +1740,21 @@ def export_deck_to_pptx(
     deck_id: str,
     *,
     output_path: str,
+    skip_pdf: bool = False,
+    skip_png: bool = False,
+    only_slides: list[int] | None = None,
 ) -> dict:
     """Build a .pptx — and, when LibreOffice is available, a sibling .pdf.
+
+    Iteration speed flags (a full export re-renders every slide → tens of
+    seconds to minutes on a big deck):
+      - skip_pdf=True  — skip the LibreOffice PPTX→PDF pass entirely (the
+        dominant cost). Returns the .pptx only; no PDF and no PNGs. Use when
+        you just want the file (e.g. final review in PowerPoint).
+      - skip_png=True  — make the PDF but skip the per-slide PNG render.
+      - only_slides=[N,…] — render PNGs for just these slide numbers (the PDF
+        still covers the whole deck). Pair with the per-slide preview loop.
+    For tight single-slide iteration prefer `preview_slide` (one slide only).
 
     Per slide render_mode:
       - image slides (paper-figure / ai-image / code-shape) embed the
@@ -1874,7 +1946,8 @@ def export_deck_to_pptx(
     out = pathlib.Path(output_path).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out))
-    pdf_path = _pdf_via_soffice(out)
+    # skip_pdf skips the (dominant) LibreOffice pass — and therefore the PNGs.
+    pdf_path = None if skip_pdf else _pdf_via_soffice(out)
 
     # Upload + index each artifact so the dashboard's Presentation tab
     # lists them.
@@ -1904,7 +1977,7 @@ def export_deck_to_pptx(
     # Needs the PDF as source; skipped silently when soffice/PyMuPDF
     # missing — same posture as the PDF itself.
     slide_pngs: list[dict] = []
-    if pdf_path is not None:
+    if pdf_path is not None and not skip_png:
         pngs = _render_pdf_to_pngs(pdf_path, out.parent)
         # Index slides by slide_number for stamping the per-slide
         # preview_png_blob_path back on each slide doc (todo 022 —
@@ -1914,7 +1987,10 @@ def export_deck_to_pptx(
             (s.get("slide_number") or 0): s for s in slides
         }
         now_iso_str = now_iso()
+        only = set(only_slides) if only_slides else None
         for i, p in enumerate(pngs, start=1):
+            if only is not None and i not in only:
+                continue  # only_slides → render PNGs for just those slides
             blob_path = state.project_path(
                 "papers", slug, "decks", deck_id, "exports", p.name,
             )
@@ -1949,6 +2025,7 @@ def export_deck_to_pptx(
         "bounds_warnings": bounds_warnings,
         "font_warnings": _font_warnings(fonts),
         "placeholder_warnings": _scan_deck_placeholders(prs),
+        "layout_warnings": _scan_deck_layout(prs, int(sh)),
         "local_path": str(out),
         "blob_path": pptx_blob,
         "pdf_local_path": str(pdf_path) if pdf_path else None,
