@@ -743,7 +743,7 @@ def text(slide, content: str, *, left, top, width, height,
     return tb
 
 
-def text_block(slide, *, lines, left, top, width, height,
+def text_block(slide, *, lines, left, top, width, height=None,
                palette, fonts=None, size_pt: int = 14,
                valign: str = "middle", align=None,
                mono: bool = False, font_name=None,
@@ -766,7 +766,8 @@ def text_block(slide, *, lines, left, top, width, height,
     Each `lines` item is one rendered line:
       - str                → default color/size/bold
       - (text, color)      → per-line color (RGBColor or palette key)
-      - {text, color?, bold?, size_pt?, align?, font_name?, line_spacing?}
+      - {text, color?, bold?, size_pt?, align?, font_name?, line_spacing?,
+         pad_top_pt?}       → pad_top_pt adds space before the line
 
     `fill` (RGBColor or palette key, e.g. "surface" / "foreground") draws
     a solid rectangle and the text goes into *that shape's own* frame, so
@@ -782,13 +783,46 @@ def text_block(slide, *, lines, left, top, width, height,
     text doesn't touch the edge). `mono=True` uses a monospace face;
     override with `font_name`.
 
-    Unlike h.vstack / h.callout (which auto-size to content), this keeps
-    the box at the size you pass and centers within it — use it when the
-    box dimensions are fixed (a cell, a fixed code panel).
+    `height` may be **omitted (None) for auto-height**: the box is sized to
+    the lines' natural wrapped height + vertical insets (like h.card's
+    pack=True), so you never hand-calculate it or overflow the box. Pass an
+    explicit height only when you need a fixed cell. Either way the emitted
+    height is on the returned shape (`shape.height`) for stacking the next box.
 
     Returns the shape carrying the text (the filled rect, or the textbox).
     """
     fonts = fonts or {}
+    pad = Pt(pad_pt)
+    # Vertical inset defaults to half the horizontal pad (never 0): CJK glyphs
+    # fill the line box top-to-bottom, so a 0 top/bottom inset reads as the
+    # text touching the border. Symmetric, so vertical centering is unaffected.
+    pad_y = Pt(pad_y_pt if pad_y_pt is not None else max(2, pad_pt // 2))
+
+    # Normalize line specs up front so we can measure before sizing the box.
+    specs: list[dict] = []
+    for item in lines:
+        if isinstance(item, dict):
+            specs.append(item)
+        elif isinstance(item, (tuple, list)):
+            specs.append({"text": item[0],
+                          "color": item[1] if len(item) > 1 else None})
+        else:
+            specs.append({"text": str(item)})
+
+    # Auto-height: sum each line's natural wrapped height (at its own size /
+    # spacing) + any pad_top + the vertical insets. No caller-side math.
+    if height is None:
+        inner_w = max(1, int(width) - 2 * int(pad))
+        total_pt = 0.0
+        for spec in specs:
+            total_pt += spec.get("pad_top_pt", 0)
+            total_pt += measure_text_height_pt(
+                str(spec.get("text", "") or ""), max_width_emu=inner_w,
+                font_pt=spec.get("size_pt", size_pt),
+                line_spacing=spec.get("line_spacing", line_spacing),
+            )
+        height = Pt(int(total_pt) + 2) + 2 * pad_y  # +2pt render safety
+
     if fill is not None:
         bg = _resolve_color(fill, palette, "surface")
         shape = slide.shapes.add_shape(
@@ -816,11 +850,6 @@ def text_block(slide, *, lines, left, top, width, height,
     tf = shape.text_frame
     tf.word_wrap = True
     tf.vertical_anchor = _VALIGN.get(valign, MSO_ANCHOR.MIDDLE)
-    pad = Pt(pad_pt)
-    # Vertical inset defaults to half the horizontal pad (never 0): CJK glyphs
-    # fill the line box top-to-bottom, so a 0 top/bottom inset reads as the
-    # text touching the border. Symmetric, so vertical centering is unaffected.
-    pad_y = Pt(pad_y_pt if pad_y_pt is not None else max(2, pad_pt // 2))
     tf.margin_left = pad
     tf.margin_right = pad
     tf.margin_top = pad_y
@@ -828,17 +857,12 @@ def text_block(slide, *, lines, left, top, width, height,
     default_color = palette.get("foreground") if palette else None
     default_font = font_name or (_MONO_FONT if mono else fonts.get("body"))
     first = True
-    for item in lines:
-        if isinstance(item, dict):
-            spec = item
-        elif isinstance(item, (tuple, list)):
-            spec = {"text": item[0],
-                    "color": item[1] if len(item) > 1 else None}
-        else:
-            spec = {"text": str(item)}
+    for spec in specs:
         para = tf.paragraphs[0] if first else tf.add_paragraph()
         first = False
         para.line_spacing = spec.get("line_spacing", line_spacing)
+        if spec.get("pad_top_pt"):
+            para.space_before = Pt(spec["pad_top_pt"])
         # Always set an explicit alignment — left by default. Without this,
         # LibreOffice (preview_slide / export PDF) renders unset paragraphs
         # CENTERED, silently breaking a layout authored as left-aligned.

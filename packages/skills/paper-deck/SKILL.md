@@ -1495,7 +1495,10 @@ Noto Sans KR static build.
   an unset paragraph), draws a **visible muted border** on a filled box
   (pass `border=False`/`border="accent"` to change), and uses a **non-zero
   top/bottom inset** (`pad_y_pt`) so CJK text doesn't touch the edge. Use
-  them for any bordered text box.
+  them for any bordered text box. **Omit `height`** on `h.text_block`
+  (height=None) to auto-size the box to its lines — no hand-calculating box
+  vs text height, no overflow; the emitted height is on `shape.height` for
+  stacking the next box. (Per-line `pad_top_pt` adds space before a line.)
   Bespoke `rectangle + h.text` risks both (text touching the inset edge AND
   wrapping past the bottom border) — the latter is flagged by
   `overlap_warnings` (wrap overflow).
