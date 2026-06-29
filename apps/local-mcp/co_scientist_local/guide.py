@@ -150,7 +150,11 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   `preview_slide` (one slide → PNG, seconds). Call `export_deck_to_pptx`
   only ONCE the deck is done (or when the user asks for the file) — it
   re-renders every slide (tens of seconds to minutes). Don't re-export
-  after each edit.
+  after each edit. **After a design / batch / large-text edit: run
+  `preview_slide`, `Read` the returned PNG yourself to verify it (catch
+  code errors, overflow, the warning lists), then ASK the user to confirm
+  before the next slide/batch** — don't fire-and-forget `update_slide`.
+  (A one-char typo fix is exempt.)
 - `/promote-result [slug] [analysis]` — map an analysis group's
   output files onto manuscript figures/tables (map mode → promote mode).
 - `/supplementary-material [slug]` — identify + register supplementary

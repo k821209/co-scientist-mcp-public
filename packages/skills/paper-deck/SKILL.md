@@ -72,6 +72,12 @@ unity header — ready for rendering.
    "export". Do NOT re-export after each edit. `render_slide` is only for
    when a region's image **prompt** changed — not for coordinate/size
    tweaks (the existing image stays; `preview_slide` composes it). See §9.
+   **Verify, then confirm:** after a design change, a batch applying the
+   same pattern across slides, or a large text edit, run `preview_slide`,
+   `Read` the returned PNG yourself (check it visually + the code_errors /
+   overlap / bounds / layout / placeholder warning lists), then ASK the
+   user to confirm that slide before moving to the next one/batch — don't
+   `update_slide` and silently move on. A one-character typo fix is exempt.
 
 ## Flow
 
