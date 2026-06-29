@@ -1479,8 +1479,22 @@ Noto Sans KR static build.
 **Sizing ratios (so elements read at projection distance):**
 - **Card icon ≥ 40–50% of the card width.** A 72pt (1") icon in a 3" card
   is a dot — make it big. (`h.icon(..., size=Inches(card_w*0.45))`.)
-- **Card padding 12–16pt** between the border and its content; never let
-  text touch the edge.
+- **Card inner margin is TWO layers — budget both, or Korean text touches
+  the border:**
+  1. *Outer pad* (card border → text box): place the text box at
+     `left+pad, top+pad` with `width-2*pad` — pad ≥ **14pt**. (You control
+     this in code.)
+  2. *Text-frame inset* (text box edge → glyphs): a python-pptx textbox
+     defaults to only ~7pt L/R and **~3.6pt top/bottom** — and CJK glyphs
+     fill the line box top-to-bottom, so that 3.6pt reads as "touching".
+     For a bespoke card set it explicitly:
+     `tf.margin_top = tf.margin_bottom = Pt(6)` (and L/R if you zeroed them).
+  **Simplest: don't hand-compose.** `h.card` / `h.callout` /
+  `h.text_block(fill=…)` already apply a proper pad AND autofit the text so
+  it never overflows the border — use them for any bordered text box.
+  Bespoke `rectangle + h.text` risks both (text touching the inset edge AND
+  wrapping past the bottom border) — the latter is flagged by
+  `overlap_warnings` (wrap overflow).
 - **Type hierarchy 1.5–2.5×**: a card/section header should be 1.5–2.5×
   the body text under it (e.g. body 16 → head 28). Hero numbers larger
   still (`display_*`).
