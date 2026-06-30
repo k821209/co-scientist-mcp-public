@@ -1421,6 +1421,16 @@ def build_mcp(state: State) -> FastMCP:
         return _decks.renumber_deck(state, slug, deck_id)
 
     @mcp.tool()
+    def reorder_deck(slug: str, deck_id: str, order: list[str]) -> dict[str, Any]:
+        """Set the slide order explicitly. `order` is the full list of slide ids
+        (from list_slides) in the desired sequence; each is reassigned
+        slide_number 1..N in one pass. `order` must be a permutation of the
+        deck's current slide ids. The deck analogue of reorder_section. To move
+        or reorder slides, prefer this over add_slide + renumber_deck. Returns
+        {count, order}."""
+        return _decks.reorder_deck(state, slug, deck_id, order)
+
+    @mcp.tool()
     def list_deck_comments(
         slug: str, deck_id: str, status: str | None = "open",
     ) -> list[dict[str, Any]]:

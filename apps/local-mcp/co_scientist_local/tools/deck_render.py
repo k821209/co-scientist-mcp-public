@@ -10,8 +10,9 @@
   - hybrid       : treated as code-shape for now
 
 The rendered PNG is uploaded to Storage at
-  papers/{slug}/decks/{deck_id}/slides/{slide_number}.png
-and the slide doc's `image_blob_path` field is updated.
+  papers/{slug}/decks/{deck_id}/slides/{slide_id}.png
+(keyed by the stable slide_id, not slide_number, so renumber/reorder never
+strands a blob) and the slide doc's `image_blob_path` field is updated.
 
 `export_deck_to_pptx` emits a .pptx via python-pptx:
   - image slides   : the rendered PNG, aspect-fitted and centered
@@ -146,18 +147,20 @@ def _deck_aspect_size(deck: dict) -> tuple[float, float]:
     )
 
 
-def _slide_blob_path(state: State, slug: str, deck_id: str, slide_number: int) -> str:
+def _slide_blob_path(state: State, slug: str, deck_id: str, slide_id: str) -> str:
+    # Keyed by the stable slide_id, NOT slide_number — so renumber_deck /
+    # reorder_deck / insert never strand a blob or make two slides share one.
     return state.project_path(
-        "papers", slug, "decks", deck_id, "slides", f"{slide_number:04d}.png",
+        "papers", slug, "decks", deck_id, "slides", f"{slide_id}.png",
     )
 
 
 def _region_blob_path(
-    state: State, slug: str, deck_id: str, slide_number: int, region_id: str,
+    state: State, slug: str, deck_id: str, slide_id: str, region_id: str,
 ) -> str:
     return state.project_path(
         "papers", slug, "decks", deck_id, "slides",
-        f"{slide_number:04d}", "regions", f"{region_id}.png",
+        slide_id, "regions", f"{region_id}.png",
     )
 
 
@@ -340,7 +343,7 @@ def render_slide(
     else:
         raise ValueError(f"unknown render_mode: {mode!r}")
 
-    blob_path = _slide_blob_path(state, slug, deck_id, slide_number)
+    blob_path = _slide_blob_path(state, slug, deck_id, slide_id)
     state.backend.put_blob(blob_path, png)
     now = now_iso()
     state.backend.update_doc(
@@ -387,7 +390,6 @@ def _render_one_region(
     """Render a single region's image, store it, stamp the region doc."""
     rmode = region.get("render_mode")
     region_id = region.get("id")
-    slide_number = slide.get("slide_number") or 0
 
     if rmode == "paper-figure":
         if region.get("figure_number") is None:
@@ -413,7 +415,7 @@ def _render_one_region(
     else:
         raise ValueError(f"region {region_id}: unknown render_mode {rmode!r}")
 
-    blob_path = _region_blob_path(state, slug, deck_id, slide_number, region_id)
+    blob_path = _region_blob_path(state, slug, deck_id, slide["id"], region_id)
     state.backend.put_blob(blob_path, png)
     _update_region(state, slug, deck_id, slide["id"], region_id, {
         "image_blob_path": blob_path,
@@ -1750,10 +1752,11 @@ def preview_slide(
                 # Also push the PNG to the SAME blob path + slide field the
                 # full export uses, so the dashboard's slide preview updates
                 # live (a single-slide refresh) instead of needing a full
-                # export. (dev-todo: preview_slide dashboard sync.)
+                # export. Keyed by slide_id (not slide_number) so reorder /
+                # renumber never makes two slides share one preview blob.
                 png_blob = state.project_path(
                     "papers", slug, "decks", deck_id, "exports",
-                    f"slide_{(sn or 0):03d}.png",
+                    f"{slide_id}.png",
                 )
                 state.backend.put_blob(png_blob, png_bytes)
                 state.backend.update_doc(
@@ -2035,8 +2038,16 @@ def export_deck_to_pptx(
         for i, p in enumerate(pngs, start=1):
             if only is not None and i not in only:
                 continue  # only_slides → render PNGs for just those slides
+            target = slides_by_number.get(i)
+            # Key the blob by slide_id (stable across renumber/reorder), not by
+            # the PDF page name (slide_number-based) — else a later reorder makes
+            # two slides point at the same preview PNG. Fall back to page name
+            # only if we can't map the page back to a slide.
+            blob_name = (
+                f"{target['id']}.png" if target and target.get("id") else p.name
+            )
             blob_path = state.project_path(
-                "papers", slug, "decks", deck_id, "exports", p.name,
+                "papers", slug, "decks", deck_id, "exports", blob_name,
             )
             state.backend.put_blob(blob_path, p.read_bytes())
             slide_pngs.append({
@@ -2044,7 +2055,6 @@ def export_deck_to_pptx(
                 "local_path": str(p),
                 "blob_path": blob_path,
             })
-            target = slides_by_number.get(i)
             if target and target.get("id"):
                 state.backend.update_doc(
                     _decks._slide_path(state, slug, deck_id, target["id"]),

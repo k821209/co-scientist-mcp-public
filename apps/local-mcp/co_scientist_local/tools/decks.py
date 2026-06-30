@@ -250,15 +250,12 @@ def add_slide(
     render_mode: str | None = None,
     figure_number: int | None = None,
 ) -> dict:
-    """Append a slide. `slide_number` is the 1-based order. Use
-    `renumber_deck` after bulk add/delete to normalize gaps.
-
-    Inserting at a slide_number that already exists does NOT shift the
-    existing slides — both keep the same number until `renumber_deck`.
-    During that window `list_slides` orders the tie by creation time, so
-    the new slide sorts *after* the one it collides with. A slide added
-    at number N therefore lands directly after the current slide N: to
-    insert "between 4 and 5", add at 4 and then `renumber_deck`.
+    """Insert a slide at the 1-based `slide_number` (a TRUE insert): every
+    existing slide at that number or later is shifted +1, so the new slide
+    lands exactly at `slide_number` with no duplicate-number window. To insert
+    "between 4 and 5", add at 5. To append, use `len(list_slides)+1` (or any
+    number past the end). `reorder_deck` / `renumber_deck` remain for bulk
+    reordering / gap-packing.
 
     `render_mode` is optional (todo 010 — defer the design decision to
     authoring time). When `None`, the exporter / renderer infers the
@@ -272,9 +269,18 @@ def add_slide(
     _validate_slide_fields(role, render_mode, None)
     if slide_number < 1:
         raise ValueError("slide_number must be >= 1")
+    now = now_iso()
+    # TRUE insert: shift every existing slide at >= slide_number up by 1 so the
+    # new slide occupies `slide_number` with no duplicate-number window.
+    for s in list_slides(state, slug, deck_id):
+        cur = s.get("slide_number") or 0
+        if cur >= slide_number:
+            state.backend.update_doc(
+                _slide_path(state, slug, deck_id, s["id"]),
+                {"slide_number": cur + 1, "updated_at": now},
+            )
     # Doc id is the slide_number zero-padded so list ordering by id matches.
     slide_id = f"s{slide_number:04d}_{new_id()[:6]}"
-    now = now_iso()
     doc = {
         "id": slide_id,
         "slide_number": slide_number,
@@ -480,13 +486,9 @@ def list_slides(
 ) -> list[dict]:
     """List a deck's slides in display order.
 
-    Ordering is `(slide_number, created_at, id)`. The created_at tie-break
-    makes the order deterministic when two slides share a slide_number
-    (e.g. after `add_slide` inserts at an existing number): the
-    later-created slide sorts after the existing one, so a fresh insert
-    lands *after* the slide it shares a number with until `renumber_deck`
-    packs the numbers. Sorting on slide_number alone left ties to fall
-    back on the random id suffix — non-deterministic.
+    Ordering is `(slide_number, created_at, id)`. `add_slide` now does a true
+    insert (shifts later slides), so duplicate numbers shouldn't arise; the
+    created_at/id tie-break just keeps ordering deterministic if they ever do.
 
     `fields`, if given, projects each slide to just those keys (plus `id`
     and `slide_number`, always kept). Use it to skip the large `code` /
@@ -523,6 +525,33 @@ def renumber_deck(state: State, slug: str, deck_id: str) -> dict:
             if old is not None:
                 old_to_new[old] = i
     return {"count": len(slides), "old_to_new": old_to_new}
+
+
+def reorder_deck(state: State, slug: str, deck_id: str, order: list[str]) -> dict:
+    """Set the slide order explicitly: `order` is the full list of slide ids in
+    the desired sequence; each is reassigned slide_number 1..N in one pass (no
+    duplicate-number window). The deck analogue of reorder_section /
+    reorder_supplementary — use it to move/reorder slides instead of juggling
+    add_slide + renumber. `order` must be a permutation of the deck's current
+    slide ids. Returns {count, order}."""
+    _ensure_paper(state, slug)
+    current = {s["id"] for s in list_slides(state, slug, deck_id)}
+    seen = list(dict.fromkeys(order))  # de-dup, preserve order
+    given = set(seen)
+    if given != current:
+        missing = sorted(current - given)
+        extra = sorted(given - current)
+        raise ValueError(
+            f"order must be a permutation of the deck's {len(current)} slide ids "
+            f"(missing: {missing}; unknown: {extra})"
+        )
+    now = now_iso()
+    for i, sid in enumerate(seen, start=1):
+        state.backend.update_doc(
+            _slide_path(state, slug, deck_id, sid),
+            {"slide_number": i, "updated_at": now},
+        )
+    return {"count": len(seen), "order": seen}
 
 
 # ─── slide comments ─────────────────────────────────────────────────────────

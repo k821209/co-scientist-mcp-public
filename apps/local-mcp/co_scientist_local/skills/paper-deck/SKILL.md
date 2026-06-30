@@ -35,17 +35,16 @@ unity header — ready for rendering.
 3. **Don't fabricate figure references.** If the paper has 2 figures,
    you can't have 5 paper-figure slides. Cap result slides at
    `len(list_figures(slug))`.
-4. **`add_slide` then `renumber_deck` once.** Don't renumber by hand —
-   the doc IDs encode the original number; renumber updates the
-   `slide_number` field, the IDs stay. Inserting at a number that
-   already exists does **not** push the others down: both slides keep
-   that number until `renumber_deck`, and in the meantime the *newer*
-   slide sorts right after the existing one (ties break by creation
-   time, deterministically). So a slide added at number N lands directly
-   after the current slide N. To insert "between 4 and 5", add at **4**
-   and renumber — the new slide sorts after the old 4 and before old 5.
-   On a big deck, call `list_slides(slug, deck_id, fields=["title",
-   "role"])` to get a compact index without the bulky `code`/`notes`.
+4. **`add_slide` inserts; use `reorder_deck` to move.** `add_slide` does a
+   TRUE insert: inserting at number N shifts every existing slide at N or
+   later down by one, so the new slide lands exactly at N. To insert
+   "between 4 and 5", add at **5**. To append, use `len(list_slides)+1`.
+   To *move/reorder* existing slides, call `reorder_deck(slug, deck_id,
+   order=[id1, id2, …])` with the full slide-id list in the desired order
+   (the deck analogue of `reorder_section`) — don't juggle add/delete.
+   `renumber_deck` stays for packing gaps after deletes. On a big deck,
+   call `list_slides(slug, deck_id, fields=["title", "role"])` to get a
+   compact index (with ids) without the bulky `code`/`notes`.
 5. **Native-language flow when the audience is non-English** (todo 001).
    Detect the audience language from `audience`, the user's prompt, or
    the deck concept. When it's Korean / Japanese / Chinese / etc.:
@@ -479,8 +478,8 @@ mcp__co_scientist__update_slide(
                   footer='기러기류 마커 발굴 · ㈜디보')
     # Both page_number AND total auto-fill when omitted: page_number from
     # this slide's slide_number, total from the deck's slide count. So
-    # inserting a slide only needs a renumber_deck — never a rewrite of
-    # every slide's literal "x / N". Pass page_number=N / total=N to
+    # inserting a slide (add_slide shifts the rest automatically) never
+    # needs a rewrite of every slide's literal "x / N". Pass page_number=N / total=N to
     # override, or =None to hide either. (DON'T hardcode total=13.)
     p.flow_pipeline(slide, items=[...],
                     palette=palette, fonts=fonts,
@@ -1696,8 +1695,8 @@ it.
   placeholders that re-materialize against the new theme.
 - "Cut to 10 minutes" → drop discussion + outline; verify with the
   user before deleting any slide that has good `notes`.
-- "Reorder so methods come after background" → `update_slide` each
-  affected one with new `slide_number`, then `renumber_deck`.
+- "Reorder so methods come after background" → `reorder_deck(slug,
+  deck_id, order=[…ids…])` with the slide ids in the target order.
 
 ## Rendering + export (Phase 3 — shipped)
 
