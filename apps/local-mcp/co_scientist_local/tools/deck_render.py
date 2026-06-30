@@ -1668,9 +1668,11 @@ def preview_slide(
     should use `render_slide`, which is already fast (no LibreOffice pass).
 
     The PNG is written to `output_path` (a .png) if given, else a persistent
-    temp file; its path is returned so the agent can Read it. Returns
-    code_errors / overlap_warnings / bounds_warnings / font_warnings /
-    placeholder_warnings for this slide, plus preview_png_local_path."""
+    temp file (`preview_png_local_path`, for the agent to Read), AND uploaded
+    to the slide's dashboard preview blob (`preview_png_blob_path` stamped on
+    the slide doc) — so the dashboard's slide preview refreshes live without a
+    full export. Returns code_errors / overlap_warnings / bounds_warnings /
+    font_warnings / placeholder_warnings / layout_warnings for this slide."""
     try:
         from pptx import Presentation
         from pptx.util import Inches, Pt
@@ -1715,6 +1717,7 @@ def preview_slide(
     overlap_warnings: list[dict] = []
     bounds_warnings: list[dict] = []
     png_local: str | None = None
+    png_blob: str | None = None
     sn = target.get("slide_number")
     with tempfile.TemporaryDirectory() as tmpd:
         slide_obj = prs.slides.add_slide(prs.slide_layouts[6])
@@ -1737,12 +1740,27 @@ def preview_slide(
         if pdf_path is not None:
             pngs = _render_pdf_to_pngs(pdf_path, pathlib.Path(tmpd))
             if pngs:
+                png_bytes = pngs[0].read_bytes()
                 dest = (pathlib.Path(output_path).expanduser() if output_path
                         else pathlib.Path(tempfile.mkstemp(
                             prefix=f"slide_{sn}_", suffix=".png")[1]))
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(pngs[0], dest)
+                dest.write_bytes(png_bytes)
                 png_local = str(dest)
+                # Also push the PNG to the SAME blob path + slide field the
+                # full export uses, so the dashboard's slide preview updates
+                # live (a single-slide refresh) instead of needing a full
+                # export. (dev-todo: preview_slide dashboard sync.)
+                png_blob = state.project_path(
+                    "papers", slug, "decks", deck_id, "exports",
+                    f"slide_{(sn or 0):03d}.png",
+                )
+                state.backend.put_blob(png_blob, png_bytes)
+                state.backend.update_doc(
+                    _decks._slide_path(state, slug, deck_id, slide_id),
+                    {"preview_png_blob_path": png_blob,
+                     "preview_png_at": now_iso()},
+                )
 
     return {
         "slide_id": slide_id,
@@ -1755,6 +1773,7 @@ def preview_slide(
         "placeholder_warnings": _scan_deck_placeholders(prs),
         "layout_warnings": _scan_deck_layout(prs, int(sh)),
         "preview_png_local_path": png_local,
+        "preview_png_blob_path": png_blob,
         "pdf_skipped": png_local is None,
     }
 
