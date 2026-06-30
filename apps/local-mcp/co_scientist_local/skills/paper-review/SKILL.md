@@ -170,6 +170,25 @@ one."
 
 ## After /paper-review, before re-submission
 
-Have the agent or user run `/paper-revision` — it iterates the open
-reviews, addresses each, and marks them resolved with a response
-field. The dashboard's Comments card shows the resolution history.
+Run `/paper-revision` (it now handles `source='ai'` findings too) — it
+iterates the open reviews, addresses each, and marks them resolved. The
+dashboard's Comments card shows the resolution history.
+
+**Close the loop on every finding — don't leave addressed findings open.**
+`/paper-review` rows stay `status='open'`; editing the manuscript does NOT
+auto-resolve them, so the dashboard's open-comment state silently drifts out
+of sync with the text unless you resolve them. For each finding:
+
+- **Addressed** → resolve it, anchored to the revised text:
+  `resolve_paper_comment(slug, review_id, status='accepted',
+  new_anchor_text='<verbatim phrase from the REVISED passage>',
+  response='<what changed>')`. The verbatim anchor lets the dashboard show
+  *where* it was fixed instead of falling back to the top of the section.
+- **Deferred / won't-fix** → leave it `open` but record a `response` stating
+  the plan or the rebuttal (`update_review(slug, review_id, response='…')`).
+  An open finding with a response stays a submission-gate reminder; an open
+  finding with no response reads as simply unaddressed.
+
+Before telling the user the review is handled, confirm
+`review_triage_summary(slug)['ai_open'] == 0` (every AI finding is either
+resolved or deferred-with-a-response).

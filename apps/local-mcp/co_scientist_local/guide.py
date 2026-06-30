@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-06-16a"
+GUIDE_VERSION = "2026-06-30a"
 
 
 def render_guide() -> str:
@@ -74,7 +74,13 @@ On every session start:
    `mcp__co_scientist__review_triage_summary(slug)` gives the whole
    picture in one call — including `rejected_without_rationale`, the
    rejected comments still missing a rebuttal (those block a clean export
-   and need a `response` via /paper-revision).
+   and need a `response` via /paper-revision), and `ai_open`, the
+   `/paper-review` self-review findings still open. After acting on an AI
+   finding you MUST resolve it (`resolve_paper_comment(slug, review_id,
+   status="accepted", new_anchor_text="<verbatim from the revised text>",
+   response="<what changed>")`); a finding you defer stays open but needs a
+   `response` stating the plan. Editing the manuscript never auto-resolves a
+   finding, so drive `ai_open` to 0 before calling a review handled.
    For any deck on the paper, also call
    `mcp__co_scientist__list_deck_comments(slug, deck_id)` — open slide
    comments are the deck's revision to-do list; revise the slide, then

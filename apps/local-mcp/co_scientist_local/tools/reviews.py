@@ -378,18 +378,25 @@ def review_triage_summary(state: State, slug: str) -> dict:
     rejected comment with an empty `response` is flagged. Accepted comments
     still open are not yet reflected in the manuscript.
 
+    `ai_open` counts source='ai' self-review findings (from /paper-review) that
+    are still open and not rejected — i.e. not yet resolved or deferred. After a
+    /paper-review → revise cycle these should reach zero (resolve each addressed
+    finding; deferred ones stay open but carry a `response` stating the plan).
+
     Returns counts plus the offending review_ids so callers can act:
         {
           accepted, accepted_unresolved, rejected, rejected_without_rationale,
-          pending,                         # plain counts
+          pending, ai_open,                # plain counts
           accepted_unresolved_items: [...],
           rejected_without_rationale_items: [{review_id, section, reviewer, comment}],
+          ai_open_items: [{review_id, section, severity, comment}],
         }
     """
     reviews = list_reviews(state, slug)  # validates the paper exists
     accepted = accepted_unresolved = rejected = pending = 0
     unresolved_items: list[dict] = []
     no_rationale_items: list[dict] = []
+    ai_open_items: list[dict] = []
     for r in reviews:
         decision = r.get("decision") or "pending"
         status = r.get("status")
@@ -397,6 +404,16 @@ def review_triage_summary(state: State, slug: str) -> dict:
         has_response = bool((r.get("response") or "").strip())
         rid = r.get("id") or r.get("review_id")
         preview = (r.get("comment") or "")[:80]
+        # AI self-review findings still open. /paper-review writes these as
+        # source='ai'; after the manuscript is revised they must be resolved
+        # (or deferred WITH a response), else the dashboard's open state drifts
+        # out of sync with the text. Surfaced separately so the submission gate
+        # and session-start check can see unaddressed self-review findings.
+        if r.get("source") == "ai" and status == "open" and not is_rejected:
+            ai_open_items.append({
+                "review_id": rid, "section": r.get("section"),
+                "severity": r.get("severity"), "comment": preview,
+            })
         if is_rejected:
             rejected += 1
             if not has_response:
@@ -421,8 +438,10 @@ def review_triage_summary(state: State, slug: str) -> dict:
         "rejected": rejected,
         "rejected_without_rationale": len(no_rationale_items),
         "pending": pending,
+        "ai_open": len(ai_open_items),
         "accepted_unresolved_items": unresolved_items,
         "rejected_without_rationale_items": no_rationale_items,
+        "ai_open_items": ai_open_items,
     }
 
 

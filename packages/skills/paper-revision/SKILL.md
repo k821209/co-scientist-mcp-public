@@ -122,7 +122,20 @@ highlights resolve correctly. See `/reconcile-reviews`.
   this set; accepted points get revised + a `response` describing the change,
   rejected points get a rebuttal in `response`. Then run `/response-letter`.
 - `source='ai'` — internal `/paper-review` self-review (never goes in a
-  response letter).
+  response letter). When the user says "address the AI review / self-review
+  findings" — or right after a `/paper-review` run — work this set the same
+  way: `list_reviews(slug, source='ai', status='open')`, then for EACH finding
+  decide **address vs defer**:
+  - **Address** → revise the section, then resolve it anchored to the revised
+    text: `resolve_paper_comment(slug, review_id, status='accepted',
+    new_anchor_text='<verbatim phrase from the revised passage>',
+    response='<what changed>')`.
+  - **Defer / won't-fix** → leave it `open` but record a `response` with the
+    plan or rebuttal (`update_review(slug, review_id, response='…')`).
+  Editing the manuscript does NOT auto-resolve AI rows, so finish with
+  `review_triage_summary(slug)['ai_open'] == 0` (every finding resolved or
+  deferred-with-a-response) — otherwise the dashboard shows addressed findings
+  as still open.
 - `source='external'` — anonymous share-link visitors (collaborators).
 
 ## After Addressing All Open Comments
