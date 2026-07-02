@@ -1418,6 +1418,34 @@ mcp__co_scientist__set_slide_regions(
 - At export each region becomes a **separate, individually editable
   PPTX picture** — the user can nudge them in PowerPoint.
 
+**(c) User-uploaded images (dashboard "Upload image").** From the
+Presentations tab a user can upload an image (screenshot, photo) straight
+onto a slide. This does NOT go through `add_figure` / materials / assets —
+**it will NOT appear in `list_materials` or `list_assets`.** It lands on the
+slide itself in one of two shapes:
+
+- **Full-slide upload** → the slide gets `image_blob_path` set, `render_mode`
+  `"code-shape"`, and `image_source: "upload"` (renders full-bleed).
+- **Slot / positioned / auto upload** → the slide becomes `hybrid` with a
+  region whose **`id` is `"upload"`** and `image_source: "upload"`:
+  ```
+  {"id": "upload", "image_source": "upload", "render_mode": "code-shape",
+   "image_blob_path": ".../slides/{slide_id}/regions/upload.png",
+   "x":…, "y":…, "w":…, "h":…, "fit": "contain",
+   "placement": "auto" | "manual"}   # "auto" = user asked YOU to position it
+  ```
+
+To find one: it's a region, so **`list_slides(slug, deck_id, fields=["regions"])`**
+surfaces it — look for `image_source == "upload"` (or `id == "upload"`). Don't
+tell the user it's inaccessible just because materials/assets are empty.
+
+To place it in a **code** slide, reference it by id like any region:
+`h.image_region(slide, 'upload', left=…, top=…, width=…, height=…, fit='contain')`.
+If `placement == "auto"`, the user is deferring the position to you — read the
+slide's title/body/whitespace and drop it into the frame that fits (e.g. the
+empty right half of a title+bullets slide), rather than leaving it in the
+default box. If a placeholder frame already occupies that spot, replace it.
+
 ### 5d. Reference corpus — what good renderings look like (todo 004 §F)
 
 The skill ships with a curated corpus of exemplar slides at

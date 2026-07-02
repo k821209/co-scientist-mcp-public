@@ -205,6 +205,23 @@ def _add_image(paragraph, path: pathlib.Path):
     return run
 
 
+def _fix_drawing_ids(doc) -> None:
+    """Give every embedded drawing a unique, non-zero visual id.
+
+    python-docx hardcodes each picture's `pic:cNvPr id="0"`. Word and
+    LibreOffice tolerate the zero id, but Hancom Office (한컴오피스) refuses to
+    draw a picture whose visual id is 0 — it shows a broken-image box even
+    though the package is valid (EXP-2). Renumber both `wp:docPr` and
+    `pic:cNvPr` across the document to unique ids starting at 1.
+    """
+    n = 0
+    for el in doc.element.iter():
+        tag = el.tag
+        if tag.endswith("}docPr") or tag.endswith("}cNvPr"):
+            n += 1
+            el.set("id", str(n))
+
+
 def _collect_inline_runs(
     node: SyntaxTreeNode, bold: bool, italic: bool, code: bool
 ) -> list[tuple[str, bool, bool, bool]]:
@@ -437,5 +454,6 @@ def render_markdown_to_docx(
     _apply_report_template(doc)
     for node in root.children:
         _render_block(doc, node, assets)
+    _fix_drawing_ids(doc)  # non-zero visual ids so Hancom renders images (EXP-2)
     doc.save(str(out))
     return out

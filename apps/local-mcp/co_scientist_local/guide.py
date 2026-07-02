@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-06-30a"
+GUIDE_VERSION = "2026-07-02a"
 
 
 def render_guide() -> str:
@@ -161,6 +161,14 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   code errors, overflow, the warning lists), then ASK the user to confirm
   before the next slide/batch** — don't fire-and-forget `update_slide`.
   (A one-char typo fix is exempt.)
+  **User-uploaded slide images:** an image the user uploads from the
+  dashboard's Presentations tab lands ON the slide (NOT in materials/assets —
+  `list_materials`/`list_assets` won't show it). It's a region with
+  `id=='upload'` / `image_source=='upload'`; find it via
+  `list_slides(slug, deck_id, fields=['regions'])` and place it with
+  `h.image_region(slide, 'upload', …)`. `placement=='auto'` means the user
+  left the position to you — pick the frame that fits. Never tell the user an
+  uploaded slide image is inaccessible.
 - `/promote-result [slug] [analysis]` — map an analysis group's
   output files onto manuscript figures/tables (map mode → promote mode).
 - `/supplementary-material [slug]` — identify + register supplementary
