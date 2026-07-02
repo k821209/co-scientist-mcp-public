@@ -1426,25 +1426,36 @@ slide itself in one of two shapes:
 
 - **Full-slide upload** → the slide gets `image_blob_path` set, `render_mode`
   `"code-shape"`, and `image_source: "upload"` (renders full-bleed).
-- **Slot / positioned / auto upload** → the slide becomes `hybrid` with a
-  region whose **`id` is `"upload"`** and `image_source: "upload"`:
+- **Slot / positioned / auto upload** → the slide becomes `hybrid` with one
+  region per uploaded image, `image_source: "upload"`. A slide can hold
+  **several** uploads; ids are `"upload_1"`, `"upload_2"`, … (a legacy single
+  upload may just be `"upload"`):
   ```
-  {"id": "upload", "image_source": "upload", "render_mode": "code-shape",
-   "image_blob_path": ".../slides/{slide_id}/regions/upload.png",
+  {"id": "upload_1", "image_source": "upload", "render_mode": "code-shape",
+   "image_blob_path": ".../slides/{slide_id}/regions/upload_1.png",
    "x":…, "y":…, "w":…, "h":…, "fit": "contain",
-   "placement": "auto" | "manual"}   # "auto" = user asked YOU to position it
+   "placement": "auto" | "manual",
+   "note": "demo screenshot — put it big on the right"}  # user's hint to YOU
   ```
 
-To find one: it's a region, so **`list_slides(slug, deck_id, fields=["regions"])`**
-surfaces it — look for `image_source == "upload"` (or `id == "upload"`). Don't
-tell the user it's inaccessible just because materials/assets are empty.
+To find them: they're regions, so **`list_slides(slug, deck_id,
+fields=["regions"])`** surfaces them — match on `image_source == "upload"`
+(the id may be `upload`, `upload_1`, …). Don't tell the user an upload is
+inaccessible just because materials/assets are empty.
 
-To place it in a **code** slide, reference it by id like any region:
-`h.image_region(slide, 'upload', left=…, top=…, width=…, height=…, fit='contain')`.
-If `placement == "auto"`, the user is deferring the position to you — read the
-slide's title/body/whitespace and drop it into the frame that fits (e.g. the
-empty right half of a title+bullets slide), rather than leaving it in the
-default box. If a placeholder frame already occupies that spot, replace it.
+Handling them:
+- **`note`** is a free-text hint the user typed next to the image in the
+  dashboard ("put this big on the right", "this is the result plot"). Read it
+  and honor it — it tells you what the image is and how to place / merge it.
+- **`placement == "auto"`** means the user deferred positioning to you: read
+  the slide's title/body/whitespace and the note, then drop it into the frame
+  that fits (e.g. the empty right half of a title+bullets slide) rather than
+  leaving it in the default box. If a placeholder frame already occupies that
+  spot, replace it. **`placement == "manual"`** = the user set the box; keep it.
+- In a **code** slide, place each by id like any region:
+  `h.image_region(slide, 'upload_1', left=…, top=…, width=…, height=…, fit='contain')`.
+- Multiple uploads → lay them out together (e.g. a 2-up / grid) guided by
+  each region's `note`.
 
 ### 5d. Reference corpus — what good renderings look like (todo 004 §F)
 
