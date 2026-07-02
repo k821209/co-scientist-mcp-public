@@ -819,6 +819,19 @@ h.text(slide, label_italic, left=cx_box, top=rail_y + r + Pt(8),
        width=cw, height=Pt(16), italic=True, ...)
 ```
 
+- **Anchor a diagram's labels to its RAIL/CENTER, not to a band's
+  edge (inner-margin).** In a hand-drawn timeline/bar chart, a label
+  placed at a band's top or bottom edge ends up cramped against the
+  border. Anchor above/below labels off the rail — `rail_y - offset`
+  (above) / `rail_y + offset` (below) — so the band's inner margin is
+  automatic and consistent, instead of computing each label's inset
+  from the band edge by hand. `preview_slide` now lints this: a label
+  whose bbox sits < 8pt from the inner edge of a containing band/card
+  is reported in `layout_warnings` as **`inner_margin_tight`** (with
+  the tight side + gap). Helper cards / `text_block`s aren't flagged
+  (their text has built-in padding); this targets bespoke coordinate
+  labels. Fix by re-anchoring to the rail, not by nudging pixels.
+
 - **Repeat-symbol clusters (I/II/III, ★/★★/★★★, N-bar marks)
   must anchor to their cluster's HORIZONTAL CENTER, not to the
   left-most element** (todo 021). Drawing the first bar at

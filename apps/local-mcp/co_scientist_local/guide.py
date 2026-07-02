@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-02b"
+GUIDE_VERSION = "2026-07-02c"
 
 
 def render_guide() -> str:
@@ -158,8 +158,11 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   re-renders every slide (tens of seconds to minutes). Don't re-export
   after each edit. **After a design / batch / large-text edit: run
   `preview_slide`, `Read` the returned PNG yourself to verify it (catch
-  code errors, overflow, the warning lists), then ASK the user to confirm
-  before the next slide/batch** — don't fire-and-forget `update_slide`.
+  code errors, overflow, the warning lists — incl. `inner_margin_tight`, a
+  bespoke label hugging a band/card edge: fix by anchoring labels to the
+  diagram's rail/centre `rail_y ± offset`, not the band edge), then ASK the
+  user to confirm before the next slide/batch** — don't fire-and-forget
+  `update_slide`.
   (A one-char typo fix is exempt.)
   **User-uploaded slide images:** images the user uploads from the dashboard's
   Presentations tab land ON the slide (NOT in materials/assets —

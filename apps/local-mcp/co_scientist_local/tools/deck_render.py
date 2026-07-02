@@ -946,17 +946,26 @@ _HEADER_BAND_FRAC = 0.18  # top ~18% of the slide = title/eyebrow/accent-stripe 
 
 
 _CORNER_LOGO_IN = 1.5  # a small image hugging the top-right corner = a logo
+_INNER_MARGIN_PT = 8   # a label closer than this to its container's inner edge reads as cramped
+_EMU_PER_PT = 12700
 
 
 def _scan_deck_layout(prs, sh: int) -> list[dict]:
-    """Flag two layout problems the text-overlap detector misses (it only
-    looks at text↔text): a picture that's too small to read, and a picture
-    that actually overlaps the title text. Returns [{slide_number, issues}].
+    """Flag layout problems the text-overlap detector misses (it only looks at
+    text↔text): a picture too small to read, a picture overlapping the title,
+    and a label cramped against the inner edge of its container band/card
+    ("inner-margin"). Returns [{slide_number, issues}].
 
     header_overlap requires a REAL bbox intersection with a header text box
     (top of the slide) — not just sitting in the top y-band — so a left-
     aligned title isn't flagged against a top-right corner logo. A small
     top-right corner image (a logo, common deck chrome) is exempted outright.
+
+    inner_margin_tight: a text label whose bbox sits < _INNER_MARGIN_PT from
+    the inner edge of an earlier-drawn autoshape that fully contains it and is
+    ≥ 2× its area (a band/card) — but not a full-bleed background (≤ 90% of the
+    slide). Helper cards/text_blocks aren't flagged: their text box ~fills the
+    band (< 2× area), so they fall below the container-size threshold.
     """
     try:
         from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore
@@ -979,22 +988,33 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
         return (w < corner and h < corner and t < corner
                 and sw and (sw - (l + w)) < corner)
 
+    slide_area = max(1, sw * sh)
+    inner_tol = int(2 * _EMU_PER_PT)          # containment slack
+    inner_thr = int(_INNER_MARGIN_PT * _EMU_PER_PT)
+
     out: list[dict] = []
     for idx, slide in enumerate(prs.slides, start=1):
         pics: list[tuple] = []
         header_texts: list[tuple] = []
-        for shape in slide.shapes:
+        autoshapes: list[tuple] = []          # (z, l, t, w, h) — bands/cards
+        labels: list[tuple] = []              # (z, l, t, w, h, text)
+        for z, shape in enumerate(slide.shapes):
             try:
                 l, t, w, h = shape.left, shape.top, shape.width, shape.height
             except Exception:
                 continue
-            if w is None or h is None or t is None:
+            if w is None or h is None or t is None or l is None:
                 continue
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 pics.append((l, t, w, h))
-            elif getattr(shape, "has_text_frame", False) and (
-                    shape.text_frame.text or "").strip() and t < header_band:
-                header_texts.append((l, t, w, h))
+            if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+                autoshapes.append((z, l, t, w, h))
+            if getattr(shape, "has_text_frame", False):
+                text = (shape.text_frame.text or "").strip()
+                if text:
+                    labels.append((z, l, t, w, h, text))
+                    if t < header_band:
+                        header_texts.append((l, t, w, h))
 
         issues: list[dict] = []
         for pic in pics:
@@ -1017,6 +1037,42 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                     "top_in": f'{t / _EMU_PER_IN:.2f}"',
                     "note": ("image overlaps the title text — move it below the "
                              "title block or shrink/relocate it"),
+                })
+
+        # Inner-margin: a label hugging the inside edge of a band/card.
+        for lz, ll, lt, lw, lh, ltext in labels:
+            child_area = max(1, lw * lh)
+            best = None  # (area, (l, t, w, h)) — the smallest qualifying container
+            for az, al, at, aw, ah in autoshapes:
+                if az >= lz:
+                    continue  # container must be drawn BEHIND the label
+                a_area = aw * ah
+                if a_area < child_area * 2 or a_area > 0.9 * slide_area:
+                    continue  # too small to be a band, or a full-bleed background
+                contains = (ll >= al - inner_tol and lt >= at - inner_tol
+                            and ll + lw <= al + aw + inner_tol
+                            and lt + lh <= at + ah + inner_tol)
+                if contains and (best is None or a_area < best[0]):
+                    best = (a_area, (al, at, aw, ah))
+            if best is None:
+                continue
+            al, at, aw, ah = best[1]
+            gaps = {
+                "left": ll - al, "top": lt - at,
+                "right": (al + aw) - (ll + lw), "bottom": (at + ah) - (lt + lh),
+            }
+            tight = {k: v for k, v in gaps.items() if 0 <= v < inner_thr}
+            if tight:
+                side = min(tight, key=tight.get)
+                issues.append({
+                    "kind": "inner_margin_tight",
+                    "sides": sorted(tight, key=lambda k: tight[k]),
+                    "gap_pt": round(tight[side] / _EMU_PER_PT, 1),
+                    "label": ltext[:40],
+                    "note": (f"label sits {round(tight[side] / _EMU_PER_PT, 1)}pt "
+                             f"from its container's {side} edge (< {_INNER_MARGIN_PT}"
+                             "pt) — anchor labels to the band's rail/centre "
+                             "(rail_y ± offset), not its edge"),
                 })
         if issues:
             out.append({"slide_number": idx, "issues": issues})
