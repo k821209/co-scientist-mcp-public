@@ -112,7 +112,9 @@ def create_deck(
             f"invalid aspect_ratio: {aspect_ratio!r}; "
             f"choose from {sorted(_VALID_ASPECT)}"
         )
-    deck_id = deck_id or slugify(title)
+    # Unicode-aware slugify keeps 한글/CJK titles; only a letter/digit-free
+    # title yields "" — fall back to a generated id so create never breaks.
+    deck_id = deck_id or slugify(title) or f"deck-{new_id()[:8]}"
     path = _deck_path(state, slug, deck_id)
     existing = state.backend.get_doc(path)
     if existing is not None:

@@ -10,7 +10,7 @@ from __future__ import annotations
 from ..backends.base import NotFound
 from ..manuscript import DOC_TYPES, compile_manuscript, sections_for_doc_type
 from ..state import State
-from ..util import now_iso, slugify, word_count
+from ..util import new_id, now_iso, slugify, word_count
 from . import limits as _limits
 from .activity import log_event
 
@@ -65,9 +65,10 @@ def create_paper(
     doc_type = (doc_type or "paper").strip().lower()
     if doc_type not in DOC_TYPES:
         raise ValueError(f"doc_type must be one of {DOC_TYPES}, got {doc_type!r}")
-    slug = (slug or slugify(title)).strip("-")
-    if not slug:
-        raise ValueError("could not derive a valid slug from title")
+    # Non-Latin titles now slugify to their own letters (한글 등); only a title
+    # with no letters/digits at all (emoji/punctuation) yields "" — fall back to
+    # a generated id so creation never fails on an otherwise-valid title.
+    slug = (slug or slugify(title)).strip("-") or f"paper-{new_id()[:8]}"
 
     path = _paper_path(state, slug)
     if state.backend.get_doc(path) is not None:
