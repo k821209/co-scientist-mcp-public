@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-02c"
+GUIDE_VERSION = "2026-07-04a"
 
 
 def render_guide() -> str:
@@ -60,7 +60,10 @@ On every session start:
    be fixed upstream.
 2. Call `mcp__co_scientist__get_project_memory()` — the project's durable
    knowledge (user preferences, decisions, gotchas). Treat it as standing
-   context for the whole session. See "## Project memory" below.
+   context for the whole session. See "## Project memory" below. Also call
+   `mcp__co_scientist__get_project_skills()` — freeform, project-scoped
+   playbooks/instructions the user defined in the Memory tab; follow them for
+   THIS project (they complement the built-in skills). Skip if it returns "".
 3. Call `mcp__co_scientist__list_papers()` then, for each paper,
    `mcp__co_scientist__count_open_user_comments(slug)`. If non-zero,
    call `mcp__co_scientist__list_reviews(slug, status="open")` to get

@@ -21,6 +21,10 @@ from ..state import State
 from ..util import now_iso
 
 _MEMORY_DOC = ("memory", "main")
+# Project-specific skills/playbooks the user defines in the Memory tab. Read at
+# session start alongside memory; a lightweight, project-scoped complement to
+# the built-in Claude Code skills (no on-disk install / relaunch needed).
+_SKILLS_DOC = ("memory", "skills")
 
 
 def get_project_memory(state: State) -> dict:
@@ -48,6 +52,37 @@ def update_project_memory(state: State, content: str) -> dict:
         "updated_by": "claude",
     })
     return get_project_memory(state)
+
+
+def get_project_skills(state: State) -> dict:
+    """Return the project's user-defined skills/playbooks:
+    {content, updated_at, updated_by}. `content` is "" when none set.
+
+    These are freeform, project-scoped instructions the user wrote in the
+    dashboard's Memory tab — read them at session start and follow them for
+    this project (they complement, not replace, the built-in skills)."""
+    doc = state.backend.get_doc(state.project_path(*_SKILLS_DOC))
+    if doc is None:
+        return {"content": "", "updated_at": None, "updated_by": None}
+    return {
+        "content": doc.get("content", ""),
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+    }
+
+
+def update_project_skills(state: State, content: str) -> dict:
+    """Replace the whole project-skills document with `content`."""
+    path = state.project_path(*_SKILLS_DOC)
+    existing = state.backend.get_doc(path) or {}
+    now = now_iso()
+    state.backend.set_doc(path, {
+        "content": content,
+        "created_at": existing.get("created_at", now),
+        "updated_at": now,
+        "updated_by": "claude",
+    })
+    return get_project_skills(state)
 
 
 def append_project_memory(state: State, note: str) -> dict:

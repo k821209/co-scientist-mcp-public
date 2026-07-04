@@ -107,6 +107,19 @@ def build_mcp(state: State) -> FastMCP:
         """
         return _memory.update_project_memory(state, content)
 
+    @mcp.tool()
+    def get_project_skills() -> dict[str, Any]:
+        """Return the project's user-defined skills/playbooks (from the Memory
+        tab): {content, updated_at, updated_by}. Read at session start and
+        follow them for THIS project — freeform, project-scoped instructions
+        that complement the built-in skills. `content` is "" when none set."""
+        return _memory.get_project_skills(state)
+
+    @mcp.tool()
+    def update_project_skills(content: str) -> dict[str, Any]:
+        """Replace the whole project-skills markdown document."""
+        return _memory.update_project_skills(state, content)
+
     # ─── project to-dos & activity timeline ──────────────────────────────────
     @mcp.tool()
     def add_todo(text: str, paper_slug: str | None = None) -> dict[str, Any]:
