@@ -10,6 +10,10 @@ their first paper. Three commands on their machine, the rest in the browser.
 first — otherwise pip fails with `No matching distribution found for mcp`:
 
 ```bash
+# `add-apt-repository` ships in software-properties-common — install it first
+# (a minimal Ubuntu/WSL/Docker base often doesn't have it).
+sudo apt update
+sudo apt install -y software-properties-common
 sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt update
 sudo apt install -y python3.11 python3.11-venv
