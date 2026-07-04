@@ -10,6 +10,7 @@ status, priority, dev_note, created_at, updated_at, addressed_at }.
 """
 from __future__ import annotations
 
+from ..backends.base import NotFound
 from ..state import State
 from ..util import new_id, now_iso
 
@@ -58,6 +59,58 @@ def report_feedback(
     }
     state.backend.set_doc(_feedback_path(state, fid), doc)
     return {**doc, "dashboard_url": state.dashboard_url("feedback")}
+
+
+def update_feedback(
+    state: State,
+    feedback_id: str,
+    *,
+    title: str | None = None,
+    body: str | None = None,
+    type: str | None = None,
+) -> dict:
+    """Edit an agent-filed feedback item — fix a mistake or, importantly, remove
+    sensitive info you included by accident (a secret, a private host/SSH
+    address). Only `source='agent'` items can be edited; status / priority /
+    dev_note are admin-managed and left untouched."""
+    path = _feedback_path(state, feedback_id)
+    doc = state.backend.get_doc(path)
+    if doc is None:
+        raise NotFound(f"feedback not found: {feedback_id!r}")
+    if doc.get("source") != "agent":
+        raise ValueError("can only edit agent-filed feedback (source='agent')")
+    fields: dict = {}
+    if type is not None:
+        t = type.strip().lower()
+        if t not in _VALID_TYPES:
+            raise ValueError(f"type must be one of {sorted(_VALID_TYPES)}, got {type!r}")
+        fields["type"] = t
+    if title is not None:
+        title = title.strip()
+        if not title:
+            raise ValueError("title cannot be empty")
+        fields["title"] = title
+    if body is not None:
+        fields["body"] = body.strip()
+    if not fields:
+        raise ValueError("nothing to update (pass title, body, and/or type)")
+    fields["updated_at"] = now_iso()
+    state.backend.update_doc(path, fields)
+    return state.backend.get_doc(path)
+
+
+def delete_feedback(state: State, feedback_id: str) -> bool:
+    """Retract (delete) an agent-filed feedback item — e.g. it contained a
+    mistake or sensitive info. Only `source='agent'` items can be deleted.
+    Returns False if it doesn't exist."""
+    path = _feedback_path(state, feedback_id)
+    doc = state.backend.get_doc(path)
+    if doc is None:
+        return False
+    if doc.get("source") != "agent":
+        raise ValueError("can only delete agent-filed feedback (source='agent')")
+    state.backend.delete_doc(path)
+    return True
 
 
 def list_feedback(state: State, status: str | None = None) -> list[dict]:

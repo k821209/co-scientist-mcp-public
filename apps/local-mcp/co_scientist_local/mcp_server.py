@@ -1673,4 +1673,22 @@ def build_mcp(state: State) -> FastMCP:
         filing a duplicate."""
         return _feedback.list_feedback(state, status=status)
 
+    @mcp.tool()
+    def update_feedback(
+        feedback_id: str, title: str | None = None,
+        body: str | None = None, type: str | None = None,
+    ) -> dict[str, Any]:
+        """Edit an agent-filed feedback item — fix a mistake, or REMOVE
+        sensitive info you included by accident (a secret, a private host/SSH
+        address). Only source='agent' items; status/priority/dev_note untouched."""
+        return _feedback.update_feedback(
+            state, feedback_id, title=title, body=body, type=type,
+        )
+
+    @mcp.tool()
+    def delete_feedback(feedback_id: str) -> dict[str, Any]:
+        """Retract (delete) an agent-filed feedback item — e.g. it contained a
+        mistake or sensitive info. Only source='agent' items. Returns {deleted}."""
+        return {"deleted": _feedback.delete_feedback(state, feedback_id)}
+
     return mcp
