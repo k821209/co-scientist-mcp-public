@@ -106,6 +106,30 @@ def _rewrite_inline_figure_refs(
     return _INLINE_FIGURE_RE.sub(repl, text)
 
 
+_REF_TOKEN_RE = re.compile(r"\{(fig|tab):(\d+)\}")
+
+
+def _rewrite_inline_ref_tokens(text: str) -> str:
+    """Resolve inline reference tokens `{fig:N}` / `{tab:N}` to display text.
+
+    These are the co-scientist inline cross-reference convention in section
+    bodies. The dashboard resolves them live; on export they must be turned
+    into plain text or the literal `{fig:1}` token leaks into the .docx/PDF
+    (same class of gap as `{doi:…}`). N ≥ the +100 supplementary offset renders
+    as "Supplementary Figure/Table N-100"; otherwise "Figure/Table N".
+    """
+    off = _figures.SUPPLEMENTARY_NUMBER_OFFSET
+
+    def repl(m: re.Match) -> str:
+        noun = "Figure" if m.group(1) == "fig" else "Table"
+        n = int(m.group(2))
+        if n >= off:
+            return f"Supplementary {noun} {n - off}"
+        return f"{noun} {n}"
+
+    return _REF_TOKEN_RE.sub(repl, text)
+
+
 def _rewrite_inline_citations(
     text: str, refs: list[dict]
 ) -> tuple[str, list[str]]:
@@ -709,6 +733,9 @@ def export_to_path(
             manuscript_text, _unmatched_cites = _rewrite_inline_citations(
                 manuscript_text, bundle["references"],
             )
+        # Resolve {fig:N}/{tab:N} inline refs to text on ALL engines — else the
+        # literal tokens leak into the exported file (dev-todo: EXP figure refs).
+        manuscript_text = _rewrite_inline_ref_tokens(manuscript_text)
         (tmp_path / "manuscript.md").write_text(manuscript_text, encoding="utf-8")
         has_bib = bool(bundle["bibtex"].strip())
         csl_arg: str | None = None
