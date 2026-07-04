@@ -31,6 +31,7 @@ from .tools import ssh_ops as _ssh_ops
 from .tools import tables as _tables
 from .tools import todos as _todos
 from .tools import verification as _verification
+from .tools import videos as _videos
 
 
 def build_mcp(state: State) -> FastMCP:
@@ -1429,6 +1430,60 @@ def build_mcp(state: State) -> FastMCP:
         or reorder slides, prefer this over add_slide + renumber_deck. Returns
         {count, order}."""
         return _decks.reorder_deck(state, slug, deck_id, order)
+
+    # ─── videos (project-level deliverables + timecode comments) ──────────────
+    @mcp.tool()
+    def add_video(
+        title: str, video_id: str | None = None, local_path: str | None = None,
+        aspect_ratio: str = "16:9", fps: float | None = None,
+        duration_s: float | None = None, description: str | None = None,
+        srt_local_path: str | None = None, ass_local_path: str | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Register a project video deliverable. Upload the mp4 via `local_path`
+        (+ optional .srt/.ass sidecars); `aspect_ratio` is "16:9" or "9:16".
+        Shown in the dashboard's Video tab (admin). Returns the video doc."""
+        return _videos.add_video(
+            state, title=title, video_id=video_id, local_path=local_path,
+            aspect_ratio=aspect_ratio, fps=fps, duration_s=duration_s,
+            description=description, srt_local_path=srt_local_path,
+            ass_local_path=ass_local_path, overwrite=overwrite,
+        )
+
+    @mcp.tool()
+    def list_videos() -> list[dict[str, Any]]:
+        """List the project's video deliverables (newest first)."""
+        return _videos.list_videos(state)
+
+    @mcp.tool()
+    def delete_video(video_id: str) -> dict[str, Any]:
+        """Delete a video (and its comments). Returns {deleted}."""
+        return {"deleted": _videos.delete_video(state, video_id)}
+
+    @mcp.tool()
+    def list_video_comments(
+        video_id: str | None = None, status: str | None = "open",
+    ) -> list[dict[str, Any]]:
+        """Timecode comments (open by default), sorted by (video, t_seconds).
+        `video_id=None` spans all videos — the agent's re-cut/re-caption to-do
+        list. Each carries `t_seconds` (and `frame` when known)."""
+        return _videos.list_video_comments(state, video_id, status=status)
+
+    @mcp.tool()
+    def resolve_video_comment(
+        video_id: str, comment_id: str, status: str = "resolved",
+        response: str | None = None,
+    ) -> dict[str, Any]:
+        """Mark a timecode comment resolved/rejected (or open to reopen) after
+        acting on it; optionally record what changed in `response`."""
+        return _videos.resolve_video_comment(
+            state, video_id, comment_id, status=status, response=response,
+        )
+
+    @mcp.tool()
+    def count_open_video_comments() -> int:
+        """Count open, human-authored timecode comments across the project."""
+        return _videos.count_open_video_comments(state)
 
     @mcp.tool()
     def list_deck_comments(
