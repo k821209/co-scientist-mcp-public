@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-04a"
+GUIDE_VERSION = "2026-07-05a"
 
 
 def render_guide() -> str:
@@ -152,6 +152,13 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   generate → critique) around `generate_image` for schematics
   (pathway, network, workflow, comparison, architecture, tree).
   Real data plots go through `/analysis-run` instead.
+- `/video-harness` — for VIDEO projects: raw recording → publish-ready
+  YouTube 16:9 / 9:16 Shorts / boxed (clean → transcribe → chapters →
+  captions → reframe → encode), then `add_video` into the Video tab.
+  Render host is user config (`VH_*` env) — never hardcode an address.
+- `/video-revision` — address open Video-tab timecode comments
+  (`list_video_comments` → re-run only the stage each needs →
+  `resolve_video_comment`). The video analogue of `/paper-revision`.
 - `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
   full presentation pipeline: deck concept + slides + render
   (`render_deck`) + PPTX export (`export_deck_to_pptx`).
