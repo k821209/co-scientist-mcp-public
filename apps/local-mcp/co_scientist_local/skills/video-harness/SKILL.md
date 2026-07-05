@@ -50,6 +50,14 @@ Whisper) → **caption burn** (ASS). Outputs land in `out/<stem>/`:
 prints the final path, srt, and word count (`Result.final / .srt / .ass /
 .words_json / .n_words / .duration_out`).
 
+**Caption invariant (any project):** captions must show **one line at a time**
+— Whisper can emit adjacent words with overlapping or reversed timestamps, and
+if two caption events overlap, libass stacks them and they cover the frame.
+`vh` de-conflicts this centrally in `caption._caption_events` (global cursor →
+no overlap). If you ever build caption events by hand instead of via `vh`,
+enforce the same: sort by start, clamp each event's start to the previous
+event's end.
+
 ## 3 — Chapters + title cards (optional; library, not the CLI)
 
 Not part of `vh run`. Read the transcript / `words.json`, **author the
