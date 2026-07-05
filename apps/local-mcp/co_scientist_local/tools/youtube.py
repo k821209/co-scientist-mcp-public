@@ -51,6 +51,10 @@ def _token_path() -> pathlib.Path:
     return pathlib.Path.home() / ".co-scientist" / "youtube_token.json"
 
 
+def _pending_path() -> pathlib.Path:
+    return _token_path().with_name("youtube_pending.json")
+
+
 def _load_token() -> dict | None:
     path = _token_path()
     if not path.is_file():
@@ -69,6 +73,30 @@ def _save_token(data: dict) -> None:
         os.chmod(path, 0o600)   # it holds a refresh token
     except OSError:
         pass
+
+
+def _save_pending(data: dict) -> None:
+    path = _pending_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _load_pending() -> dict | None:
+    path = _pending_path()
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def _clear_pending() -> None:
+    _pending_path().unlink(missing_ok=True)
 
 
 def _client_creds(client_id: str | None, client_secret: str | None) -> tuple[str, str]:
@@ -117,42 +145,74 @@ def _access_token() -> str:
 
 def youtube_connect(
     state: State, *, client_id: str | None = None, client_secret: str | None = None,
-    timeout_s: int = 300,
 ) -> dict:
-    """Connect this machine to a YouTube account via the OAuth device flow.
+    """STEP 1 of connecting to YouTube (OAuth device flow).
 
-    Prints a URL + code for the user to authorize, then polls until done and
-    stores the refresh token locally. Headless-friendly. Returns
-    {connected, channel?} or the pending verification details."""
+    Requests a device code and returns `{verification_url, user_code,
+    expires_in}` IMMEDIATELY — it does NOT block. Tell the user to open the URL
+    and enter the code; once they've authorized, call `youtube_complete_connect()`
+    to finish. Needs a YouTube Data API OAuth client (installed/TV type) via
+    YOUTUBE_CLIENT_ID/SECRET or the args."""
     cid, csec = _client_creds(client_id, client_secret)
     dev = _post_form(_DEVICE_CODE_URL, {"client_id": cid, "scope": _SCOPE})
     if "device_code" not in dev:
         raise RuntimeError(f"device-code request failed: {dev}")
     url = dev.get("verification_url") or dev.get("verification_uri")
-    print(f"\n[YouTube] Authorize: open {url} and enter code: {dev['user_code']}\n")
-    interval = int(dev.get("interval", 5))
-    deadline = time.monotonic() + min(timeout_s, int(dev.get("expires_in", timeout_s)))
+    _save_pending({
+        "device_code": dev["device_code"],
+        "client_id": cid, "client_secret": csec,
+        "interval": int(dev.get("interval", 5)),
+        "verification_url": url,
+    })
+    return {
+        "verification_url": url,
+        "user_code": dev.get("user_code"),
+        "expires_in": dev.get("expires_in"),
+        "next": "have the user open verification_url and enter user_code, then call youtube_complete_connect()",
+    }
+
+
+def youtube_complete_connect(state: State, timeout_s: int = 120) -> dict:
+    """STEP 2 — finish the device-flow connection started by `youtube_connect`.
+
+    Polls (up to `timeout_s`) for the user's authorization, then stores the
+    refresh token locally. If the user hasn't authorized yet, returns
+    `{pending: true}` — call again after they finish in the browser."""
+    pend = _load_pending()
+    if not pend:
+        raise ValueError("no pending connection — run youtube_connect() first")
+    interval = max(2, int(pend.get("interval", 5)))
+    deadline = time.monotonic() + max(5, timeout_s)
     while time.monotonic() < deadline:
-        time.sleep(interval)
         resp = _post_form(_TOKEN_URL, {
-            "client_id": cid, "client_secret": csec,
-            "device_code": dev["device_code"],
+            "client_id": pend["client_id"], "client_secret": pend["client_secret"],
+            "device_code": pend["device_code"],
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
         })
         err = resp.get("error")
-        if err in ("authorization_pending", "slow_down"):
-            if err == "slow_down":
-                interval += 2
-            continue
-        if err:
+        if err == "slow_down":
+            interval += 2
+        elif err == "authorization_pending":
+            pass
+        elif err in ("expired_token", "access_denied"):
+            _clear_pending()
+            raise RuntimeError(
+                "authorization " + ("expired — run youtube_connect() again"
+                                    if err == "expired_token" else "was denied"))
+        elif err:
             raise RuntimeError(f"authorization failed: {resp.get('error_description') or err}")
-        if resp.get("refresh_token"):
+        elif resp.get("refresh_token"):
             _save_token({
                 "refresh_token": resp["refresh_token"],
-                "client_id": cid, "client_secret": csec, "scope": _SCOPE,
+                "client_id": pend["client_id"], "client_secret": pend["client_secret"],
+                "scope": _SCOPE,
             })
-            return {"connected": True, "verification_url": url}
-    raise TimeoutError("timed out waiting for YouTube authorization")
+            _clear_pending()
+            return {"connected": True}
+        time.sleep(interval)
+    return {"pending": True,
+            "verification_url": pend.get("verification_url"),
+            "message": "not authorized yet — finish in the browser, then call youtube_complete_connect() again"}
 
 
 def youtube_disconnect(state: State) -> dict:
@@ -161,6 +221,7 @@ def youtube_disconnect(state: State) -> dict:
     existed = path.is_file()
     if existed:
         path.unlink()
+    _clear_pending()
     return {"disconnected": existed}
 
 

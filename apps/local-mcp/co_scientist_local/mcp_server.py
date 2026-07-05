@@ -1504,10 +1504,18 @@ def build_mcp(state: State) -> FastMCP:
     def youtube_connect(
         client_id: str | None = None, client_secret: str | None = None,
     ) -> dict[str, Any]:
-        """Connect this machine to a YouTube account (OAuth device flow — prints
-        a URL + code, then stores a refresh token locally). Needs a YouTube Data
-        API OAuth client via YOUTUBE_CLIENT_ID/SECRET env or the args."""
+        """STEP 1 — start YouTube OAuth (device flow). Returns {verification_url,
+        user_code} immediately (non-blocking): tell the user to open the URL and
+        enter the code, then call youtube_complete_connect(). Needs a YouTube
+        Data API OAuth client via YOUTUBE_CLIENT_ID/SECRET env or the args."""
         return _youtube.youtube_connect(state, client_id=client_id, client_secret=client_secret)
+
+    @mcp.tool()
+    def youtube_complete_connect() -> dict[str, Any]:
+        """STEP 2 — finish the connection after the user authorized in the
+        browser. Polls briefly, stores the refresh token, returns {connected}.
+        If not authorized yet, returns {pending: true} — call again."""
+        return _youtube.youtube_complete_connect(state)
 
     @mcp.tool()
     def youtube_disconnect() -> dict[str, Any]:

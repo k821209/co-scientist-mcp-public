@@ -18,10 +18,14 @@ channel," "make it a Short on YouTube." The video counterpart of
 
 ## Flow
 
-1. **Check connection:** `youtube_status(video_id)` → if `connected` is false,
-   run `youtube_connect()`. It prints a URL + code (device flow); ask the user
-   to open the URL, enter the code, and authorize. Refresh token is stored
-   locally on this machine (never in the repo).
+1. **Check / establish connection** (two-step device flow):
+   - `youtube_status(video_id)` → if `connected` is false, call
+     `youtube_connect()`. It returns `{verification_url, user_code}` — **relay
+     both to the user**: "open <verification_url> and enter <user_code>."
+   - After they authorize, call `youtube_complete_connect()`. It returns
+     `{connected: true}`, or `{pending: true}` if they haven't finished yet —
+     wait and call it again. The refresh token is stored locally on this
+     machine (never in the repo).
 
 2. **Assemble metadata:**
    - **title** — the video's title (or ask).
