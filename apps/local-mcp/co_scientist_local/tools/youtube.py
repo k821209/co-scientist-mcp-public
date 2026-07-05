@@ -33,7 +33,11 @@ _DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code"
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 _UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
 _VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
-_SCOPE = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl"
+# Device flow REJECTS youtube.force-ssl (invalid_scope) — that scope is only
+# needed for captions.insert (Phase 2). Request upload + manage (both are
+# device-flow-allowed): upload covers videos.insert, manage covers the
+# idempotent videos.update / thumbnails.set path.
+_SCOPE = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube"
 
 _SHORTS_MAX_SECONDS = 180
 
