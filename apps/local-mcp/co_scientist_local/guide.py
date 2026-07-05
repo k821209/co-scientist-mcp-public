@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-05c"
+GUIDE_VERSION = "2026-07-05d"
 
 
 def render_guide() -> str:
@@ -157,9 +157,9 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   talkinghead|shorts|shorts_boxed|slides> [--lang ko]` (clean → reframe →
   transcribe → caption); chapters + title cards are a library step
   (Claude-authored `Chapter(start,title)`). Register output with
-  `add_video`. Transcription auto-offloads to a remote GPU when
-  `VH_RENDER_HOST` is set (`VH_ASR_BACKEND=auto`), else local; encoding is
-  local. Render host is user config only — never hardcode an address.
+  `add_video`. With `VH_RENDER_HOST` set, transcription AND encoding
+  auto-offload to a remote GPU; unset → everything local. Render host is user
+  config only — never hardcode an address.
 - `/video-revision` — address open Video-tab timecode comments
   (`list_video_comments` → re-run only the stage each needs →
   `resolve_video_comment`). The video analogue of `/paper-revision`.

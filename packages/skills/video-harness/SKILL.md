@@ -97,26 +97,29 @@ tab (→ act on them later with **`/video-revision`**).
 `VH_CAPTION_FONTSDIR` (Noto Sans CJK KR for Korean) · `VH_GPU_PYTHON` (local
 GPU worker interpreter).
 
-## Remote render-host offload (transcription) — decision tree
+## Remote render-host offload — decision tree
 
-Transcription (the heaviest GPU stage) **auto-offloads to a remote GPU box**
-when one is configured — handy when the local GPU is busy (e.g. an LLM
-server saturating VRAM), or on aarch64 (GB10) where faster-whisper has no
-CUDA wheel.
+Set a render host and the **whole heavy pipeline auto-offloads to it** —
+handy when the local GPU is busy (e.g. an LLM server saturating VRAM) or on
+aarch64 (GB10) where faster-whisper has no CUDA wheel.
 
-- Set these env vars → offload turns on:
-  `VH_RENDER_HOST` (ssh target, e.g. `user@host`), `VH_RENDER_PORT`
-  (optional ssh port), `VH_RENDER_PYTHON` (interpreter on the host with
-  faster-whisper + CUDA), `VH_RENDER_TMP` (default `/tmp`).
-- `VH_ASR_BACKEND=auto` (the default) → **remote if `VH_RENDER_HOST` is set,
-  else local** (`gpu` → `VH_GPU_PYTHON`, else `cpu` faster-whisper int8).
-  Force with `remote` / `gpu` / `cpu`.
-- What happens on offload (all automatic, no manual scp/ssh): extract wav →
-  scp to the host → remote faster-whisper → pull `words.json` back.
-  (`vh.remote.check()` is a one-line reachability/capability probe.)
-- **Scope (be precise):** only **transcription** offloads today.
-  **Encoding stays local** — caption burn / boxed compose / interstitials /
-  reframe run on the local ffmpeg NVENC. (Remote encoding is planned.)
+- Turn it on with env vars: `VH_RENDER_HOST` (ssh target, e.g. `user@host`),
+  `VH_RENDER_PORT` (optional ssh port), `VH_RENDER_PYTHON` (host interpreter
+  with faster-whisper+CUDA, for transcription), `VH_RENDER_FFMPEG` (host
+  ffmpeg, default `ffmpeg`), `VH_RENDER_FONTSDIR` (host fonts, for burned
+  captions), `VH_RENDER_TMP` (default `/tmp`).
+- **Transcription:** `VH_ASR_BACKEND=auto` (default) → remote if
+  `VH_RENDER_HOST` is set, else local (`gpu` → `VH_GPU_PYTHON`, else `cpu`
+  int8). Force with `remote` / `gpu` / `cpu`. (wav → scp → remote
+  faster-whisper → pull `words.json`.)
+- **Encoding (now remote too):** every ffmpeg/NVENC stage — caption burn,
+  boxed compose, interstitial title cards, reframe — routes through
+  `remote.ffmpeg_run`: when a host is set it ships the inputs (+ `.ass`, card
+  clips, fonts), rewrites paths inside the filtergraph (subtitles / fontsdir),
+  runs remote ffmpeg, pulls the output back; else runs locally.
+- **Net:** one `VH_RENDER_HOST` → **transcription AND encoding remote**; unset
+  → everything local. `vh.remote.check()` probes the host's reachability +
+  faster-whisper/ffmpeg/CUDA.
 
 **Security:** the render host lives **only in the user's env**. Never
 hardcode or store any host / SSH / IP address in a skill, doc, code, log, or
