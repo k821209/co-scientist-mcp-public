@@ -107,7 +107,8 @@ aarch64 (GB10) where faster-whisper has no CUDA wheel.
   `VH_RENDER_PORT` (optional ssh port), `VH_RENDER_PYTHON` (host interpreter
   with faster-whisper+CUDA, for transcription), `VH_RENDER_FFMPEG` (host
   ffmpeg, default `ffmpeg`), `VH_RENDER_FONTSDIR` (host fonts, for burned
-  captions), `VH_RENDER_TMP` (default `/tmp`).
+  captions), `VH_RENDER_TMP` (default `/tmp`), `VH_RENDER_CACHE` (persistent
+  input cache dir, default `<VH_RENDER_TMP>/vh_cache`).
 - **Transcription:** `VH_ASR_BACKEND=auto` (default) → remote if
   `VH_RENDER_HOST` is set, else local (`gpu` → `VH_GPU_PYTHON`, else `cpu`
   int8). Force with `remote` / `gpu` / `cpu`. (wav → scp → remote
@@ -120,14 +121,13 @@ aarch64 (GB10) where faster-whisper has no CUDA wheel.
 - **Net:** one `VH_RENDER_HOST` → **transcription AND encoding remote**; unset
   → everything local. `vh.remote.check()` probes the host's reachability +
   faster-whisper/ffmpeg/CUDA.
-- **Cost caveat (large sources):** `remote.ffmpeg_run` re-stages its inputs
-  (the source mp4, `.ass`, cards) on **every** ffmpeg call, so a multi-stage
-  render (caption + compose + interstitials) **re-uploads the same large
-  source several times**. Correctness is fine; it's a network-cost hit. For a
-  big source with many stages, prefer **upload once, run all stages on the
-  host**: rsync the source (and the `vh` package) to the render box once and
-  run the `vh` steps there directly — no per-call re-staging. (A session
-  cache in `vh/remote.py` would remove this; harness-side, not this skill.)
+- **Input caching (large sources):** remote inputs go through a **persistent
+  cache** on the host (keyed by size+mtime+name), so a large source uploads
+  **once** and is reused across every ffmpeg call and re-render — no repeated
+  re-upload even for multi-stage renders (caption + compose + interstitials).
+  Cache dir = `VH_RENDER_CACHE` (default `<VH_RENDER_TMP>/vh_cache`);
+  `vh.remote.clear_cache()` empties it. Only per-call job scratch is cleaned;
+  the cached inputs persist.
 
 **Security:** the render host lives **only in the user's env**. Never
 hardcode or store any host / SSH / IP address in a skill, doc, code, log, or
