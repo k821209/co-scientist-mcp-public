@@ -92,16 +92,35 @@ tab (→ act on them later with **`/video-revision`**).
 ## Config — all via env (`vh/config.py`)
 
 `VH_FFMPEG` / `VH_FFPROBE` (binaries) · `VH_VENC` (`h264_nvenc` default |
-`libx264`) · `VH_ASR_BACKEND` (`gpu` default → shells to `VH_GPU_PYTHON`;
-`cpu` → in-process faster-whisper int8) · `VH_WHISPER_MODEL` (`small` …
-`large-v3`) · `VH_CAPTION_FONT` / `VH_CAPTION_FONTSDIR` (Noto Sans CJK KR
-for Korean).
+`libx264`) · `VH_ASR_BACKEND` (**`auto`** default | `remote` | `gpu` | `cpu`)
+· `VH_WHISPER_MODEL` (`small` … `large-v3`) · `VH_CAPTION_FONT` /
+`VH_CAPTION_FONTSDIR` (Noto Sans CJK KR for Korean) · `VH_GPU_PYTHON` (local
+GPU worker interpreter).
 
-**Render host (heavy transcribe/encode):** may run on a separate x86_64 GPU
-box by pointing the `VH_*` vars at that host and running the same `vh` there
-— but the host is **strictly user-provided config**. Never hardcode or store
-any host / SSH / IP address in a skill, doc, code, or feedback. No default;
-if none is configured, run locally.
+## Remote render-host offload (transcription) — decision tree
+
+Transcription (the heaviest GPU stage) **auto-offloads to a remote GPU box**
+when one is configured — handy when the local GPU is busy (e.g. an LLM
+server saturating VRAM), or on aarch64 (GB10) where faster-whisper has no
+CUDA wheel.
+
+- Set these env vars → offload turns on:
+  `VH_RENDER_HOST` (ssh target, e.g. `user@host`), `VH_RENDER_PORT`
+  (optional ssh port), `VH_RENDER_PYTHON` (interpreter on the host with
+  faster-whisper + CUDA), `VH_RENDER_TMP` (default `/tmp`).
+- `VH_ASR_BACKEND=auto` (the default) → **remote if `VH_RENDER_HOST` is set,
+  else local** (`gpu` → `VH_GPU_PYTHON`, else `cpu` faster-whisper int8).
+  Force with `remote` / `gpu` / `cpu`.
+- What happens on offload (all automatic, no manual scp/ssh): extract wav →
+  scp to the host → remote faster-whisper → pull `words.json` back.
+  (`vh.remote.check()` is a one-line reachability/capability probe.)
+- **Scope (be precise):** only **transcription** offloads today.
+  **Encoding stays local** — caption burn / boxed compose / interstitials /
+  reframe run on the local ffmpeg NVENC. (Remote encoding is planned.)
+
+**Security:** the render host lives **only in the user's env**. Never
+hardcode or store any host / SSH / IP address in a skill, doc, code, log, or
+feedback. No default; if `VH_RENDER_HOST` is unset, everything runs locally.
 
 ## Platform notes
 - **NVENC** (`h264_nvenc`) for fast 1080p60. **aarch64 (GB10)**: auto-editor

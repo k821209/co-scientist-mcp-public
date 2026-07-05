@@ -54,6 +54,7 @@ analogue of `/paper-revision`, on top of `/video-harness`.
    is complete. Editing the video never auto-resolves its comments.
 
 ## Notes
-- Same **render-host policy** as `/video-harness`: heavy re-encode/re-
-  transcribe use only the user's `VH_*`-configured host; never hardcode an
-  address.
+- Same **render-host policy** as `/video-harness`: transcription auto-offloads
+  to the user's `VH_RENDER_HOST` when set (`VH_ASR_BACKEND=auto`), else runs
+  locally; **encoding is local for now**. Never hardcode an address — it lives
+  only in the user's env.
