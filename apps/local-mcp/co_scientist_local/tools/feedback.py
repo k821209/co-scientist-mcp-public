@@ -71,8 +71,10 @@ def update_feedback(
 ) -> dict:
     """Edit an agent-filed feedback item — fix a mistake or, importantly, remove
     sensitive info you included by accident (a secret, a private host/SSH
-    address). Only `source='agent'` items can be edited; status / priority /
-    dev_note are admin-managed and left untouched."""
+    address). Only `source='agent'` items can be edited; priority / dev_note are
+    admin-managed and left untouched. Editing an already-addressed/declined item
+    RE-OPENS it (status→open, addressed_at cleared) so the update re-enters
+    triage — a report edited with new info shouldn't stay hidden."""
     path = _feedback_path(state, feedback_id)
     doc = state.backend.get_doc(path)
     if doc is None:
@@ -95,6 +97,13 @@ def update_feedback(
     if not fields:
         raise ValueError("nothing to update (pass title, body, and/or type)")
     fields["updated_at"] = now_iso()
+    # A content update RE-OPENS an already-handled report so it re-enters the
+    # triage queue — new info on an addressed/declined item shouldn't stay
+    # hidden behind its old status.
+    if doc.get("status") in ("addressed", "declined"):
+        fields["status"] = "open"
+        fields["addressed_at"] = None
+        fields["reopened_at"] = fields["updated_at"]
     state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
 
