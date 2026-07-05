@@ -72,6 +72,15 @@ and translate each segment yourself. TTS/assembly/mux are `vh.steps.dub`.
 American English). Heavy TTS + ffmpeg run on the **render host** (user-provided
 env only — never hardcode an address).
 
+## Pronunciation of brands / acronyms
+
+Kokoro (espeak g2p) reads an uppercase acronym/brand letter-by-letter
+("SCIVO" → "S-C-I-V-O"). Fix by **splitting TTS text from caption text**: feed
+the TTS a **word-form spelling** ("Scivo" → /sˈivO/), but **remap the caption
+token back to the display form** ("SCIVO") on the `caption_words` you pass to
+`compose_summary` (`w.text.replace("Scivo", "SCIVO")`). So the voice says it
+right and the subtitle still shows the brand.
+
 ## Notes
 - Exact signatures live in the project's `vh` repo (`vh/steps/dub.py`); this
   skill encodes the workflow + co-scientist integration.
