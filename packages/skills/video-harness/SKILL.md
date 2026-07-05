@@ -73,6 +73,11 @@ T.build_with_interstitials(             # splice full-frame cards + re-time capt
 (`C.detect_chapters(words)` gives an LLM first pass, but you deciding the
 boundaries from the transcript beats it.)
 
+`build_with_interstitials` **auto-snaps each `Chapter.start` to the nearest
+speech pause** (widest word-gap within ±3.5 s, else nearest word end), so a
+card never cuts a word mid-utterance — approximate boundary times are fine; you
+don't need frame-perfect starts.
+
 ## 4 — Register in the Video tab
 
 ```
