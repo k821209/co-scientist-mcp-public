@@ -86,6 +86,32 @@ speech pause** (widest word-gap within ±3.5 s, else nearest word end), so a
 card never cuts a word mid-utterance — approximate boundary times are fine; you
 don't need frame-perfect starts.
 
+## 3b — A Short FROM a long recording: highlight vs summary
+
+When the source is long-form and the user wants a Short, pick a **mode**:
+
+- **highlight** — one self-contained window. Fastest: run the base pipeline on
+  the chosen span (`--preset shorts_boxed`) / `compose.compose_boxed`; keep the
+  in/out on sentence boundaries so it doesn't start or end mid-thought.
+- **summary** (recommended default for long-form) — stitch several key moments
+  into one montage. **You** read the full transcript and choose 3–5
+  `(start, end)` windows (LLM judgment — that's the point), targeting the user's
+  length (default ~60 s, ≤180 s), then:
+  ```python
+  import json
+  from vh.steps.compose import compose_summary
+  from vh.steps.transcribe import Word
+  words = [Word(**w) for w in json.load(open("out/<stem>/<stem>.words.json"))]
+  segments = [(12.0, 28.0), (95.0, 110.0), (300.0, 318.0)]   # you choose these
+  compose_summary("<src.mp4>", "out/<stem>/summary.mp4", segments, words,
+                  header="<title>", style="word", max_words=4)
+  ```
+  Each window **auto-snaps to sentence boundaries** (word ending in .?!… or a
+  ≥0.45 s pause, within ±5 s; else nearest word), windows sort chronologically,
+  then box to 9:16 with captions re-timed onto the concatenated timeline — one
+  ffmpeg pass, remote-offloaded + cached. Register the result with
+  `add_video(..., aspect_ratio="9:16")`.
+
 ## 4 — Register in the Video tab
 
 ```
