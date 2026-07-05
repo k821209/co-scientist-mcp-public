@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-05e"
+GUIDE_VERSION = "2026-07-05f"
 
 
 def render_guide() -> str:
@@ -163,6 +163,11 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
 - `/video-revision` — address open Video-tab timecode comments
   (`list_video_comments` → re-run only the stage each needs →
   `resolve_video_comment`). The video analogue of `/paper-revision`.
+- `/video-dub` — dub a video into another language (default English) with free
+  Kokoro TTS on the render host: Claude translates each segment →
+  `vh.steps.dub` (tts_segments → assemble_dub → mux_audio) + translated captions
+  burned via `compose_summary(caption_words=…)` → `add_video` "(EN)" variant.
+  Prereq: kokoro in the render host's VH_RENDER_PYTHON env.
 - `/video-publish` — publish a Video-tab item to YouTube (`youtube_connect`
   device-flow OAuth → `youtube_upload` from the local mp4 → URL saved on the
   video). Long-form or #Shorts. **Default privacy unlisted; public only on

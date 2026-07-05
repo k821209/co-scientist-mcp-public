@@ -110,7 +110,9 @@ When the source is long-form and the user wants a Short, pick a **mode**:
   ≥0.45 s pause, within ±5 s; else nearest word), windows sort chronologically,
   then box to 9:16 with captions re-timed onto the concatenated timeline — one
   ffmpeg pass, remote-offloaded + cached. Register the result with
-  `add_video(..., aspect_ratio="9:16")`.
+  `add_video(..., aspect_ratio="9:16")`. (Pass `caption_words=` to burn
+  alternate captions instead of the original transcript — e.g. a translated
+  track; see `/video-dub`. `build_with_interstitials` takes the same param.)
 
 ## 4 — Register in the Video tab
 
