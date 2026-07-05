@@ -32,6 +32,7 @@ from .tools import tables as _tables
 from .tools import todos as _todos
 from .tools import verification as _verification
 from .tools import videos as _videos
+from .tools import youtube as _youtube
 
 
 def build_mcp(state: State) -> FastMCP:
@@ -1497,6 +1498,45 @@ def build_mcp(state: State) -> FastMCP:
     def count_open_video_comments() -> int:
         """Count open, human-authored timecode comments across the project."""
         return _videos.count_open_video_comments(state)
+
+    # ─── YouTube publishing (MCP-local upload; opt-in per-user OAuth) ──────────
+    @mcp.tool()
+    def youtube_connect(
+        client_id: str | None = None, client_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """Connect this machine to a YouTube account (OAuth device flow — prints
+        a URL + code, then stores a refresh token locally). Needs a YouTube Data
+        API OAuth client via YOUTUBE_CLIENT_ID/SECRET env or the args."""
+        return _youtube.youtube_connect(state, client_id=client_id, client_secret=client_secret)
+
+    @mcp.tool()
+    def youtube_disconnect() -> dict[str, Any]:
+        """Forget this machine's stored YouTube credentials."""
+        return _youtube.youtube_disconnect(state)
+
+    @mcp.tool()
+    def youtube_upload(
+        video_id: str, title: str | None = None, description: str = "",
+        tags: list[str] | None = None, category_id: str = "22",
+        privacy: str = "unlisted", made_for_kids: bool = False,
+        publish_at: str | None = None, language: str | None = "ko",
+        local_path: str | None = None, force: bool = False,
+    ) -> dict[str, Any]:
+        """Upload a Video-tab item to YouTube (or update metadata if already
+        uploaded). Defaults to privacy='unlisted' — set 'public' ONLY after the
+        user explicitly confirms; publishing is outward-facing. 9:16 ≤3min gets
+        a #Shorts tag. Saves the YouTube id/URL on the Video doc (idempotent)."""
+        return _youtube.youtube_upload(
+            state, video_id, title=title, description=description, tags=tags,
+            category_id=category_id, privacy=privacy, made_for_kids=made_for_kids,
+            publish_at=publish_at, language=language, local_path=local_path, force=force,
+        )
+
+    @mcp.tool()
+    def youtube_status(video_id: str) -> dict[str, Any]:
+        """Return a Video item's stored YouTube publish state (id/URL/privacy)
+        and whether this machine is connected."""
+        return _youtube.youtube_status(state, video_id)
 
     @mcp.tool()
     def list_deck_comments(

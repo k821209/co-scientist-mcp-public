@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-05d"
+GUIDE_VERSION = "2026-07-05e"
 
 
 def render_guide() -> str:
@@ -163,6 +163,11 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
 - `/video-revision` — address open Video-tab timecode comments
   (`list_video_comments` → re-run only the stage each needs →
   `resolve_video_comment`). The video analogue of `/paper-revision`.
+- `/video-publish` — publish a Video-tab item to YouTube (`youtube_connect`
+  device-flow OAuth → `youtube_upload` from the local mp4 → URL saved on the
+  video). Long-form or #Shorts. **Default privacy unlisted; public only on
+  explicit user confirmation** (outward-facing). Idempotent (re-run updates
+  metadata). Needs the user's YOUTUBE_CLIENT_ID/SECRET.
 - `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
   full presentation pipeline: deck concept + slides + render
   (`render_deck`) + PPTX export (`export_deck_to_pptx`).
