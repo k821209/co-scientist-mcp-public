@@ -120,6 +120,14 @@ aarch64 (GB10) where faster-whisper has no CUDA wheel.
 - **Net:** one `VH_RENDER_HOST` → **transcription AND encoding remote**; unset
   → everything local. `vh.remote.check()` probes the host's reachability +
   faster-whisper/ffmpeg/CUDA.
+- **Cost caveat (large sources):** `remote.ffmpeg_run` re-stages its inputs
+  (the source mp4, `.ass`, cards) on **every** ffmpeg call, so a multi-stage
+  render (caption + compose + interstitials) **re-uploads the same large
+  source several times**. Correctness is fine; it's a network-cost hit. For a
+  big source with many stages, prefer **upload once, run all stages on the
+  host**: rsync the source (and the `vh` package) to the render box once and
+  run the `vh` steps there directly — no per-call re-staging. (A session
+  cache in `vh/remote.py` would remove this; harness-side, not this skill.)
 
 **Security:** the render host lives **only in the user's env**. Never
 hardcode or store any host / SSH / IP address in a skill, doc, code, log, or
