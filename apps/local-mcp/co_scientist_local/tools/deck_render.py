@@ -1837,6 +1837,43 @@ def preview_slide(
     }
 
 
+def _strip_slide_number_placeholders(prs) -> int:
+    """Remove the template's slide-number (`sldNum`) placeholders from the
+    master, layouts, and slides.
+
+    The default python-pptx template ships a `sldNum` placeholder on every
+    layout + the master. PowerPoint auto-renders it, which collides with the
+    "N / total" that `h.deck_chrome` draws — two page numbers overlapping at the
+    bottom-right (DECK-1). LibreOffice ignores the placeholder, so it never
+    showed in the PNG/PDF preview. Since the deck draws its own number, drop the
+    template one. Returns how many were removed."""
+    try:
+        from pptx.enum.shapes import PP_PLACEHOLDER
+    except ImportError:
+        return 0
+    parts = []
+    for master in prs.slide_masters:
+        parts.append(master)
+        parts.extend(master.slide_layouts)
+    parts.extend(prs.slides)
+    removed = 0
+    for part in parts:
+        try:
+            phs = list(part.placeholders)
+        except Exception:
+            continue
+        for ph in phs:
+            try:
+                is_num = ph.placeholder_format.type == PP_PLACEHOLDER.SLIDE_NUMBER
+            except Exception:
+                is_num = False
+            if is_num:
+                el = ph._element
+                el.getparent().remove(el)
+                removed += 1
+    return removed
+
+
 def export_deck_to_pptx(
     state: State,
     slug: str,
@@ -2045,6 +2082,10 @@ def export_deck_to_pptx(
                 _sld_id_lst.addprevious(_lst)
             else:
                 _pres_el.append(_lst)
+
+    # Drop the template's sldNum placeholders so PowerPoint doesn't render a
+    # second page number over deck_chrome's "N / total" (DECK-1).
+    _strip_slide_number_placeholders(prs)
 
     out = pathlib.Path(output_path).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
