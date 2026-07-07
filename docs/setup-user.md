@@ -50,8 +50,14 @@ git repo. Install it **only if you make videos**. Same editable pattern as the
 MCP, so a `git pull` + restart keeps it current:
 
 ```bash
-git clone <your-vh-repo-url> ~/.co-scientist/vh
+git clone https://github.com/k821209/video-harness.git ~/.co-scientist/vh
 pip install -e ~/.co-scientist/vh
+```
+
+Pip-only alternative (no source on disk):
+
+```bash
+pip install "git+https://github.com/k821209/video-harness.git"
 ```
 
 That puts `import vh` (and the `vh` CLI) on your path in **every** project — not
