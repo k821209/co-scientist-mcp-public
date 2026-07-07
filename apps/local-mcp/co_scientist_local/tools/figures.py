@@ -188,18 +188,19 @@ def get_figure(
     return {**doc, "local_path": str(out.resolve())}
 
 
-def list_figures(state: State, slug: str, *, supplementary: bool = False) -> list[dict]:
+def list_figures(state: State, slug: str, *, supplementary: bool | None = False) -> list[dict]:
     """List figures in ascending figure_number order.
 
-    If supplementary=True, only SFigures (number >= 101). If False, only main
-    figures (number < 101).
+    supplementary=False → main figures only (number < 101, default); True →
+    SFigures only (number >= 101); None → all (main + supplementary).
     """
     _ensure_paper(state, slug)
     pairs = state.backend.list_collection(state.project_path("papers", slug, "figures"))
     figs = [data for _, data in pairs]
-    figs = [f for f in figs
-            if (supplementary and f["figure_number"] >= SUPPLEMENTARY_NUMBER_OFFSET)
-            or (not supplementary and f["figure_number"] < SUPPLEMENTARY_NUMBER_OFFSET)]
+    if supplementary is not None:
+        figs = [f for f in figs
+                if (supplementary and f["figure_number"] >= SUPPLEMENTARY_NUMBER_OFFSET)
+                or (not supplementary and f["figure_number"] < SUPPLEMENTARY_NUMBER_OFFSET)]
     figs.sort(key=lambda f: f["figure_number"])
     return figs
 

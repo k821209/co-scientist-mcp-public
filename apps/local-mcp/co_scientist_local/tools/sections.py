@@ -10,6 +10,7 @@ from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso, word_count
 from .activity import log_event
+from .display_lint import inline_object_warnings
 from .papers import _paper_path, _regenerate_manuscript, _section_path
 
 
@@ -77,7 +78,14 @@ def update_section(
             "status": fields.get("status"),
         },
     )
-    return state.backend.get_doc(path)
+    result = state.backend.get_doc(path)
+    # Guardrail: flag inline markdown tables/images the author wrote straight
+    # into the body — they're not registered objects and can be lost on rewrite.
+    if body is not None:
+        warnings = inline_object_warnings(body)
+        if warnings:
+            result = {**result, "warnings": warnings}
+    return result
 
 
 def add_section(

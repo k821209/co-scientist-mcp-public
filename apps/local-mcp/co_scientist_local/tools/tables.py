@@ -89,13 +89,16 @@ def get_table(state: State, slug: str, table_number: int) -> dict:
     return doc
 
 
-def list_tables(state: State, slug: str, *, supplementary: bool = False) -> list[dict]:
+def list_tables(state: State, slug: str, *, supplementary: bool | None = False) -> list[dict]:
+    """List tables. supplementary=False → main only (default), True → STables
+    only, None → all (main + supplementary)."""
     _ensure_paper(state, slug)
     pairs = state.backend.list_collection(state.project_path("papers", slug, "tables"))
     tables = [data for _, data in pairs]
-    tables = [t for t in tables
-              if (supplementary and t["table_number"] >= SUPPLEMENTARY_NUMBER_OFFSET)
-              or (not supplementary and t["table_number"] < SUPPLEMENTARY_NUMBER_OFFSET)]
+    if supplementary is not None:
+        tables = [t for t in tables
+                  if (supplementary and t["table_number"] >= SUPPLEMENTARY_NUMBER_OFFSET)
+                  or (not supplementary and t["table_number"] < SUPPLEMENTARY_NUMBER_OFFSET)]
     tables.sort(key=lambda t: t["table_number"])
     return tables
 

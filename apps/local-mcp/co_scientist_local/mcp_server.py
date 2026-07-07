@@ -584,7 +584,9 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
-    def list_figures(slug: str, supplementary: bool = False) -> list[dict[str, Any]]:
+    def list_figures(slug: str, supplementary: bool | None = False) -> list[dict[str, Any]]:
+        """List figures. supplementary=False → main only (default), True → SFigures
+        only, None → all (main + supplementary)."""
         return _figures.list_figures(state, slug, supplementary=supplementary)
 
     @mcp.tool()
@@ -686,7 +688,9 @@ def build_mcp(state: State) -> FastMCP:
         return _tables.get_table(state, slug, table_number)
 
     @mcp.tool()
-    def list_tables(slug: str, supplementary: bool = False) -> list[dict[str, Any]]:
+    def list_tables(slug: str, supplementary: bool | None = False) -> list[dict[str, Any]]:
+        """List tables. supplementary=False → main only (default), True → STables
+        only, None → all (main + supplementary)."""
         return _tables.list_tables(state, slug, supplementary=supplementary)
 
     @mcp.tool()

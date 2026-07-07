@@ -29,6 +29,7 @@ from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
 from . import csl as _csl
+from . import display_lint as _display_lint
 from . import docx_export as _docx_export
 from . import figures as _figures
 from . import papers as _papers
@@ -429,6 +430,28 @@ def prepare_export(state: State, slug: str) -> dict:
         warnings.append(
             f"{triage['accepted_unresolved']} accepted comment(s) not yet resolved "
             f"— see review_triage"
+        )
+
+    # Display-object guardrails (feedback 4cd03d45c221): inline markdown tables/
+    # images that were never registered, and prose "Table N"/"Figure N"
+    # references with no matching registered object (dropped / mis-numbered).
+    warnings.extend(_display_lint.inline_object_warnings(manuscript))
+    orphans = _display_lint.orphan_references(
+        manuscript,
+        [t["table_number"] for t in tbls + supp_tbls],
+        [f["figure_number"] for f in figs + supp_figs],
+    )
+    if orphans["tables"]:
+        warnings.append(
+            "prose references Table " + ", ".join(orphans["tables"])
+            + " but no such registered table exists (register with add_table, "
+            "or fix the reference)"
+        )
+    if orphans["figures"]:
+        warnings.append(
+            "prose references Figure " + ", ".join(orphans["figures"])
+            + " but no such registered figure exists (register with add_figure, "
+            "or fix the reference)"
         )
 
     return {
