@@ -221,8 +221,10 @@ def update_review(
     if terminal and not reanchoring:
         old = existing.get("anchor_text")
         sec = existing.get("section")
-        is_figure = isinstance(sec, str) and sec.startswith("figure:")
-        if old and len(old) >= 2 and not is_figure and not _anchor_present(state, slug, old):
+        # figure:/table: comments anchor to an object, not manuscript text, so
+        # the "anchor still present" guard doesn't apply to them.
+        is_object = isinstance(sec, str) and (sec.startswith("figure:") or sec.startswith("table:"))
+        if old and len(old) >= 2 and not is_object and not _anchor_present(state, slug, old):
             raise ValueError(
                 f"comment {review_id!r}: its anchored text is no longer in the "
                 f"manuscript (you revised it), so the dashboard would lose the spot. "
@@ -333,8 +335,8 @@ def reconcile_review_anchors(state: State, slug: str, dry_run: bool = True) -> d
     for r in list_reviews(state, slug, status="open"):
         rid = r.get("id") or r.get("review_id")
         sec = r.get("section")
-        if sec and str(sec).startswith("figure:"):
-            continue
+        if sec and (str(sec).startswith("figure:") or str(sec).startswith("table:")):
+            continue  # object-anchored (figure/table), not manuscript text
         text = r.get("anchor_text")
         if not text or len(text) < 2:
             continue
