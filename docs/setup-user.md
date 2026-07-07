@@ -50,8 +50,8 @@ git repo. Install it **only if you make videos**. Same editable pattern as the
 MCP, so a `git pull` + restart keeps it current:
 
 ```bash
-git clone https://github.com/k821209/video-harness.git ~/.co-scientist/vh
-pip install -e ~/.co-scientist/vh
+git clone https://github.com/k821209/video-harness.git ~/video-harness
+pip install -e ~/video-harness
 ```
 
 Pip-only alternative (no source on disk):
@@ -63,7 +63,7 @@ pip install "git+https://github.com/k821209/video-harness.git"
 That puts `import vh` (and the `vh` CLI) on your path in **every** project — not
 just the vh source folder (which is why the skills otherwise fail with
 `ModuleNotFoundError: No module named 'vh'`). Update later with
-`git -C ~/.co-scientist/vh pull` and a full Claude Code restart.
+`git -C ~/video-harness pull` and a full Claude Code restart.
 
 Prerequisites:
 - **ffmpeg / ffprobe** — required (trim / reframe / encode).

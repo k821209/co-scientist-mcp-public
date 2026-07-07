@@ -20,11 +20,11 @@ subcommands). Chapters + burned title cards are a small **library** step on
 top (Claude-in-the-loop).
 
 > **Requires `vh` installed.** `vh` lives in its own git repo; install it once
-> (`git clone https://github.com/k821209/video-harness.git ~/.co-scientist/vh && pip install -e
-> ~/.co-scientist/vh`) so `import vh` works in every project. If you hit
+> (`git clone https://github.com/k821209/video-harness.git ~/video-harness && pip install -e
+> ~/video-harness`) so `import vh` works in every project. If you hit
 > `ModuleNotFoundError: No module named 'vh'`, it isn't installed — see the
 > "Video pipeline" section of setup-user.md. Update with `git -C
-> ~/.co-scientist/vh pull` + restart. Prereqs: ffmpeg, Noto Sans CJK KR (Korean
+> ~/video-harness pull` + restart. Prereqs: ffmpeg, Noto Sans CJK KR (Korean
 > captions), optional NVENC; remote offload via `VH_RENDER_*` (your host only).
 
 ## 1 — Pick the preset (this is the target + caption style)
