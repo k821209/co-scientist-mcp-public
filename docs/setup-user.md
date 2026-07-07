@@ -42,6 +42,35 @@ Manuscript export shells out to system binaries that pip can't install:
 
 You only need these if you export. The MCP gives a clear "install pandoc" error if it's missing.
 
+### Video pipeline (optional — for the `/video-*` skills)
+
+The video skills (`/video-harness`, `/video-dub`, `/video-publish`,
+`/video-revision`) drive a separate pipeline package, **`vh`**, kept in its own
+git repo. Install it **only if you make videos**. Same editable pattern as the
+MCP, so a `git pull` + restart keeps it current:
+
+```bash
+git clone <your-vh-repo-url> ~/.co-scientist/vh
+pip install -e ~/.co-scientist/vh
+```
+
+That puts `import vh` (and the `vh` CLI) on your path in **every** project — not
+just the vh source folder (which is why the skills otherwise fail with
+`ModuleNotFoundError: No module named 'vh'`). Update later with
+`git -C ~/.co-scientist/vh pull` and a full Claude Code restart.
+
+Prerequisites:
+- **ffmpeg / ffprobe** — required (trim / reframe / encode).
+- **Noto Sans CJK KR** — for burning Korean captions (`apt install fonts-noto-cjk`).
+- **h264_nvenc** — used automatically if your ffmpeg has NVIDIA encode; CPU fallback otherwise.
+
+Remote GPU offload (optional): set the `VH_RENDER_*` env vars
+(`VH_RENDER_HOST`, `VH_RENDER_PORT`, `VH_RENDER_PYTHON`, `VH_RENDER_TMP`, …) and
+transcription + encoding run on that host; leave them unset and everything runs
+locally. **The render host is entirely your own — no address is shipped as a
+default.** TTS dubbing additionally needs `kokoro` + `soundfile` installed in
+that host's `VH_RENDER_PYTHON` environment.
+
 ## 2. In the dashboard
 
 1. Sign in (Google or email).
