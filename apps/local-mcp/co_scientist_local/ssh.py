@@ -120,7 +120,7 @@ class FakeSSHExecutor:
 
     Usage:
         ssh = FakeSSHExecutor()
-        ssh.expect(alias="nabis2", command_substring="uptime",
+        ssh.expect(alias="gpu-box", command_substring="uptime",
                    stdout="...load average: 0.4, 0.5, 0.6")
         ssh.expect(stdout="default-response")
 

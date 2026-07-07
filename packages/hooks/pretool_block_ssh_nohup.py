@@ -11,7 +11,7 @@ startup and after add_server/update_server. The hook deliberately avoids
 network calls — they'd slow down every Bash invocation.
 
 Cache file format:
-    { "servers": [{"alias": "nabis2", "host": "10.0.0.1", "user": "alice"}, ...] }
+    { "servers": [{"alias": "gpu-box", "host": "192.0.2.10", "user": "alice"}, ...] }
 
 Override prefixes (allow legitimate non-job ssh work):
     `# setup`, `# manual`, or `# allow-untracked` anywhere in the command.
