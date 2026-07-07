@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .guide import GUIDE_VERSION, render_guide
 from .state import State
+from .util import now_iso
 from .tools import activity as _activity
 from .tools import analyses as _analyses
 from .tools import csl as _csl
@@ -66,6 +67,18 @@ def build_mcp(state: State) -> FastMCP:
         try:
             from .version_check import check_version
             info.update(check_version())
+        except Exception:
+            pass
+        # Record the build this project last ran, so dashboard/human-filed
+        # feedback can be correlated with a version too (agent feedback already
+        # stamps operating_version). Best-effort — never break whoami.
+        try:
+            from .version_check import installed_version
+            state.backend.update_doc(f"projects/{state.project_id}", {
+                "last_mcp_version": installed_version() or "unknown",
+                "last_guide_version": GUIDE_VERSION,
+                "last_active_at": now_iso(),
+            })
         except Exception:
             pass
         return info

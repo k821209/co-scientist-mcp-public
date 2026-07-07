@@ -6,13 +6,25 @@ project (collectionGroup). `project_id` is denormalized so the admin view
 knows where each item came from.
 
 Each item: { feedback_id, project_id, source, reporter, type, title, body,
-status, priority, dev_note, created_at, updated_at, addressed_at }.
+status, priority, dev_note, operating_version, created_at, updated_at,
+addressed_at }. `operating_version` (agent-filed) records the reporter's MCP +
+guide build so the triager can tell "already fixed in a newer build" from a
+real current gap.
 """
 from __future__ import annotations
 
 from ..backends.base import NotFound
+from ..guide import GUIDE_VERSION
 from ..state import State
 from ..util import new_id, now_iso
+from ..version_check import installed_version
+
+
+def _operating_version() -> str:
+    """Reporter's operating version — MCP package + guide — so the triager can
+    tell "already fixed in a newer build" from "real current gap"."""
+    pkg = installed_version() or "unknown"
+    return f"mcp={pkg} guide={GUIDE_VERSION}"
 
 _VALID_TYPES = {"bug", "error", "feature", "other"}
 
@@ -53,6 +65,7 @@ def report_feedback(
         "status": "open",
         "priority": "none",
         "dev_note": None,
+        "operating_version": _operating_version(),
         "created_at": now,
         "updated_at": now,
         "addressed_at": None,
