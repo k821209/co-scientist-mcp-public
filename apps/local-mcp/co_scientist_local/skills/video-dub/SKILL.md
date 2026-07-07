@@ -66,6 +66,36 @@ and translate each segment yourself. TTS/assembly/mux are `vh.steps.dub`.
    ```
    Then it can go through `/video-publish` to a target-language channel.
 
+## Big length gaps → speech-paced recut (not pad/atempo)
+
+The flow above fits each segment into the **original** slot (pad if short,
+atempo if long). That's fine when the languages are close (**within ±25 %**).
+But KO→EN is usually ~60 % of the original, so padding leaves long dead-air
+(chapter cards preceded by tens of seconds of silence) and slowing down sounds
+draggy. For a big gap, **re-cut the video to the speech instead** (v12,
+`vh/steps/recut.py`):
+
+1. TTS each sentence's VO at **natural speed** (`dub.tts_segments`, no slowdown).
+2. `activity, afps = recut.screen_activity(src)` — one pass; frame-to-frame
+   pixel-diff signal (static ≈ 0, scroll/click/open = high).
+3. Per segment: `end = recut.paced_cut(start, vo_dur, slot_end, activity, afps)`
+   → clip `[start, end]`; audio = `VO + silence(clip_len − vo_dur)`. So **each
+   sentence's clip length == its VO length** — the invariant that stops caption
+   drift. `paced_cut` always covers the voice, keeps up to `max_keep` s when the
+   trimmed region still has screen activity (so a scroll/click isn't chopped),
+   else cuts at voice end.
+4. Concat all clips from the single source via ffconcat (inpoint/outpoint) →
+   `recut_src.mp4` (dead-air + static tails gone, screen changes kept).
+5. `build_with_interstitials(recut_src, ..., bounds=<recut chapter cuts>,
+   caption_words=<EN words on the final timeline>)` — `bounds` (len =
+   chapters+1, src time) overrides the internal pause-snap for the recut
+   timeline.
+6. `dub.mux_audio` to swap in the EN track.
+
+Result: video length == audio length exactly → **zero subtitle drift**; speech
+at natural pace; scroll/DOCX/verification screens preserved (observed 30 min →
+~23 min). Keep the pad/atempo flow for small gaps.
+
 ## Config
 
 `VH_DUB_VOICE` (Kokoro voice, default `am_adam`) · `VH_DUB_LANG` (default `a` =
