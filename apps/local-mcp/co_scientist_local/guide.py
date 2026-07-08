@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-08a"
+GUIDE_VERSION = "2026-07-08b"
 
 
 def render_guide() -> str:
@@ -173,6 +173,12 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   video). Long-form or #Shorts. **Default privacy unlisted; public only on
   explicit user confirmation** (outward-facing). Idempotent (re-run updates
   metadata). Needs the user's YOUTUBE_CLIENT_ID/SECRET.
+- `/news-short` — synthesize a vertical news Short from text (no source video):
+  fact-check → script → `news.edge_tts_speak` (free Korean neural TTS; Kokoro
+  has no Korean) → `news.align_to_script(transcribe(...), script)` for accurate
+  captions → `news.montage` Ken-Burns image band → burned captions → `add_video`
+  (9:16) → `/video-publish`. Guardrails: source + publish date on screen, AI
+  images disclosed. Prereq: `pip install edge-tts`.
 - `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
   full presentation pipeline: deck concept + slides + render
   (`render_deck`) + PPTX export (`export_deck_to_pptx`).
