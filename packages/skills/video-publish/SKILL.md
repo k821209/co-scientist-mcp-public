@@ -16,19 +16,14 @@ channel," "make it a Short on YouTube." The video counterpart of
 - A Google OAuth client with the **YouTube Data API v3** enabled, supplied as
   `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` (env) — the user's own client.
 
-## ⚠️ Account-safety guardrail (read before connecting)
+## Note: brand-new Google accounts
 
-Publishing via a **freshly-made Google account** authorized through this
-device-flow app can get the **Google account suspended** as bot activity — this
-has actually happened. The sequence "new account → new channel same day →
-device-flow OAuth to an unverified app → approve from a server/datacenter IP →
-immediate API upload" is indistinguishable from a bot farm. Before connecting:
-
-- **Do not** grant `youtube.upload` to a brand-new account. Use a channel with
-  real usage history (a few manually-uploaded videos over some days).
-- **Approve the OAuth code from a normal home browser**, not a lab/datacenter IP.
-- Complete **phone verification** on the account.
-- Tell the user this risk explicitly and get their OK before `youtube_connect()`.
+Google's automated abuse detection is aggressive about **freshly-created**
+accounts and can flag or suspend one regardless of what you do — more so when a
+brand-new account is authorized from a datacenter/lab IP. This isn't caused by
+this skill, and if it happens the only recourse is Google's appeal flow. To
+avoid the false positive, prefer connecting an **established** account (some real
+usage, phone-verified) and approve the device-flow code from a normal browser.
 
 ## Flow
 
