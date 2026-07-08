@@ -1110,6 +1110,15 @@ def build_mcp(state: State) -> FastMCP:
         return _runs.get_analysis_run(state, slug, analysis, run_key)
 
     @mcp.tool()
+    def heartbeat_run(slug: str, analysis: str, run_key: str) -> dict[str, Any]:
+        """Mark a run as still alive so the dashboard keeps its live spinner
+        instead of aging it to "stale" (a run with no heartbeat past the TTL is
+        shown as stale, not running). Call periodically while a long job you're
+        watching is still going; no-op once the run is finished."""
+        _runs.bump_heartbeat(state, slug, analysis, run_key)
+        return {"ok": True}
+
+    @mcp.tool()
     def mark_run_finished(
         slug: str,
         analysis: str,

@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-08c"
+GUIDE_VERSION = "2026-07-08d"
 
 
 def render_guide() -> str:
@@ -363,7 +363,15 @@ sub/superscripts, Greek letters as variables, fractions, sums. Leave
 
 **Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.
 Use `mcp__co_scientist__submit_remote_job` so the run is tracked in
-`analysis_runs` and visible in the dashboard.
+`analysis_runs` and visible in the dashboard. Untracked raw-ssh jobs are the #1
+reason the Runs tab is both blind to real work and cluttered with stale rows.
+
+Run liveness is **heartbeat + TTL**: a run shows a live spinner only while
+`now - last_heartbeat < 4h`; past that the dashboard marks it **stale** (the
+launching session likely died) instead of spinning forever. `poll_remote_pids`
+refreshes the heartbeat for still-alive PIDs (and finishes dead ones); for a
+long job you're actively watching, call `heartbeat_run(slug, analysis, run_key)`
+periodically, and `mark_run_finished` when it's done.
 
 ## Image generation
 

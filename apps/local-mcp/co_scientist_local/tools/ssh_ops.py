@@ -27,6 +27,7 @@ from ..state import State
 from ..util import now_iso
 from .runs import (
     _new_run_key,
+    bump_heartbeat,
     get_analysis_run,
     list_analysis_runs,
     mark_run_finished,
@@ -518,6 +519,9 @@ def poll_remote_pids(state: State, alias: str) -> dict:
     finished = 0
     for r in rows:
         if r["pid"] in alive:
+            # Still running — a live PID is proof of life; refresh the heartbeat
+            # so the dashboard keeps it spinning rather than aging it to "stale".
+            bump_heartbeat(state, r["paper_slug"], r["analysis_name"], r["run_key"])
             continue
         mark_run_finished(
             state, r["paper_slug"], r["analysis_name"], r["run_key"],
