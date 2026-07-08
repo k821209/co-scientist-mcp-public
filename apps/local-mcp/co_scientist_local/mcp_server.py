@@ -18,6 +18,7 @@ from .tools import feedback as _feedback
 from .tools import imports as _imports
 from .tools import figures as _figures
 from .tools import figure_lint as _figure_lint
+from .tools import plan as _plan
 from .tools import images as _images
 from .tools import materials as _materials
 from .tools import memory as _memory
@@ -1108,6 +1109,16 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def get_analysis_run(slug: str, analysis: str, run_key: str) -> dict[str, Any]:
         return _runs.get_analysis_run(state, slug, analysis, run_key)
+
+    @mcp.tool()
+    def get_plan() -> dict[str, Any]:
+        """Return the project owner's subscription plan + limits (authoritative,
+        from the user's billing state): plan_id, tier (free/pro/max),
+        subscription_status, is_trial, plan_expires_at, can_generate_images, and
+        limits (image_quota_month, upload_limit_mb, project_cap, storage_gb).
+        Use to know whether a paid-only feature (image generation, 500MB+
+        uploads) is available before attempting it."""
+        return _plan.get_plan(state)
 
     @mcp.tool()
     def heartbeat_run(slug: str, analysis: str, run_key: str) -> dict[str, Any]:

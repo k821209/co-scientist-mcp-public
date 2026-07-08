@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-08d"
+GUIDE_VERSION = "2026-07-08e"
 
 
 def render_guide() -> str:
@@ -383,6 +383,11 @@ Function (Cloud Run gen2) backed by OpenAI gpt-image-2.
   - `plan_id="pro"`    → up to 200 images / month
   - `plan_id="max"`    → up to 2000 / month
     (`enterprise` is a legacy alias for `max`, same 2000 quota)
+
+Call `mcp__co_scientist__get_plan()` to check the owner's tier + limits
+(authoritative, from their billing state) BEFORE attempting a paid-only feature
+— it returns `can_generate_images`, `upload_limit_mb`, `project_cap`, etc., so
+you can tell the user "image generation needs Pro" instead of hitting a 403.
 
 Free-tier users who want image generation do it OUTSIDE this MCP —
 wire up another image-gen MCP / built-in Claude Code tool with their
