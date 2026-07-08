@@ -1610,6 +1610,15 @@ def build_mcp(state: State) -> FastMCP:
         return _youtube.youtube_status(state, video_id)
 
     @mcp.tool()
+    def youtube_check() -> dict[str, Any]:
+        """Pre-flight the YouTube connection (no video_id): refresh the token and
+        call channels.list?mine=true. Catches a revoked token (invalid_grant) or
+        a channel-less account BEFORE a render/upload. Returns {connected,
+        has_channel, channel_title, channel_id, uploads_ok} or a clear error.
+        Run this before /video-publish."""
+        return _youtube.youtube_check(state)
+
+    @mcp.tool()
     def list_deck_comments(
         slug: str, deck_id: str, status: str | None = "open",
     ) -> list[dict[str, Any]]:

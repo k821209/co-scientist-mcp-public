@@ -60,9 +60,23 @@ ones — use it as a fallback for short clips only.)
 
 ## Guardrails (non-negotiable for news)
 - Fact-check every claim; show **source + publish date** on screen.
-- **Disclose AI images** on screen, and mark the upload as synthetic/altered
-  content on YouTube.
+- **Disclose AI images** on screen. YouTube's "altered/synthetic content"
+  disclosure is set in **Studio** (the Data API doesn't reliably set it), so
+  tell the user to toggle it there after upload.
 - Real photos: stay within citation/fair-use scope and attribute.
+
+### ⚠️ Platform-policy guardrail (account-safety)
+"AI disclosure" alone is NOT enough. YouTube prohibits **mass-publishing of
+similar/AI-generated videos** and can terminate a channel — and Google can
+**suspend the whole account** for bot-like patterns. This skill makes it easy to
+mass-produce (template + AI images + TTS), so:
+- Keep **per-video originality**: your own written script, primary-source
+  fact-check, on-screen attribution. Don't churn near-identical clips.
+- Publishing goes through `/video-publish` — **follow its account-safety
+  guardrail** (no brand-new account, home-IP OAuth approval, phone-verified,
+  channel with real history). A new account + same-day channel + device-flow
+  OAuth + immediate API upload has gotten an account suspended.
+- Default privacy **unlisted**; let the user review before going public.
 
 Exact signatures live in the `vh` repo (`vh/steps/news.py`); this skill encodes
 the workflow + provenance rules.

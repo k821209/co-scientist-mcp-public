@@ -137,7 +137,18 @@ def _access_token() -> str:
     })
     at = resp.get("access_token")
     if not at:
-        raise RuntimeError(f"token refresh failed: {resp.get('error_description') or resp}")
+        err = resp.get("error") or "unknown_error"
+        desc = resp.get("error_description") or ""
+        # Google returns a useless "Bad Request" in error_description; the real
+        # signal is the `error` field. Surface BOTH, and explain invalid_grant.
+        if err == "invalid_grant":
+            raise RuntimeError(
+                "token refresh failed: invalid_grant — the refresh token was "
+                "revoked or expired. Re-authorize with youtube_connect(); if that "
+                "also fails, check the Google account/channel status (a suspended "
+                "or deleted Google account revokes all grants)."
+            )
+        raise RuntimeError(f"token refresh failed: {err}" + (f" ({desc})" if desc else ""))
     return at
 
 
@@ -350,6 +361,17 @@ def youtube_upload(
     at = _access_token()
 
     existing = video.get("youtube_video_id")
+    if not existing:
+        # Pre-flight before sending bytes: a revoked token or a channel-less
+        # account should fail HERE, not after uploading (or re-encoding) an mp4.
+        chans = _channels_mine(at)
+        if not chans:
+            raise RuntimeError(
+                "the connected Google account has no YouTube channel — create a "
+                "channel (or reconnect with the channel-owning account) first. "
+                "Run youtube_check() to inspect the connection."
+            )
+
     if existing and not force:
         _update_metadata(at, existing, meta)
         yt_id, action = existing, "updated"
@@ -385,4 +407,47 @@ def youtube_status(state: State, video_id: str) -> dict:
         "youtube_url": v.get("youtube_url"),
         "youtube_privacy": v.get("youtube_privacy"),
         "connected": bool(_load_token()),
+    }
+
+
+def _channels_mine(access_token: str) -> list[dict]:
+    """channels.list?mine=true — the target channel(s) for this token."""
+    req = urllib.request.Request(
+        "https://www.googleapis.com/youtube/v3/channels"
+        "?part=snippet,status,contentDetails&mine=true",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode()).get("items", []) or []
+
+
+def youtube_check(state: State) -> dict:
+    """Pre-flight the YouTube connection WITHOUT uploading (no video_id needed).
+    Refreshes the token and calls channels.list?mine=true so you catch a revoked
+    token or a channel-less account BEFORE spending time on a render/upload.
+    Returns {connected, has_channel, channel_title, channel_id, uploads_ok, …}
+    or a clear error."""
+    if not _load_token():
+        return {"connected": False, "error": "not connected — run youtube_connect()"}
+    try:
+        at = _access_token()
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+    try:
+        items = _channels_mine(at)
+    except Exception as e:
+        return {"connected": True, "has_channel": None, "error": f"channels.list failed: {e}"}
+    if not items:
+        return {
+            "connected": True, "has_channel": False,
+            "error": "the connected Google account has NO YouTube channel — "
+                     "create a channel (or reconnect with the channel-owning "
+                     "account) before uploading.",
+        }
+    ch = items[0]
+    return {
+        "connected": True, "has_channel": True,
+        "channel_id": ch.get("id"),
+        "channel_title": (ch.get("snippet") or {}).get("title"),
+        "uploads_ok": (ch.get("status") or {}).get("longUploadsStatus"),
     }
