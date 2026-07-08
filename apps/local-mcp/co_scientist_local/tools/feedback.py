@@ -85,13 +85,17 @@ def update_feedback(
     title: str | None = None,
     body: str | None = None,
     type: str | None = None,
+    reopen: bool = True,
 ) -> dict:
     """Edit an agent-filed feedback item — fix a mistake or, importantly, remove
     sensitive info you included by accident (a secret, a private host/SSH
     address). Only `source='agent'` items can be edited; priority / dev_note are
-    admin-managed and left untouched. Editing an already-addressed/declined item
-    RE-OPENS it (status→open, addressed_at cleared) so the update re-enters
-    triage — a report edited with new info shouldn't stay hidden."""
+    admin-managed and left untouched.
+
+    By default, editing an already-addressed/declined item RE-OPENS it
+    (status→open, addressed_at cleared) so a report edited with NEW info
+    re-enters triage. Pass `reopen=False` when you're only appending closure info
+    (e.g. "verified fixed") to a handled item and want to leave its status."""
     path = _feedback_path(state, feedback_id)
     doc = state.backend.get_doc(path)
     if doc is None:
@@ -116,8 +120,9 @@ def update_feedback(
     fields["updated_at"] = now_iso()
     # A content update RE-OPENS an already-handled report so it re-enters the
     # triage queue — new info on an addressed/declined item shouldn't stay
-    # hidden behind its old status.
-    if doc.get("status") in ("addressed", "declined"):
+    # hidden behind its old status. `reopen=False` skips this (append closure
+    # info without resurrecting the item).
+    if reopen and doc.get("status") in ("addressed", "declined"):
         fields["status"] = "open"
         fields["addressed_at"] = None
         fields["reopened_at"] = fields["updated_at"]

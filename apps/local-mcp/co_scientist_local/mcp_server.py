@@ -1820,12 +1820,16 @@ def build_mcp(state: State) -> FastMCP:
     def update_feedback(
         feedback_id: str, title: str | None = None,
         body: str | None = None, type: str | None = None,
+        reopen: bool = True,
     ) -> dict[str, Any]:
         """Edit an agent-filed feedback item — fix a mistake, or REMOVE
         sensitive info you included by accident (a secret, a private host/SSH
-        address). Only source='agent' items; status/priority/dev_note untouched."""
+        address). Only source='agent' items; priority/dev_note untouched.
+        NOTE: by default, editing an addressed/declined item RE-OPENS it
+        (status→open) so the update re-enters triage. Pass reopen=False to append
+        info (e.g. 'verified fixed') WITHOUT changing its status."""
         return _feedback.update_feedback(
-            state, feedback_id, title=title, body=body, type=type,
+            state, feedback_id, title=title, body=body, type=type, reopen=reopen,
         )
 
     @mcp.tool()
