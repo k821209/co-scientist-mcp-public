@@ -40,7 +40,7 @@ def _project_image_style(state: State) -> str:
 
 def generate_image(
     state: State,
-    slug: str,
+    slug: str | None = None,
     *,
     prompt: str,
     figure_number: int | None = None,
@@ -61,7 +61,9 @@ def generate_image(
         - figure mode: the figure doc + {prompt, model, style_applied}
         - asset mode: {asset_id, blob_path, size_bytes, prompt, model, style_applied}
     """
-    if state.backend.get_doc(_paper_path(state, slug)) is None:
+    if figure_number is not None and slug is None:
+        raise ValueError("figure_number requires a paper slug (figures belong to a paper)")
+    if slug is not None and state.backend.get_doc(_paper_path(state, slug)) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
     if not prompt or not prompt.strip():
         raise ValueError("prompt is required")
@@ -105,11 +107,12 @@ def generate_image(
 
     asset_id = new_id()
     name = asset_filename or f"img_{asset_id}.png"
-    blob_path = state.project_path("papers", slug, "assets", name)
+    # Paper-scoped when a slug is given; otherwise a PROJECT-scoped asset
+    # (projects/{pid}/assets/…) — so video/other projects don't need a dummy paper.
+    seg = ("papers", slug, "assets", name) if slug else ("assets", name)
+    blob_path = state.project_path(*seg)
     state.backend.put_blob(blob_path, png)
-    # Record an asset doc so the dashboard can list them
-    doc_path = state.project_path("papers", slug, "assets", name)
-    state.backend.set_doc(doc_path, {
+    state.backend.set_doc(state.project_path(*seg), {
         "asset_id": asset_id,
         "filename": name,
         "blob_path": blob_path,
@@ -126,7 +129,8 @@ def generate_image(
         "size_bytes": len(png), "prompt": prompt, "model": model,
         "style_applied": style or None,
         "aspect_ratio": aspect_ratio, "quality": quality,
-        "dashboard_url": state.dashboard_url("papers", slug),
+        "scope": "paper" if slug else "project",
+        "dashboard_url": state.dashboard_url("papers", slug) if slug else state.dashboard_url(),
     }
 
 

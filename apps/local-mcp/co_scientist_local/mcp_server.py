@@ -20,6 +20,7 @@ from .tools import figures as _figures
 from .tools import figure_lint as _figure_lint
 from .tools import plan as _plan
 from .tools import images as _images
+from .tools import assets as _assets
 from .tools import materials as _materials
 from .tools import memory as _memory
 from .tools import papers as _papers
@@ -1309,8 +1310,8 @@ def build_mcp(state: State) -> FastMCP:
     # ─── image generation ────────────────────────────────────────────────────
     @mcp.tool()
     def generate_image(
-        slug: str,
         prompt: str,
+        slug: str | None = None,
         figure_number: int | None = None,
         asset_filename: str | None = None,
         aspect_ratio: str = "1:1",
@@ -1334,10 +1335,12 @@ def build_mcp(state: State) -> FastMCP:
         costs more. The chosen aspect_ratio and quality are stored on the figure
         so a dashboard re-render reuses the same shape.
 
-        If `figure_number` is set, registers the result as a figure for the paper.
-        Pass `overwrite=True` to replace an existing figure at that number
-        instead of erroring. Otherwise stores as an asset under
-        papers/{slug}/assets/.
+        If `figure_number` is set, registers the result as a figure for the paper
+        (requires `slug`). Pass `overwrite=True` to replace an existing figure at
+        that number instead of erroring. Otherwise stores as an asset:
+        `papers/{slug}/assets/` when `slug` is given, else a PROJECT asset at
+        `projects/{pid}/assets/` — so a video/other project needs no dummy paper.
+        Download an asset back to disk with `get_asset`.
 
         The project's image style (set in the dashboard under Memory → Image
         style) is prepended to the prompt automatically. Pass
@@ -1351,13 +1354,33 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
-    def list_assets(slug: str) -> list[dict[str, Any]]:
-        """List generated image assets (non-figure) for a paper."""
-        return _images.list_assets(state, slug)
+    def list_assets(slug: str | None = None) -> list[dict[str, Any]]:
+        """List generated image assets. With `slug` → a paper's assets; without →
+        the project-scoped assets (projects/{pid}/assets/)."""
+        return _images.list_assets(state, slug) if slug else _assets.list_assets(state)
 
     @mcp.tool()
-    def delete_asset(slug: str, asset_id_or_filename: str) -> dict[str, Any]:
-        return {"deleted": _images.delete_asset(state, slug, asset_id_or_filename)}
+    def get_asset(asset_id_or_filename: str, dest_path: str,
+                  slug: str | None = None) -> dict[str, Any]:
+        """Download an asset's bytes to `dest_path` (so ken_burns/montage etc.
+        can consume it). Project-scoped by default; pass `slug` for a paper's
+        assets. Returns {dest_path, filename, size_bytes}."""
+        return _assets.get_asset(state, asset_id_or_filename, dest_path, slug=slug)
+
+    @mcp.tool()
+    def add_asset(local_path: str, filename: str | None = None,
+                  note: str | None = None) -> dict[str, Any]:
+        """Register a local file as a PROJECT asset (uploads the bytes to
+        projects/{pid}/assets/). Use for stills you fetched yourself (e.g. a
+        curl'd photo) so they're tracked + downloadable via get_asset."""
+        return _assets.add_asset(state, local_path, filename=filename, note=note)
+
+    @mcp.tool()
+    def delete_asset(asset_id_or_filename: str, slug: str | None = None) -> dict[str, Any]:
+        """Delete an asset. With `slug` → a paper's asset; without → a project asset."""
+        if slug:
+            return {"deleted": _images.delete_asset(state, slug, asset_id_or_filename)}
+        return {"deleted": _assets.delete_asset(state, asset_id_or_filename)}
 
     # ─── decks (presentations built from a paper) ────────────────────────────
     @mcp.tool()

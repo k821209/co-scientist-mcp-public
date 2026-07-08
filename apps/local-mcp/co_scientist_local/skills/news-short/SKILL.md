@@ -51,8 +51,12 @@ ones — use it as a fallback for short clips only.)
    with `crop` (only ~68% of the width survives) — so **put "centered
    composition, subject centered, headroom" in the prompt**, or the subject gets
    cropped off.
-   - real photos — `curl` from the article (respect the source / fair-use excerpt).
-   - AI — `generate_image` (gpt-image, 16:9, `apply_style=False`).
+   - real photos — `curl` from the article (respect the source / fair-use
+     excerpt); `add_asset(local_path)` to track them.
+   - AI — `generate_image(prompt=…, aspect_ratio="16:9", apply_style=False)`
+     **with no `slug`** → a project-scoped asset (no dummy paper needed).
+   Then **`get_asset(id_or_filename, dest_path)`** to pull each image to a local
+   file for the montage (both AI and `add_asset`'d photos).
 5. `news.montage([(img, dur), …], "band.mp4", workdir)` → top band (1080×1056).
    Keep each still **≤ ~3 s** (avoid static), reuse a still only **≥ 5 cuts apart**.
 6. **Compose the 9:16 frame yourself — do NOT use `compose_summary`** (it

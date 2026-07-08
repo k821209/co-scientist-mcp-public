@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-09a"
+GUIDE_VERSION = "2026-07-09b"
 
 
 def render_guide() -> str:
@@ -388,6 +388,13 @@ Call `mcp__co_scientist__get_plan()` to check the owner's tier + limits
 (authoritative, from their billing state) BEFORE attempting a paid-only feature
 — it returns `can_generate_images`, `upload_limit_mb`, `project_cap`, etc., so
 you can tell the user "image generation needs Pro" instead of hitting a 403.
+
+`generate_image` without a `slug` stores a **project-scoped asset**
+(`projects/{{pid}}/assets/`) — use it for a video/other project that has no paper
+(no dummy paper needed). Manage them with `list_assets()` (no slug), register a
+local file with `add_asset(local_path)`, and pull one back to disk with
+`get_asset(id_or_filename, dest_path)` so path-taking tools (ken_burns/montage)
+can consume it.
 
 Free-tier users who want image generation do it OUTSIDE this MCP —
 wire up another image-gen MCP / built-in Claude Code tool with their
