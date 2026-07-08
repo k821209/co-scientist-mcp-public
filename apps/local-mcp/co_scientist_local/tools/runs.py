@@ -103,8 +103,10 @@ def record_analysis_run(
         "notes": notes,
         # Liveness: the dashboard shows a live spinner only while a run is fresh
         # (now - last_heartbeat < TTL); a run whose session died goes "stale"
-        # instead of spinning forever. Bumped by poll_remote_pids / heartbeat_run.
+        # instead of spinning forever. Bumped by poll_remote_pids / heartbeat_run;
+        # the reap_stale_runs scheduled CF flips `stale` on server-side after TTL.
         "last_heartbeat": now_iso(),
+        "stale": False,
         "created_at": now_iso(),
     }
     state.backend.set_doc(_run_path(state, slug, analysis, run_key), doc)
@@ -119,7 +121,9 @@ def bump_heartbeat(state: State, slug: str, analysis: str, run_key: str) -> None
         doc = state.backend.get_doc(path)
         if doc is None or doc.get("finished_at") is not None:
             return
-        state.backend.update_doc(path, {"last_heartbeat": now_iso()})
+        # Proof of life also un-stales a run the reaper had flipped.
+        state.backend.update_doc(path, {"last_heartbeat": now_iso(),
+                                        "stale": False, "stale_at": None})
     except Exception:
         pass
 
