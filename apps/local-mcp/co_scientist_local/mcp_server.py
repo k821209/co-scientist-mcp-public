@@ -17,6 +17,7 @@ from .tools import exports as _exports
 from .tools import feedback as _feedback
 from .tools import imports as _imports
 from .tools import figures as _figures
+from .tools import figure_lint as _figure_lint
 from .tools import images as _images
 from .tools import materials as _materials
 from .tools import memory as _memory
@@ -601,6 +602,28 @@ def build_mcp(state: State) -> FastMCP:
         """List figures. supplementary=False → main only (default), True → SFigures
         only, None → all (main + supplementary)."""
         return _figures.list_figures(state, slug, supplementary=supplementary)
+
+    @mcp.tool()
+    def lint_figure_layout(
+        nodes: list[dict[str, Any]],
+        canvas_w: float,
+        canvas_h: float,
+        edges: list[dict[str, Any]] | None = None,
+        min_gap: float = 0.0,
+    ) -> dict[str, Any]:
+        """Deterministically lint a CODE-figure layout spec BEFORE rendering —
+        turns the slow render-and-eyeball loop into a fast geometric one.
+
+        nodes: [{id, x, y, w, h}] where (x,y) is the box bottom-left corner,
+        y-up, on a [0,canvas_w] x [0,canvas_h] canvas. edges: [{src, dst,
+        src_side?, dst_side?}] with sides center|top|bottom|left|right.
+        Returns {ok, issues, counts} covering box_overlap (respecting min_gap),
+        out_of_canvas, and arrow_crosses_box (an edge passing through an
+        unrelated node — the check a visual review misses). Label overflow is
+        NOT checked here — verify that at render time with matplotlib's actual
+        text extent (see /scientific-image)."""
+        return _figure_lint.lint_layout(
+            nodes, edges, canvas_w=canvas_w, canvas_h=canvas_h, min_gap=min_gap)
 
     @mcp.tool()
     def delete_figure(slug: str, figure_number: int) -> dict[str, Any]:

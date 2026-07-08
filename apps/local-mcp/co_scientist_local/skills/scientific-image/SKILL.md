@@ -43,6 +43,31 @@ skill is provider-agnostic.
   manuscript**. Otherwise it sits as an asset (use `figure_number`
   unset; the tool stores it under `papers/{slug}/assets/`).
 
+## Code-based figures (matplotlib / graphviz): spec + lint BEFORE render
+
+When you draw a schematic in **code** (hand-placed boxes/arrows) instead of via
+the painter, do NOT loop by rendering the PNG and eyeballing it — that misses
+overlaps, off-canvas elements, and arrows crossing unrelated boxes. Instead:
+
+1. **Represent the layout as a spec** — `nodes: [{id, x, y, w, h}]` ((x,y) =
+   box bottom-left, y-up) and `edges: [{src, dst, src_side?, dst_side?}]` on a
+   `canvas_w × canvas_h`.
+2. **Lint deterministically before rendering:**
+   ```
+   mcp__co_scientist__lint_figure_layout(nodes, canvas_w, canvas_h,
+                                         edges=edges, min_gap=<pad>)
+   ```
+   → `{ok, issues, counts}` for **box_overlap**, **out_of_canvas**, and
+   **arrow_crosses_box** (an edge passing through an unrelated node — the defect
+   a visual review reliably misses). Iterate on the spec until `ok`, THEN render.
+3. **Label overflow — check at render time, not with a heuristic.** Do NOT
+   estimate fit from `len(text)*fontsize`; it mis-fires. Use matplotlib's real
+   extent: `t.get_window_extent(fig.canvas.get_renderer())`, transform to data
+   units, and compare against the box rect. Shrink font / widen box / wrap if it
+   doesn't fit.
+
+This turns the unreliable render-and-eyeball loop into a deterministic one.
+
 ## References (load these — don't reinvent)
 
 This skill ships with reusable scaffolds. **Read the ones that match
