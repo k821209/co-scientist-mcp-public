@@ -74,10 +74,13 @@ def build_mcp(state: State) -> FastMCP:
         # feedback can be correlated with a version too (agent feedback already
         # stamps operating_version). Best-effort — never break whoami.
         try:
-            from .version_check import installed_version
+            from .version_check import git_sha, installed_version
+            sha = git_sha()
+            info["git_sha"] = sha
             state.backend.update_doc(f"projects/{state.project_id}", {
                 "last_mcp_version": installed_version() or "unknown",
                 "last_guide_version": GUIDE_VERSION,
+                "last_git_sha": sha,
                 "last_active_at": now_iso(),
             })
         except Exception:

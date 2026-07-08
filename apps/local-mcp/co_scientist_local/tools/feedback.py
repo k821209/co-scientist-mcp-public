@@ -17,14 +17,18 @@ from ..backends.base import NotFound
 from ..guide import GUIDE_VERSION
 from ..state import State
 from ..util import new_id, now_iso
-from ..version_check import installed_version
+from ..version_check import git_sha, installed_version
 
 
 def _operating_version() -> str:
-    """Reporter's operating version — MCP package + guide — so the triager can
-    tell "already fixed in a newer build" from "real current gap"."""
+    """Reporter's operating version — MCP package (+ git sha) + guide — so the
+    triager can tell "already fixed in a newer build" from "real current gap".
+    The sha is what actually pins the build (pyproject version is 0.0.1 for
+    source installs and collides for same-day publishes)."""
     pkg = installed_version() or "unknown"
-    return f"mcp={pkg} guide={GUIDE_VERSION}"
+    sha = git_sha()
+    mcp = f"{pkg}+g{sha}" if sha else pkg
+    return f"mcp={mcp} guide={GUIDE_VERSION}"
 
 _VALID_TYPES = {"bug", "error", "feature", "other"}
 

@@ -42,6 +42,34 @@ def installed_version() -> str | None:
         return None
 
 
+_GIT_SHA_CACHE: str | None | bool = False   # False = not computed yet
+
+
+def git_sha() -> str | None:
+    """Short git sha of the checkout this package is installed from (editable
+    installs), else None. The pyproject version is uninformative for source
+    installs (always 0.0.1) and collides for same-day publishes — the sha
+    pins the exact build. Cached; best-effort."""
+    global _GIT_SHA_CACHE
+    if _GIT_SHA_CACHE is not False:
+        return _GIT_SHA_CACHE  # type: ignore[return-value]
+    sha: str | None = None
+    try:
+        import pathlib
+        import subprocess
+        pkg_dir = pathlib.Path(__file__).resolve().parent
+        out = subprocess.run(
+            ["git", "-C", str(pkg_dir), "rev-parse", "--short=8", "HEAD"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if out.returncode == 0:
+            sha = out.stdout.strip() or None
+    except Exception:
+        sha = None
+    _GIT_SHA_CACHE = sha
+    return sha
+
+
 def fetch_latest_version(timeout: float = 2.0) -> str | None:
     try:
         req = urllib.request.Request(
