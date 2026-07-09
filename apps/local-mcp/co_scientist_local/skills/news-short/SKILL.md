@@ -44,40 +44,40 @@ ones — use it as a fallback for short clips only.)
    edge-tts mangles them; say them in words or omit, and show the exact form on
    screen only. (`align_to_script` pulls caption text from the script, so the
    on-screen wording stays exact.)
-2. `news.edge_tts_speak(script, "vo.wav", voice="ko-KR-SunHiNeural")` → VO.
-3. `words = news.align_to_script(transcribe("vo.wav", language="ko"), script)`.
-4. **Images** for the top band. The band is ~square (**1080×1056**) but
-   `generate_image` returns **16:9** (1536×1024), and `news.montage` center-crops
-   with `crop` (only ~68% of the width survives) — so **put "centered
-   composition, subject centered, headroom" in the prompt**, or the subject gets
-   cropped off.
+2. **Images** for the top band. The band is ~square (**1080×1056**) but
+   `generate_image` returns **16:9** (1536×1024), center-cropped (~68% of the
+   width survives) — so **put "centered composition, subject centered, headroom"
+   in the prompt**, or the subject gets cropped off.
    - real photos — `curl` from the article (respect the source / fair-use
      excerpt); `add_asset(local_path)` to track them.
    - AI — `generate_image(prompt=…, aspect_ratio="16:9", apply_style=False)`
      **with no `slug`** → a project-scoped asset (no dummy paper needed).
    Then **`get_asset(id_or_filename, dest_path)`** to pull each image to a local
-   file for the montage (both AI and `add_asset`'d photos).
-5. `news.montage([(img, dur), …], "band.mp4", workdir)` → top band (1080×1056).
-   Keep each still **≤ ~3 s** (avoid static), reuse a still only **≥ 5 cuts apart**.
-6. **Compose the 9:16 frame yourself — do NOT use `compose_summary`** (it
-   `asplit`s an audio track the montage doesn't have, and snaps `segments` to
-   sentence boundaries ±5 s, which desyncs against `caption_words`). Instead:
-   `ffmpeg` pad the 1080×1056 band onto a 1080×1920 canvas (band on top), then
-   **burn one ASS** with `subtitles=`.
-   - Captions + title: `caption.build_boxed_ass(words, ..., video_title=<headline>,
-     title_end=<when to retire the header, e.g. before an end card>)`. It draws
-     the **title header + word-pop captions only** (captions now linger through
-     pauses by default — `hold_through_pauses`).
-   - **eyebrow / source·publish-date line / accent bar / provenance ribbon have
-     NO helper** — hand-author the extra ASS styles + Dialogue and concatenate
-     them into the same ASS. libass gotcha: a `\p1` **drawing** anchors its bbox
-     to `\pos` differently than text — use `\an7` with non-negative coords and
-     compute the top-left yourself (don't rely on `\an5` centering for drawings).
-7. **Provenance labels (required):** real photo → "사진·출처 <source>" badge
-   (top-right); AI image → "AI 생성 이미지" ribbon (top-right).
-8. `dub.mux_audio(band_9x16, vo.wav, out)` → `add_video(..., aspect_ratio="9:16")`
-   → `/video-publish` (news defaults to **unlisted**). `mux_audio` now keeps the
-   full video length (a silent end card past the VO is preserved).
+   file.
+3. **Assemble in one call** — `news.build_short` does VO → captions → the
+   sentence→image band → 9:16 compose (headline, eyebrow, source·date line, AI
+   ribbon, optional disclosure, end card, burned captions) → mux:
+   ```python
+   from vh.steps import news
+   news.build_short(
+       script, shots, out="out/short.mp4",
+       headline="…\\N…", eyebrow="과학 뉴스",
+       source="출처: … (2026.03.11)",
+       disclosure="…",          # optional conflict-of-interest footnote
+       card="AIVO", card_sub="…")
+   ```
+   - `shots = [(anchor, image_path), …]` — one per sentence/clause; `anchor` is
+     a phrase near the sentence start. Matching is **whitespace-insensitive and
+     spans tokens**, so a Korean multi-word anchor (e.g. `"이 속도를"`) still
+     matches even when align splits it; a miss raises with the nearby tokens.
+     Same token in two sentences → list it twice, matched in order.
+   - Keep enough distinct stills: an image reused across `> max_repeat` (2)
+     sentences raises. Long sentences auto-split into ≤3.6 s cuts.
+   - This replaces the old ~180-line hand-assembly. Do **not** use
+     `compose_summary` here (it asplits a non-existent audio track and snaps
+     segments, desyncing captions).
+4. **Register + publish:** `add_video(..., aspect_ratio="9:16")` →
+   `/video-publish` (news defaults to **unlisted**).
 
 **Briefing compilation:** intro / divider / outro cards + concat the segments.
 
