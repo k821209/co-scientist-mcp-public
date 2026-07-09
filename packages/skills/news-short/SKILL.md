@@ -81,12 +81,53 @@ ones — use it as a fallback for short clips only.)
 
 **Briefing compilation:** intro / divider / outro cards + concat the segments.
 
+## Variant: clip-quotation shorts (short YouTube clips + our VO)
+
+For a topic where short **video** quotations beat stills (e.g. an artist
+feature), the band is a concat of a few seconds each from source clips instead
+of Ken-Burns stills — same VO/captions/overlay pipeline, one call:
+```python
+news.fetch_clip(url, start="1:12", dur=6.0, dst="raw/s01.mp4")   # per clip
+news.build_clip_short(
+    script, shots, out="out/clip.mp4",
+    headline="…", eyebrow="아이돌 특집", source="영상 출처: … (YouTube · 공식)",
+    badge="이름 · 2006 · …")                # optional info chip
+# shots = [(anchor, clip_path, is_vlog, credit), …]
+```
+- `fetch_clip` downloads **video-only** (`-f bv`, no soundtrack → the quotation
+  doesn't reuse the copyrighted audio; our VO carries it) via yt-dlp with
+  `--download-sections` + `--ffmpeg-location` (ffmpeg is often off PATH).
+- `is_vlog=True` crops the bottom ~18% first (drop the clip's own burned-in
+  captions) before reframing; `credit` shows top-right (adjacent equal credits
+  merge). Clips are cover-cropped to the band and trimmed to each sentence span.
+- **Source safety (required):** quote only **safe-tier** channels — the official
+  label channel + members' official personal channels — for news/critique;
+  keep an on-screen credit per clip + the bottom source line. Content-ID claims
+  are still possible; yt-dlp downloading is a YouTube-ToS grey area — surface
+  this to the user.
+- **Verify every downloaded segment by eye** (wrong member / b-roll / a title
+  card baked into the frame → re-pick the section).
+
 ## Guardrails (non-negotiable for news)
 - Fact-check every claim; show **source + publish date** on screen.
 - **Disclose AI images** on screen. YouTube's "altered/synthetic content"
   disclosure is set in **Studio** (the Data API doesn't reliably set it), so
   tell the user to toggle it there after upload.
 - Real photos: stay within citation/fair-use scope and attribute.
+
+### Real people (idols / celebrities)
+When the subject is a real person, images/clips carry portrait-rights + Content-ID
+risk — be conservative:
+- **Never AI-generate a real person's face** (portrait rights + a false image).
+- Use only the **label's official press/promo images** (a news photo credited
+  "provided by <agency>" is the cleanest source) and **safe-tier video** (official
+  label channel + members' official personal channels).
+- **Always show provenance** on screen: top-right "사진 · <agency>" / clip credit,
+  bottom "출처: <outlets> (연월)".
+- **Verify every image/frame by eye** — related-article thumbnails routinely mix
+  in a DIFFERENT celebrity; confirm identity before using.
+- Cover **verifiable public facts/achievements only** — no private life,
+  speculation, or controversy.
 
 ### Originality (YouTube policy)
 YouTube limits **mass-published near-identical / AI-generated** videos, and this
