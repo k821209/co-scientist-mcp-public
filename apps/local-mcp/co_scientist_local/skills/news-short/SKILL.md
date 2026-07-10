@@ -44,16 +44,23 @@ ones — use it as a fallback for short clips only.)
    edge-tts mangles them; say them in words or omit, and show the exact form on
    screen only. (`align_to_script` pulls caption text from the script, so the
    on-screen wording stays exact.)
-2. **Images** for the top band. The band is ~square (**1080×1056**) but
-   `generate_image` returns **16:9** (1536×1024), center-cropped (~68% of the
-   width survives) — so **put "centered composition, subject centered, headroom"
-   in the prompt**, or the subject gets cropped off.
-   - real photos — `curl` from the article (respect the source / fair-use
-     excerpt); `add_asset(local_path)` to track them.
-   - AI — `generate_image(prompt=…, aspect_ratio="16:9", apply_style=False)`
-     **with no `slug`** → a project-scoped asset (no dummy paper needed).
-   Then **`get_asset(id_or_filename, dest_path)`** to pull each image to a local
-   file.
+2. **Images** for the top band — **match the imagery to the topic:**
+   - **Conceptual** stories (mechanisms, policy) → abstract/metaphoric **AI art**
+     works well.
+   - **Date-, number-, or object-driven** stories (holidays, charts, schedules)
+     → AI metaphors read as noise (users literally complained "너무 추상적",
+     "여기 세로줄 5개가 뭐지"). **Render exact graphics** instead (PIL / matplotlib:
+     a real calendar with the right weekday, a real timeline) and let the artwork
+     carry the fact. This also makes it your **own graphic** for provenance.
+   - **real photos** → `curl` from the article (fair-use excerpt);
+     `add_asset(local_path)` to track.
+   - **AI** → `generate_image(prompt=…, aspect_ratio="16:9", apply_style=False)`
+     **with no `slug`** → a project-scoped asset (no dummy paper).
+
+   The band is ~square (**1080×1056**) but `generate_image` returns **16:9**
+   (~68% of the width survives the center-crop) — put **"centered composition,
+   subject centered, headroom"** in the prompt. Then **`get_asset(id, dest)`** to
+   pull each image to a local file.
 3. **Assemble in one call** — `news.build_short` does VO → captions → the
    sentence→image band → 9:16 compose (headline, eyebrow, source·date line, AI
    ribbon, optional disclosure, end card, burned captions) → mux:
@@ -118,11 +125,38 @@ news.build_clip_short(
   card baked into the frame → re-pick the section).
 
 ## Guardrails (non-negotiable for news)
-- Fact-check every claim; show **source + publish date** on screen.
-- **Disclose AI images** on screen. YouTube's "altered/synthetic content"
-  disclosure is set in **Studio** (the Data API doesn't reliably set it), so
-  tell the user to toggle it there after upload.
-- Real photos: stay within citation/fair-use scope and attribute.
+- **Search summaries are NOT sources.** `WebSearch` snippets paraphrase, misread
+  page metadata, and invent causal links. Before a claim reaches the script,
+  `WebFetch` the primary document (or the outlet's own article) and confirm the
+  exact wording. If it 403s, find another primary source — never fall back to the
+  snippet. (Real near-misses: a fabricated "재계 요구", an invented cause-effect,
+  a mis-dated approval — all from trusting summaries.)
+- **Two-source rule.** A number/date reaches the script only if two independent
+  sources agree. If they conflict, drop it or degrade to a qualitative phrase
+  ("후반 막판", "지난 6월") — never split the difference. Note what you dropped
+  in the video description.
+- **Graphics you generate are claims too.** If a rendered image asserts a date,
+  weekday, count, or ordering, verify it programmatically (`datetime`/`calendar`)
+  against ground truth before shipping — a hardcoded index is as wrong as a
+  hallucinated one.
+- Show **source + publish date** on screen.
+- **Provenance is three-way** — AI-generated / real photo / your own rendered
+  graphic — stated per shot (`shots=[(anchor, image, credit)]`): AI → `ribbon="AI
+  생성 이미지"`; real photo → `credit="사진 · <source>"`; own graphic → e.g.
+  `"그래픽 · AIVO"`. A short with **no** AI images must not carry an AI ribbon
+  (it's a false claim). Disclose AI on YouTube in **Studio** (the Data API
+  doesn't reliably set the altered/synthetic flag).
+- **Licensing:** prefer **public domain / CC BY**; avoid **CC BY-SA** (ShareAlike
+  can propagate to the whole video). Never use watermarked comp images, and never
+  crop another outlet's watermark off (mis-attribution). Stay within
+  citation/fair-use scope and attribute.
+- **Resolution / crop:** the band is ~square (1080×1056). Reject a source that
+  needs >2× upscale or loses >30% width to the cover-crop — build a contact sheet
+  **at the real crop** and inspect it.
+- **Verify every frame by eye** (all subjects, not just people): AI images of
+  national/cultural symbols hallucinate the wrong nation (a Korean-constitution
+  prompt returned the US Great Seal; "Korean lanterns" came back Chinese);
+  press thumbnails mix in a different person; comps carry watermarks.
 
 ### Real people (idols / celebrities)
 When the subject is a real person, images/clips carry portrait-rights + Content-ID
