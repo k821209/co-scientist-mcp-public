@@ -63,10 +63,18 @@ ones — use it as a fallback for short clips only.)
        script, shots, out="out/short.mp4",
        headline="…\\N…", eyebrow="과학 뉴스",
        source="출처: … (2026.03.11)",
+       ribbon="AI 생성 이미지",   # REQUIRED when images are AI-generated (see below)
        disclosure="…",          # optional conflict-of-interest footnote
-       card="AIVO", card_sub="…")
+       badge="…", card="AIVO", card_sub="…")
    ```
-   - `shots = [(anchor, image_path), …]` — one per sentence/clause; `anchor` is
+   - **Provenance (top-right) — you must choose:** `ribbon` is a *claim* and
+     defaults to **None** (asserts nothing). For **AI images** you MUST pass
+     `ribbon="AI 생성 이미지"` (the guardrail). For **real photos**, don't set
+     ribbon — instead give each shot its credit: `shots=[(anchor, image,
+     credit), …]` (e.g. `"사진 · Reuters"`); adjacent equal credits merge.
+     Never leave AI images unlabeled, and never let the AI ribbon sit over a
+     real press photo (it reads as "this photo was faked").
+   - `shots = [(anchor, image_path[, credit]), …]` — one per sentence/clause; `anchor` is
      a phrase near the sentence start. Matching is **whitespace-insensitive and
      spans tokens**, so a Korean multi-word anchor (e.g. `"이 속도를"`) still
      matches even when align splits it; a miss raises with the nearby tokens.
@@ -91,7 +99,8 @@ news.fetch_clip(url, start="1:12", dur=6.0, dst="raw/s01.mp4")   # per clip
 news.build_clip_short(
     script, shots, out="out/clip.mp4",
     headline="…", eyebrow="아이돌 특집", source="영상 출처: … (YouTube · 공식)",
-    badge="이름 · 2006 · …")                # optional info chip
+    badge="이름 · 2006 · …",                # optional info chip
+    disclosure="…")                        # optional (e.g. corporate/idol COI)
 # shots = [(anchor, clip_path, is_vlog, credit), …]
 ```
 - `fetch_clip` downloads **video-only** (`-f bv`, no soundtrack → the quotation
