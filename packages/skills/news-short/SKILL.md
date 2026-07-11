@@ -17,6 +17,12 @@ Requires `vh` installed (see `/video-harness`) plus **`edge-tts`**
 Kokoro (`vh.steps.dub`) has **no Korean voice**. For Korean (and other
 languages Kokoro lacks) use `news.edge_tts_speak` — free MS Edge neural TTS.
 
+**Non-Korean shorts:** pass `voice` **and** `lang` together (they must match) —
+e.g. `build_short(..., voice="en-US-AriaNeural", lang="en")`. Both builders
+default to Korean (`voice="ko-KR-SunHiNeural"`, `lang="ko"`); `lang` sets the
+alignment-transcription language, so leaving it "ko" for an English VO silently
+drifts the captions/cuts.
+
 ## Caption accuracy (the important part)
 
 edge-tts Korean emits no word boundaries, so caption timing comes from
