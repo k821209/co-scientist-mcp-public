@@ -122,6 +122,14 @@ news.build_clip_short(
 - `is_vlog=True` crops the bottom ~18% first (drop the clip's own burned-in
   captions) before reframing; `credit` shows top-right (adjacent equal credits
   merge). Clips are cover-cropped to the band and trimmed to each sentence span.
+- **Wide (16:9) sources** lose ~44% of their width to the cover-crop. For a
+  title card or wide establishing shot, pass a per-shot option to letterbox
+  instead: `shots=[(anchor, clip, is_vlog, credit, {"fit": True}), …]`.
+- A clip much **shorter than its sentence span** freezes on the last frame (it
+  warns). To keep motion, use `fill="loop"` (global) or `{"fill": "loop"}` per
+  shot — or just cut a longer continuous segment. Per-shot `{"crop": 0.78}`
+  overrides `vlog_crop` (burned-in-sub height varies). A **centered** burned-in
+  subtitle can't be cropped — pick a clean segment.
 - **Source safety (required):** quote only **safe-tier** channels — the official
   label channel + members' official personal channels — for news/critique;
   keep an on-screen credit per clip + the bottom source line. Content-ID claims
