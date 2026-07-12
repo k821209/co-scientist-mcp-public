@@ -993,18 +993,24 @@ def callout(slide, *, left, top, width, fill,
 
     Returns `{"box": rect, "height_used": emu}`.
     """
+    # Build the item list. `headline` is ALWAYS honored — including when
+    # `items=` is also passed (deck bug 2: `h.callout(headline=…, items=[…])`
+    # silently dropped the headline, so comparison-card headers like
+    # "Bonferroni" vs "FDR" vanished). It prepends as a bold lead line.
     if items is None:
         items = []
-        if headline:
-            items.append({
-                "text": headline, "size_pt": 13, "bold": True,
-                "color": text_color,
-            })
         if body:
             items.append({
                 "text": body, "size_pt": 14,
                 "color": text_color,
             })
+    else:
+        items = list(items)
+    if headline:
+        items.insert(0, {
+            "text": headline, "size_pt": 13, "bold": True,
+            "color": text_color,
+        })
 
     pad = Pt(pad_pt)
     inner_w = width - 2 * pad
@@ -1130,9 +1136,15 @@ def bullet_list(slide, items, *, palette, fonts, type_scale,
 def card(slide, *, left, top, width, height, title: str, body: str,
          palette, fonts, type_scale,
          accent_top: bool = True, accent_height_pt: int = 4,
-         pack: bool = True):
+         pack: bool = True, fixed_height: bool = False):
     """A single titled card: rectangle + optional top accent stripe +
     title (bold) + body.
+
+    Pass `fixed_height=True` to force the card to exactly `height` (deck
+    bug 1: `height=` was silently ignored because `pack` shrinks to
+    content, so a row of cards with different body lengths came out
+    ragged at the bottom). Use it when you need a row of uniform cards;
+    it's equivalent to `pack=False` but reads as intent at the call site.
 
     When `pack=True` (default, todo 014 D-fix), the card SHRINKS to fit
     its content — if `pad + title_h + body_natural_h + pad < height`,
@@ -1146,6 +1158,8 @@ def card(slide, *, left, top, width, height, title: str, body: str,
     is the actual emitted height (== `height` when pack=False or
     content overflows; less when shrunk).
     """
+    if fixed_height:
+        pack = False  # honor the requested height exactly
     bg = palette.get("surface", palette["background"])
     border = palette["accent"]
     title_pt_start = max(14, type_scale.get("head", 26) - 4)

@@ -65,22 +65,68 @@ def _parse_concept(concept: str | None) -> dict[str, str]:
     if not concept:
         return {}
     pairs: dict[str, str] = {}
+    section: str | None = None
+
+    def _store(key: str, value: str) -> None:
+        key = key.lower()
+        value = _strip_inline_comment(value)
+        pairs[key] = value
+        if section:
+            # Also expose the value under a section-qualified key
+            # ("typography.body", "type scale.body") so a key that appears
+            # in two blocks doesn't clobber across sections — theme readers
+            # prefer their own section (deck bug 3b: the Type-scale `body:`
+            # size was overwriting the Typography `body:` font).
+            pairs[f"{section}.{key}"] = value
+
     # Split on whitespace tokens like "accent: #b58900" — also handle
     # multi-word values when the line is one-per-key.
     for raw in concept.splitlines():
         line = raw.strip()
-        if not line or line.endswith(":"):
+        if not line:
+            continue
+        # A bare `Header:` line (no value after the colon) opens a section.
+        if line.endswith(":") and ":" not in line[:-1]:
+            section = line[:-1].strip().lower()
             continue
         # Multiple pairs on a single line ("bg: #fff surface: #f00 text: #000")
         chunks = re.findall(r"([a-zA-Z_]\w*)\s*:\s*([^\s][^,\n]*?)(?=\s+[a-zA-Z_]\w*\s*:|$)", line)
         if chunks:
             for k, v in chunks:
-                pairs[k.lower()] = v.strip()
+                _store(k, v.strip())
             continue
         m = _KV_RE.match(line)
         if m:
-            pairs[m.group(1).lower()] = m.group(2).strip()
+            _store(m.group(1), m.group(2).strip())
     return pairs
+
+
+def _strip_inline_comment(value: str) -> str:
+    """Drop a trailing ` # …` inline comment from a concept value while
+    keeping a leading `#rrggbb` hex intact (deck bug 3a: `accent: #1F6FEB  # 파랑`
+    used to parse the whole tail into the hex and fall back to the default
+    theme). A comment marker is whitespace-then-`#`; a hex value has no
+    interior whitespace, so its own leading `#` is never preceded by one."""
+    return re.sub(r"\s+#.*$", "", value or "").strip()
+
+
+# Concept blocks a key can live under — theme readers prefer their own
+# section's value over the flat (last-write-wins) one.
+_PALETTE_SECTIONS = ("palette", "colors", "colours")
+_TYPOGRAPHY_SECTIONS = ("typography", "fonts")
+_TYPE_SCALE_SECTIONS = ("type scale", "type_scale", "typescale", "type sizes")
+
+
+def _scoped(kv: dict, key: str, sections: tuple[str, ...]) -> str | None:
+    """Read `key` preferring a section-qualified entry (e.g. `typography.body`)
+    over the flat one, so a key present in two concept blocks resolves to the
+    value from the right block. Falls back to the flat key for loose concepts
+    that don't use section headers (legacy behavior)."""
+    for s in sections:
+        v = kv.get(f"{s}.{key}")
+        if v is not None:
+            return v
+    return kv.get(key)
 
 
 def resolve_placeholders(text: str, concept: str | None) -> str:
@@ -586,18 +632,22 @@ def _theme_colors(concept: str | None) -> dict[str, str]:
     snippet doesn't have to hardcode hex literals when it wants e.g.
     `palette["muted"]`."""
     kv = _parse_concept(concept)
-    accent = kv.get("accent") or "#2E7D32"
-    background = kv.get("bg") or kv.get("background") or "#FFFFFF"
-    foreground = kv.get("text") or kv.get("foreground") or "#1A1A1A"
-    surface = kv.get("surface") or background
+
+    def g(k: str) -> str | None:
+        return _scoped(kv, k, _PALETTE_SECTIONS)
+
+    accent = g("accent") or "#2E7D32"
+    background = g("bg") or g("background") or "#FFFFFF"
+    foreground = g("text") or g("foreground") or "#1A1A1A"
+    surface = g("surface") or background
     # `muted` defaults to a 65/35 blend of foreground+background (a
     # legible secondary-text gray that adapts to dark/light themes).
     # `secondary` falls back to a darker accent shift; `highlight` to a
     # warmer accent shift — both rough heuristics that the agent can
     # override via the concept's Palette block when precision matters.
-    muted = kv.get("muted") or _blend_hex(foreground, background, 0.45)
-    secondary = kv.get("secondary") or _shift_hex(accent, -0.18)
-    highlight = kv.get("highlight") or _shift_hex(accent, +0.18)
+    muted = g("muted") or _blend_hex(foreground, background, 0.45)
+    secondary = g("secondary") or _shift_hex(accent, -0.18)
+    highlight = g("highlight") or _shift_hex(accent, +0.18)
     return {
         "accent": accent,
         "background": background,
@@ -809,10 +859,11 @@ def _theme_type_scale(concept: str | None) -> dict:
     # Float-valued keys; everything else (point sizes) coerces to int.
     float_keys = {"line_spacing", "scale_ratio"}
     for k in out:
-        if k in kv:
+        val = _scoped(kv, k, _TYPE_SCALE_SECTIONS)
+        if val is not None:
             try:
                 out[k] = (
-                    float(kv[k]) if k in float_keys else int(float(kv[k]))
+                    float(val) if k in float_keys else int(float(val))
                 )
             except (ValueError, TypeError):
                 pass  # malformed value → keep default
@@ -840,11 +891,19 @@ def _theme_fonts(concept: str | None) -> dict[str, str | None]:
     """Display / body / mono font families from the concept's Typography
     block. None when unspecified — PowerPoint's default is then kept."""
     kv = _parse_concept(concept)
-    body = _font_family(kv.get("body") or kv.get("body_font"))
-    display = _font_family(
-        kv.get("display") or kv.get("heading") or kv.get("title_font")
-    )
-    mono = _font_family(kv.get("mono") or kv.get("code_font"))
+
+    def g(*keys: str) -> str | None:
+        for k in keys:
+            v = _scoped(kv, k, _TYPOGRAPHY_SECTIONS)
+            # A purely-numeric value is a Type-scale size that leaked into the
+            # flat namespace, never a font name — skip it (deck bug 3b).
+            if v and not v.strip().replace(".", "", 1).isdigit():
+                return v
+        return None
+
+    body = _font_family(g("body", "body_font"))
+    display = _font_family(g("display", "heading", "title_font"))
+    mono = _font_family(g("mono", "code_font"))
     return {"display": display or body, "body": body or display, "mono": mono}
 
 
@@ -941,8 +1000,15 @@ def _scan_deck_placeholders(prs) -> list[dict]:
 
 
 _EMU_PER_IN = 914400
-_MIN_VISIBLE_IN = 0.7   # below this an image reads as invisible at projection distance
+# Below this an in-flow image reads as too small at projection distance.
+# Raised 0.7"→1.3" (deck feedback): a ~1.0" image inside a flow box was still
+# unreadable but slipped under the old bar. Corner logos (≤_CORNER_LOGO_IN) are
+# exempt so intentionally-small chrome isn't flagged.
+_MIN_VISIBLE_IN = 1.3
 _HEADER_BAND_FRAC = 0.18  # top ~18% of the slide = title/eyebrow/accent-stripe zone
+_SHAPE_GAP_PT = 6         # two shapes closer than this (or intersecting) → shape_overlap
+_UNEVEN_CARD_PT = 8       # cards sharing a row-top differing by more than this → uneven_card_heights
+_FOOTER_BAND_FRAC = 0.93  # text/shape below this y-fraction sits in the footer zone
 
 
 _CORNER_LOGO_IN = 1.5  # a small image hugging the top-right corner = a logo
@@ -992,11 +1058,19 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
     inner_tol = int(2 * _EMU_PER_PT)          # containment slack
     inner_thr = int(_INNER_MARGIN_PT * _EMU_PER_PT)
 
+    gap_thr = int(_SHAPE_GAP_PT * _EMU_PER_PT)
+    uneven_thr = int(_UNEVEN_CARD_PT * _EMU_PER_PT)
+    row_top_tol = int(4 * _EMU_PER_PT)
+    stripe_thr = int(8 * _EMU_PER_PT)          # a rule/accent-stripe: min dim ≤ 8pt
+    footer_y = int(sh * _FOOTER_BAND_FRAC)
+
     out: list[dict] = []
     for idx, slide in enumerate(prs.slides, start=1):
         pics: list[tuple] = []
         header_texts: list[tuple] = []
         autoshapes: list[tuple] = []          # (z, l, t, w, h) — bands/cards
+        boxes: list[tuple] = []               # (z, l, t, w, h, filled) — shapes+pics for overlap
+        footer_texts: list[tuple] = []        # (l, t, w, h) — labels in the footer band
         labels: list[tuple] = []              # (z, l, t, w, h, text)
         for z, shape in enumerate(slide.shapes):
             try:
@@ -1007,19 +1081,29 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                 continue
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 pics.append((l, t, w, h))
+                boxes.append((z, l, t, w, h, True))
             if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
                 autoshapes.append((z, l, t, w, h))
+                filled = False
+                try:
+                    from pptx.enum.dml import MSO_FILL  # type: ignore
+                    filled = shape.fill.type == MSO_FILL.SOLID
+                except Exception:
+                    filled = True   # assume filled if the fill API can't say
+                boxes.append((z, l, t, w, h, filled))
             if getattr(shape, "has_text_frame", False):
                 text = (shape.text_frame.text or "").strip()
                 if text:
                     labels.append((z, l, t, w, h, text))
                     if t < header_band:
                         header_texts.append((l, t, w, h))
+                    if t >= footer_y:
+                        footer_texts.append((l, t, w, h))
 
         issues: list[dict] = []
         for pic in pics:
             l, t, w, h = pic
-            if w < min_emu and h < min_emu:
+            if w < min_emu and h < min_emu and not _is_corner_logo(l, t, w, h):
                 issues.append({
                     "kind": "tiny_image",
                     "size_in": f'{w / _EMU_PER_IN:.2f}"×{h / _EMU_PER_IN:.2f}"',
@@ -1074,6 +1158,111 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                              "pt) — anchor labels to the band's rail/centre "
                              "(rail_y ± offset), not its edge"),
                 })
+
+        # ── shape↔shape overlap (deck feedback #1): two non-nested,
+        # non-stripe, non-background shapes whose bboxes intersect or sit
+        # < _SHAPE_GAP_PT apart on their aligned axis. Catches band/card
+        # borders that touch (the text-overlap detector only looks at text).
+        def _is_stripe(w, h):
+            return min(w, h) <= stripe_thr
+
+        def _is_bg(w, h):
+            return w * h > 0.9 * slide_area
+
+        def _contains(a, b):  # does a fully contain b (± tol)?
+            al, at, aw, ah = a
+            bl, bt, bw, bh = b
+            return (bl >= al - inner_tol and bt >= at - inner_tol
+                    and bl + bw <= al + aw + inner_tol
+                    and bt + bh <= at + ah + inner_tol)
+
+        seen_pairs: set = set()
+        n = len(boxes)
+        for i in range(n):
+            zi, li, ti, wi, hi, _fi = boxes[i]
+            for j in range(i + 1, n):
+                zj, lj, tj, wj, hj, _fj = boxes[j]
+                a, b = (li, ti, wi, hi), (lj, tj, wj, hj)
+                if _is_bg(wi, hi) or _is_bg(wj, hj):
+                    continue                       # full-bleed background
+                if _is_stripe(wi, hi) or _is_stripe(wj, hj):
+                    continue                       # accent stripe / rule
+                if _contains(a, b) or _contains(b, a):
+                    continue                       # parent card ⊃ child
+                ix = min(li + wi, lj + wj) - max(li, lj)
+                iy = min(ti + hi, tj + hj) - max(ti, tj)
+                hit = None
+                if ix > inner_tol and iy > inner_tol:
+                    hit = "intersect"
+                elif ix > 0 and -gap_thr < iy <= 0:
+                    hit = "gap"                     # stacked, near-touching vertically
+                elif iy > 0 and -gap_thr < ix <= 0:
+                    hit = "gap"                     # side-by-side, near-touching
+                if hit:
+                    key = (round(ti / _EMU_PER_PT), round(tj / _EMU_PER_PT), hit)
+                    if key in seen_pairs:
+                        continue
+                    seen_pairs.add(key)
+                    issues.append({
+                        "kind": "shape_overlap",
+                        "how": hit,
+                        "tops_in": f'{ti / _EMU_PER_IN:.2f}",{tj / _EMU_PER_IN:.2f}"',
+                        "note": ("two shapes " + ("overlap" if hit == "intersect"
+                                 else f"sit < {_SHAPE_GAP_PT}pt apart") +
+                                 " — separate them or nest one fully inside the "
+                                 "other; touching band/card borders read as a defect"),
+                    })
+
+        # ── band-over-footer (deck feedback #2): a filled band whose bottom
+        # grows down into the footer text zone. Fires only when a footer label
+        # exists and the band isn't a full-bleed background.
+        if footer_texts:
+            for zk, lk, tk, wk, hk, filled in boxes:
+                if not filled or _is_bg(wk, hk) or _is_stripe(wk, hk):
+                    continue
+                if tk < footer_y <= tk + hk:       # starts above, spills into footer
+                    if any(min(lk + wk, fl + fw) - max(lk, fl) > 0
+                           for fl, ft, fw, fh in footer_texts):
+                        issues.append({
+                            "kind": "footer_overlap",
+                            "bottom_in": f'{(tk + hk) / _EMU_PER_IN:.2f}"',
+                            "note": ("a filled band overflows into the footer text "
+                                     "(likely body wrapped to an extra line) — shorten "
+                                     "it or raise the footer / shrink the band"),
+                        })
+                        break
+
+        # ── uneven card row (deck feedback #3): 2+ card-like shapes sharing a
+        # row-top (± 4pt) whose heights differ by > _UNEVEN_CARD_PT. Excludes
+        # stripes, backgrounds, and full-width bands (a card is < 60% wide).
+        cards = [(li, ti, wi, hi) for (_z, li, ti, wi, hi, _f) in boxes
+                 if not _is_stripe(wi, hi) and not _is_bg(wi, hi)
+                 and wi < 0.6 * sw]
+        cards.sort(key=lambda c: c[1])
+        used = [False] * len(cards)
+        for a in range(len(cards)):
+            if used[a]:
+                continue
+            row = [cards[a]]
+            used[a] = True
+            for b in range(a + 1, len(cards)):
+                if not used[b] and abs(cards[b][1] - cards[a][1]) <= row_top_tol:
+                    row.append(cards[b])
+                    used[b] = True
+            if len(row) >= 2:
+                heights = [c[3] for c in row]
+                if max(heights) - min(heights) > uneven_thr:
+                    issues.append({
+                        "kind": "uneven_card_heights",
+                        "count": len(row),
+                        "spread_pt": round((max(heights) - min(heights)) / _EMU_PER_PT, 1),
+                        "top_in": f'{row[0][1] / _EMU_PER_IN:.2f}"',
+                        "note": ("cards in this row have unequal heights "
+                                 f"(Δ{round((max(heights) - min(heights)) / _EMU_PER_PT)}pt) "
+                                 "— pass fixed_height=True (or equal explicit heights) "
+                                 "so the row bottoms align"),
+                    })
+
         if issues:
             out.append({"slide_number": idx, "issues": issues})
     return out
