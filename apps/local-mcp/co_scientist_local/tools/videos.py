@@ -158,8 +158,10 @@ def delete_video(state: State, video_id: str) -> bool:
 def add_video_comment(
     state: State, video_id: str, *, text: str, t_seconds: float,
     frame: int | None = None, author: str | None = None, source: str = "user",
+    image_blob_path: str | None = None,
 ) -> dict:
-    """Pin a comment to a timecode (seconds; optional frame number)."""
+    """Pin a comment to a timecode (seconds; optional frame number). A reviewer
+    can attach a reference image (Storage blob path) — read it with get_blob."""
     if state.backend.get_doc(_video_path(state, video_id)) is None:
         raise NotFound(f"video not found: {video_id!r}")
     if not text or not text.strip():
@@ -173,6 +175,7 @@ def add_video_comment(
         "author": author,
         "source": source,
         "status": "open",
+        "image_blob_path": image_blob_path,
         "created_at": now,
     }
     state.backend.set_doc(_comment_path(state, video_id, cid), doc)
