@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-09b"
+GUIDE_VERSION = "2026-07-12a"
 
 
 def render_guide() -> str:
@@ -388,6 +388,13 @@ Call `mcp__co_scientist__get_plan()` to check the owner's tier + limits
 (authoritative, from their billing state) BEFORE attempting a paid-only feature
 — it returns `can_generate_images`, `upload_limit_mb`, `project_cap`, etc., so
 you can tell the user "image generation needs Pro" instead of hitting a 403.
+
+For a third-party API token that spans the user's projects (e.g. a Zenodo
+token), read it with `get_user_secret("<key>")` — an **account-wide** store
+(users/{{uid}}/secrets, owner-only), set by the user in the dashboard Account
+tab (or `set_user_secret`). It's shared across all their projects and machines,
+private to them, and never in a project doc or git. `list_user_secrets()` shows
+the key names (not values). Don't put such tokens in project memory/settings.
 
 `generate_image` without a `slug` stores a **project-scoped asset**
 (`projects/{{pid}}/assets/`) — use it for a video/other project that has no paper

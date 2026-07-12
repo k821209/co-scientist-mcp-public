@@ -19,6 +19,7 @@ from .tools import imports as _imports
 from .tools import figures as _figures
 from .tools import figure_lint as _figure_lint
 from .tools import plan as _plan
+from .tools import secrets as _secrets
 from .tools import images as _images
 from .tools import assets as _assets
 from .tools import materials as _materials
@@ -1110,6 +1111,31 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def get_analysis_run(slug: str, analysis: str, run_key: str) -> dict[str, Any]:
         return _runs.get_analysis_run(state, slug, analysis, run_key)
+
+    @mcp.tool()
+    def get_user_secret(key: str) -> dict[str, Any]:
+        """Read an account-wide integration secret for the signed-in user (shared
+        across all their projects; set in the dashboard Account tab or with
+        set_user_secret). Returns {key, value} where value is null if unset — use
+        it at call time (e.g. a Zenodo/API token)."""
+        return {"key": key, "value": _secrets.get_user_secret(state, key)}
+
+    @mcp.tool()
+    def list_user_secrets() -> list[dict[str, Any]]:
+        """List the user's stored account-wide secret keys (names + updated_at
+        only, never the values)."""
+        return _secrets.list_user_secrets(state)
+
+    @mcp.tool()
+    def set_user_secret(key: str, value: str) -> dict[str, Any]:
+        """Store an account-wide secret for the signed-in user. Prefer the
+        dashboard Account tab so the value isn't pasted into the chat transcript."""
+        return _secrets.set_user_secret(state, key, value)
+
+    @mcp.tool()
+    def delete_user_secret(key: str) -> dict[str, Any]:
+        """Delete an account-wide secret. Returns {deleted: bool}."""
+        return {"deleted": _secrets.delete_user_secret(state, key)}
 
     @mcp.tool()
     def get_plan() -> dict[str, Any]:
