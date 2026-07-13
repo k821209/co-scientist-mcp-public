@@ -77,6 +77,16 @@ unity header — ready for rendering.
    overlap / bounds / layout / placeholder warning lists), then ASK the
    user to confirm that slide before moving to the next one/batch — don't
    `update_slide` and silently move on. A one-character typo fix is exempt.
+7. **The layout lint is a hard done-gate — zero warnings before a deck is
+   "done".** Every `preview_slide` / `export_deck_to_pptx` return carries
+   `overlap_warnings`, `bounds_warnings`, `layout_warnings`
+   (shape-overlap · footer-overlap · uneven-card-heights · tiny-image ·
+   inner-margin) and `placeholder_warnings`. These are not advisory — a
+   deck with any of them is NOT finished. Fix the slide and re-preview
+   until all four lists are empty; only then present it as done. (`font_warnings`
+   are host-font availability and may be tolerated — say so if you leave any.)
+   This lint is heavily invested in specifically so no overlapping band,
+   footer collision, or ragged card row ever ships unseen.
 
 ## Flow
 
@@ -109,22 +119,46 @@ deck = mcp__co_scientist__create_deck(
 `create_deck` is idempotent — calling with the same `deck_id` returns
 the existing doc unchanged. Safe to re-run.
 
-### 3. Draft the concept
+### 3. Pick a style — SHOW THE GALLERY, LET THE USER CHOOSE
+
+Before drafting the concept, **show the user the theme gallery and ask
+which style they want** (don't silently default to one — that's how every
+deck ended up looking the same). Each registered theme has a rendered
+swatch under `reference_corpus/gallery/<slug>.png`; read
+`reference_corpus/gallery/manifest.json` for the list, then present the
+swatches (Read the PNGs) with a one-line vibe for each and ask the user
+to pick a slug — or to say "surprise me / invent one," in which case you
+choose. Only skip the ask if the user already named a style.
+
+The six presets (all **fully specified in code** — see `THEME_REGISTRY`
+in `deck_render.py`; a swatch PNG exists for each):
+- `classical-academic` — serif body, navy + gold accents, dense data
+- `minimal-modern-academic` — sans body, cool grey + one accent, whitespace
+- `mono-chrome-scholarly` — black/white/grey, hairline rules, prose-heavy
+- `data-botanical` — earth tones, organic/rounded shapes (plant biology)
+- `tricolor-brief` — red/yellow/black, 3-min lightning talks
+- `data-infra-console` — cool blue + teal, mono numerals, dark-header tables
+
+### 3b. Draft the concept
 
 Two modes:
 
-**A. With theme**: pick from preset slugs:
-- `classical-academic` — serif body, navy + gold accents, dense data
-- `minimal-modern-academic` — sans body, cool grey + one accent, lots of whitespace
-- `mono-chrome-scholarly` — black/white/grey, hairline rules, prose-heavy
-- `data-botanical` — earth tones, organic shapes (plant biology talks)
-- `tricolor-brief` — red/yellow/black, 3-min lightning talks
-- `data-infra-console` — cool blue + teal, mono numerals, dark-header tables (technical / systems / data-infra talks)
+**A. With theme (recommended).** Because the presets are now fully
+specified in `THEME_REGISTRY`, a concept of **just** `Theme: <slug>`
+already renders the complete look — palette, fonts, type scale, AND the
+structural *motif* (top-stripe / title-rule / card treatment, applied
+automatically to every slide). You only add a `Palette:` / `Typography:`
+/ `Type scale:` block to OVERRIDE specific values; anything you omit
+falls back to the preset. So the minimal, correct concept is often:
 
-Most preset slugs are a one-line hint — fill the palette/type from the
-name + your taste. `data-infra-console` is **fully specified** below
-(confirmed on the mcp-ecosystem-breeding deck); reproduce it verbatim
-when the slug is chosen:
+```
+Theme: data-botanical
+Arc: <the narrative spine for THIS talk>
+```
+
+`data-infra-console` is spelled out below for reference (it matches the
+registry entry); you do NOT need to paste it — the slug alone is enough.
+Reproduce it verbatim only if you want to hand-tune from it:
 
 ```
 Palette:

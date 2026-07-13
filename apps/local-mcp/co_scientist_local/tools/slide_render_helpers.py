@@ -394,11 +394,24 @@ def _autoshrink(tf) -> None:
         pass
 
 
-def accent_stripe(slide, *, palette, sw, height_in: float = 0.16):
-    """Top accent stripe — the deck's signature horizontal bar."""
-    stripe = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, 0, 0, sw, Inches(height_in),
-    )
+def accent_stripe(slide, *, palette, sw, height_in: float = 0.16, motif=None):
+    """Top accent stripe — the deck's signature horizontal bar.
+
+    The theme `motif["stripe"]` selects the treatment (single shape, top
+    edge — never collides with the title, so it stays lint-clean):
+      "bar" (default, historical look) · "hairline" (thin rule) ·
+      "organic" (rounded bar) · "none" (skip). Unknown/None → "bar".
+    """
+    style = (motif or {}).get("stripe", "bar")
+    if style == "none":
+        return None
+    if style == "hairline":
+        shape_type, h = MSO_SHAPE.RECTANGLE, Pt(3)
+    elif style == "organic":
+        shape_type, h = MSO_SHAPE.ROUNDED_RECTANGLE, Inches(height_in)
+    else:  # "bar" — exact historical geometry
+        shape_type, h = MSO_SHAPE.RECTANGLE, Inches(height_in)
+    stripe = slide.shapes.add_shape(shape_type, 0, 0, sw, h)
     stripe.line.fill.background()
     stripe.fill.solid()
     stripe.fill.fore_color.rgb = palette["accent"]
@@ -408,7 +421,7 @@ def accent_stripe(slide, *, palette, sw, height_in: float = 0.16):
 
 def title_block(slide, text: str, *, palette, fonts, type_scale, sw, sh,
                 left=None, top=None, width=None, height=None,
-                cover: bool = False, accent_rule: bool = True):
+                cover: bool = False, accent_rule: bool = True, motif=None):
     """A themed title textbox.
 
     cover=False (default): top-anchored content-slide title at
@@ -467,7 +480,8 @@ def title_block(slide, text: str, *, palette, fonts, type_scale, sw, sh,
     run.font.color.rgb = palette["foreground"]
     if fonts.get("display"):
         run.font.name = fonts["display"]
-    if accent_rule:
+    rule_style = (motif or {}).get("rule", "bar")
+    if accent_rule and rule_style != "none":
         # Position the rule with enough vertical gap that it reads as a
         # *floating accent below the title* rather than an underline of
         # the title's first words. The previous tight gap (Pt(8) below
@@ -490,9 +504,11 @@ def title_block(slide, text: str, *, palette, fonts, type_scale, sw, sh,
         title_visible_pt = estimate_text_width_pt(text or "", title_pt)
         rule_w = max(Inches(2.2), Pt(int(title_visible_pt) + 4))
         rule_w = min(rule_w, width)
+        # Hairline motif → a thin 1.5pt rule; bar/default → the 4pt accent bar.
+        rule_h = Pt(1.5) if rule_style == "hairline" else Pt(4)
         rule = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE, left + Inches(0.02),
-            rule_top, rule_w, Pt(4),
+            rule_top, rule_w, rule_h,
         )
         rule.line.fill.background()
         rule.fill.solid()
@@ -1136,7 +1152,7 @@ def bullet_list(slide, items, *, palette, fonts, type_scale,
 def card(slide, *, left, top, width, height, title: str, body: str,
          palette, fonts, type_scale,
          accent_top: bool = True, accent_height_pt: int = 4,
-         pack: bool = True, fixed_height: bool = False):
+         pack: bool = True, fixed_height: bool = False, motif=None):
     """A single titled card: rectangle + optional top accent stripe +
     title (bold) + body.
 
@@ -1160,8 +1176,15 @@ def card(slide, *, left, top, width, height, title: str, body: str,
     """
     if fixed_height:
         pack = False  # honor the requested height exactly
+    # Theme motif card treatment (single-shape; bbox unchanged so no lint risk):
+    #   "filled" (default) · "outline" (no top stripe) · "hairline" (muted thin
+    #   border, no stripe) · "rounded" (rounded corners). Unknown/None → filled.
+    card_style = (motif or {}).get("card", "filled")
+    if card_style in ("outline", "hairline"):
+        accent_top = False
     bg = palette.get("surface", palette["background"])
-    border = palette["accent"]
+    border = palette.get("muted", palette["accent"]) if card_style == "hairline" \
+        else palette["accent"]
     title_pt_start = max(14, type_scale.get("head", 26) - 4)
     body_pt = max(12, type_scale.get("body", 20) - 4)
     line_spacing = type_scale.get("line_spacing", 1.22)
@@ -1197,13 +1220,15 @@ def card(slide, *, left, top, width, height, title: str, body: str,
     )
     body_h = card_h - pad - title_h - pad
 
+    _card_shape_type = (MSO_SHAPE.ROUNDED_RECTANGLE if card_style == "rounded"
+                        else MSO_SHAPE.RECTANGLE)
     card_shape = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, left, top, width, card_h,
+        _card_shape_type, left, top, width, card_h,
     )
     card_shape.fill.solid()
     card_shape.fill.fore_color.rgb = bg
     card_shape.line.color.rgb = border
-    card_shape.line.width = Pt(0.75)
+    card_shape.line.width = Pt(0.5) if card_style == "hairline" else Pt(0.75)
     card_shape.shadow.inherit = False
 
     if accent_top:
@@ -1261,7 +1286,7 @@ def card(slide, *, left, top, width, height, title: str, body: str,
 
 def card_grid(slide, items, *, left, top, width, height,
               palette, fonts, type_scale,
-              cols: int = 2, gap_pt: int = 12):
+              cols: int = 2, gap_pt: int = 12, motif=None):
     """Lay out `items` (list of dicts with `title` + `body`, or the
     canonical `tag` + `body` — both accepted, todo 007 axis 2) as a
     grid of `card()`s with `cols` columns. Rows are derived from
@@ -1331,7 +1356,7 @@ def card_grid(slide, items, *, left, top, width, height,
             slide, left=cl, top=ct, width=cell_w, height=cell_h,
             title=title, body=body,
             palette=palette, fonts=fonts, type_scale=type_scale,
-            pack=False,
+            pack=False, motif=motif,
         ))
     return out
 

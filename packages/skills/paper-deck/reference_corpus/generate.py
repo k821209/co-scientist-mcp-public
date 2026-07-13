@@ -422,6 +422,94 @@ for title_text, items in sections:
 ]
 
 
+# ── Theme gallery (deck feedback: "PPT style comes out as one look") ──────
+# One content-neutral swatch slide per registered theme so a user can SEE the
+# styles and pick one. The composition (stripe + title + 3-card row + chrome)
+# is identical across themes — only the theme changes — so the PNGs are a
+# fair side-by-side. Every swatch is LINT-GATED: if any layout / overlap /
+# bounds / placeholder warning fires, the build fails (the invested layout
+# lint must apply to all output, per the deck-style requirement).
+
+_GALLERY_CODE = (
+    "h.accent_stripe(slide, palette=palette, sw=sw)\n"
+    "h.title_block(slide, title, palette=palette, fonts=fonts,\n"
+    "              type_scale=type_scale, sw=sw, sh=sh)\n"
+    "h.deck_chrome(slide, palette=palette, fonts=fonts, type_scale=type_scale,\n"
+    "              sw=sw, sh=sh, eyebrow='STYLE',\n"
+    "              footer='Scivo · paper-deck theme gallery',\n"
+    "              page_number=1, total=1)\n"
+    "h.card_grid(slide, [\n"
+    "    {'title': '문제', 'body': '한 문장으로 요약한 배경과 동기.'},\n"
+    "    {'title': '접근', 'body': '핵심 방법을 한두 줄로.'},\n"
+    "    {'title': '결과', 'body': '수치·결론을 한 줄로.'},\n"
+    "], left=Inches(0.7), top=Inches(2.4), width=sw - Inches(1.4),\n"
+    "   height=Inches(2.6), palette=palette, fonts=fonts,\n"
+    "   type_scale=type_scale, cols=3)\n"
+)
+
+
+def build_gallery(corpus_dir: pathlib.Path) -> int:
+    """Render one swatch per THEME_REGISTRY entry to gallery/<slug>.png,
+    lint-gated. Returns 0 on success, 1 if any theme errors or trips the
+    layout lint."""
+    from co_scientist_local.tools.deck_render import THEME_REGISTRY
+
+    gallery_dir = corpus_dir / "gallery"
+    gallery_dir.mkdir(exist_ok=True)
+    tmp_dir = corpus_dir / "_tmp_gallery"
+    tmp_dir.mkdir(exist_ok=True)
+
+    entries = {}
+    for slug in THEME_REGISTRY:
+        state = State(project_id=f"gallery-{slug}", owner_uid="me",
+                      backend=InMemoryBackend())
+        paper = papers.create_paper(state, title=f"Theme {slug}")
+        pslug = paper["slug"]
+        decks.create_deck(state, pslug, title=slug, deck_id="d")
+        decks.update_deck(state, pslug, "d", concept=f"Theme: {slug}\n")
+        decks.add_slide(
+            state, pslug, "d", slide_number=1, role="background",
+            title=f"{slug}", body="", notes="n", render_mode="code",
+            code=_GALLERY_CODE,
+        )
+        pptx_out = tmp_dir / f"{slug}.pptx"
+        res = deck_render.export_deck_to_pptx(
+            state, pslug, "d", output_path=str(pptx_out),
+        )
+        # LINT GATE — layout/overlap/bounds/placeholder must all be empty.
+        # font_warnings are host-dependent (missing font families on the
+        # render box), so they're advisory here, not a hard failure.
+        blocking = (res["code_errors"] + res["overlap_warnings"]
+                    + res["bounds_warnings"] + res["layout_warnings"]
+                    + res["placeholder_warnings"])
+        if blocking:
+            print(f"GALLERY LINT FAIL [{slug}]:", blocking)
+            return 1
+        if res["pdf_skipped"]:
+            print("PDF skipped — soffice missing. Cannot render gallery PNGs.")
+            return 1
+        src = pathlib.Path(res["slide_pngs"][0]["local_path"])
+        shutil.copy(src, gallery_dir / f"{slug}.png")
+        entries[slug] = {
+            "file": f"gallery/{slug}.png",
+            "accent": THEME_REGISTRY[slug]["palette"]["accent"],
+            "motif": THEME_REGISTRY[slug]["motif"],
+        }
+
+    (gallery_dir / "manifest.json").write_text(
+        json.dumps({
+            "note": ("One swatch per registered theme. Show these to the user "
+                     "at deck start and ask which style to use (or invent a "
+                     "concept). Every swatch is lint-clean."),
+            "themes": entries,
+        }, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    print(f"wrote {len(entries)} theme swatches + manifest to {gallery_dir}")
+    return 0
+
+
 def _stage_tiles(tmp_dir: pathlib.Path) -> dict:
     """Solid-color PNG tiles standing in for real figures in the image-
     grid example (so the example renders without external assets)."""
@@ -529,6 +617,12 @@ def main() -> int:
     shutil.rmtree(tmp_dir, ignore_errors=True)
     print(f"wrote {len(REFERENCES)} reference slides + manifest.json to "
           f"{corpus_dir}")
+
+    # Theme gallery swatches (lint-gated) — a fatal lint failure here fails
+    # the whole generate step.
+    rc = build_gallery(corpus_dir)
+    if rc != 0:
+        return rc
     return 0
 
 

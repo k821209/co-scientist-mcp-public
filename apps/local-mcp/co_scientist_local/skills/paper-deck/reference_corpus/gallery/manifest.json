@@ -1,0 +1,65 @@
+{
+  "note": "One swatch per registered theme. Show these to the user at deck start and ask which style to use (or invent a concept). Every swatch is lint-clean.",
+  "themes": {
+    "minimal-modern-academic": {
+      "file": "gallery/minimal-modern-academic.png",
+      "accent": "#3B5BDB",
+      "motif": {
+        "family": "minimal",
+        "stripe": "hairline",
+        "rule": "hairline",
+        "card": "outline"
+      }
+    },
+    "classical-academic": {
+      "file": "gallery/classical-academic.png",
+      "accent": "#1A3A6B",
+      "motif": {
+        "family": "classical",
+        "stripe": "bar",
+        "rule": "bar",
+        "card": "filled"
+      }
+    },
+    "mono-chrome-scholarly": {
+      "file": "gallery/mono-chrome-scholarly.png",
+      "accent": "#111111",
+      "motif": {
+        "family": "mono",
+        "stripe": "hairline",
+        "rule": "hairline",
+        "card": "hairline"
+      }
+    },
+    "data-botanical": {
+      "file": "gallery/data-botanical.png",
+      "accent": "#2E7D4F",
+      "motif": {
+        "family": "botanical",
+        "stripe": "organic",
+        "rule": "hairline",
+        "card": "rounded"
+      }
+    },
+    "tricolor-brief": {
+      "file": "gallery/tricolor-brief.png",
+      "accent": "#D7263D",
+      "motif": {
+        "family": "brief",
+        "stripe": "bar",
+        "rule": "bar",
+        "card": "filled"
+      }
+    },
+    "data-infra-console": {
+      "file": "gallery/data-infra-console.png",
+      "accent": "#1F6FEB",
+      "motif": {
+        "family": "console",
+        "stripe": "bar",
+        "rule": "bar",
+        "card": "filled"
+      }
+    }
+  }
+}

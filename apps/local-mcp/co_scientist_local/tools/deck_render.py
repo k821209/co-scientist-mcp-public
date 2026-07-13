@@ -632,9 +632,11 @@ def _theme_colors(concept: str | None) -> dict[str, str]:
     snippet doesn't have to hardcode hex literals when it wants e.g.
     `palette["muted"]`."""
     kv = _parse_concept(concept)
+    preset = THEME_REGISTRY.get(_theme_slug(kv) or "", {}).get("palette", {})
 
     def g(k: str) -> str | None:
-        return _scoped(kv, k, _PALETTE_SECTIONS)
+        # concept value wins; else the theme preset; else per-key default below
+        return _scoped(kv, k, _PALETTE_SECTIONS) or preset.get(k)
 
     accent = g("accent") or "#2E7D32"
     background = g("bg") or g("background") or "#FFFFFF"
@@ -844,6 +846,121 @@ _DEFAULT_TYPE_SCALE = {
 }
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Theme registry (deck feedback: "PPT style comes out as one look").
+#
+# Each preset is FULLY specified — palette + fonts + type_scale + a `motif`
+# knob-set that drives structural variation (rule / card / divider / numeral
+# treatment) beyond just color. A concept's `Theme: <slug>` line selects a
+# preset; anything the concept spells out (Palette / Typography / Type scale)
+# OVERRIDES the preset (concept always wins). This lets a user pick a style by
+# name from the gallery and get a complete distinct look without the agent
+# hand-writing every value — which is why decks used to converge on the single
+# fully-specified slug (`data-infra-console`).
+#
+# `motif.family` values are consumed by the render helpers; an unknown/missing
+# family reproduces the historical look, so decks with no Theme slug are
+# unchanged.
+# ──────────────────────────────────────────────────────────────────────────────
+
+THEME_REGISTRY: dict[str, dict] = {
+    "minimal-modern-academic": {
+        "palette": {"bg": "#FAFAFB", "surface": "#FFFFFF", "text": "#1A1D23",
+                    "accent": "#3B5BDB", "secondary": "#5C7CFA",
+                    "muted": "#868E96", "highlight": "#E8590C"},
+        "fonts": {"display": "Noto Sans KR", "body": "Noto Sans KR",
+                  "mono": "JetBrains Mono"},
+        "type_scale": {"title": 30, "head": 22, "body": 18, "line_spacing": 1.32,
+                       "cover_title": 46, "caption": 11, "body_standard": 18},
+        "motif": {"family": "minimal", "stripe": "hairline", "rule": "hairline",
+                  "card": "outline"},
+    },
+    "classical-academic": {
+        "palette": {"bg": "#FBFAF7", "surface": "#FFFFFF", "text": "#1B1B1B",
+                    "accent": "#1A3A6B", "secondary": "#8A6D1F",
+                    "muted": "#6B6459", "highlight": "#8A6D1F"},
+        "fonts": {"display": "Noto Serif KR", "body": "Noto Serif KR",
+                  "mono": "JetBrains Mono"},
+        "type_scale": {"title": 30, "head": 23, "body": 18, "line_spacing": 1.34,
+                       "cover_title": 46, "caption": 11, "body_standard": 18},
+        "motif": {"family": "classical", "stripe": "bar", "rule": "bar",
+                  "card": "filled"},
+    },
+    "mono-chrome-scholarly": {
+        "palette": {"bg": "#FFFFFF", "surface": "#FAFAFA", "text": "#111111",
+                    "accent": "#111111", "secondary": "#555555",
+                    "muted": "#8A8A8A", "highlight": "#111111"},
+        "fonts": {"display": "Noto Sans KR", "body": "Noto Sans KR",
+                  "mono": "JetBrains Mono"},
+        "type_scale": {"title": 28, "head": 21, "body": 17, "line_spacing": 1.40,
+                       "cover_title": 44, "caption": 11, "body_standard": 17},
+        "motif": {"family": "mono", "stripe": "hairline", "rule": "hairline",
+                  "card": "hairline"},
+    },
+    "data-botanical": {
+        "palette": {"bg": "#F6F4EC", "surface": "#FFFDF8", "text": "#26241E",
+                    "accent": "#2E7D4F", "secondary": "#7A8450",
+                    "muted": "#8A8577", "highlight": "#C9772B"},
+        "fonts": {"display": "Noto Sans KR", "body": "Noto Sans KR",
+                  "mono": "JetBrains Mono"},
+        "type_scale": {"title": 30, "head": 22, "body": 18, "line_spacing": 1.30,
+                       "cover_title": 46, "caption": 11, "body_standard": 18},
+        "motif": {"family": "botanical", "stripe": "organic", "rule": "hairline",
+                  "card": "rounded"},
+    },
+    "tricolor-brief": {
+        "palette": {"bg": "#FFFFFF", "surface": "#FFF8E1", "text": "#1A1A1A",
+                    "accent": "#D7263D", "secondary": "#F4B400",
+                    "muted": "#6B7280", "highlight": "#D7263D"},
+        "fonts": {"display": "Noto Sans KR", "body": "Noto Sans KR",
+                  "mono": "JetBrains Mono"},
+        "type_scale": {"title": 34, "head": 26, "body": 20, "line_spacing": 1.24,
+                       "cover_title": 54, "caption": 12, "body_standard": 20},
+        "motif": {"family": "brief", "stripe": "bar", "rule": "bar",
+                  "card": "filled"},
+    },
+    "data-infra-console": {
+        "palette": {"bg": "#F7F8FA", "surface": "#FFFFFF", "text": "#161B22",
+                    "accent": "#1F6FEB", "secondary": "#0E7C66",
+                    "muted": "#6B7280", "highlight": "#E8590C"},
+        "fonts": {"display": "Noto Sans KR", "body": "Noto Sans KR",
+                  "mono": "JetBrains Mono"},
+        "type_scale": {"title": 28, "head": 22, "body": 17, "line_spacing": 1.30,
+                       "cover_title": 48, "caption": 11, "body_standard": 17},
+        "motif": {"family": "console", "stripe": "bar", "rule": "bar",
+                  "card": "filled"},
+    },
+}
+
+# The motif every deck gets when its concept names no known theme — reproduces
+# the look decks had before the registry existed (no regression).
+_DEFAULT_MOTIF = {"family": "default", "stripe": "bar", "rule": "bar",
+                  "card": "filled"}
+
+
+def _theme_slug(kv: dict) -> str | None:
+    """The theme preset slug from a parsed concept's `Theme:` line, if it names
+    a registered preset. `Theme: data-infra-console (adapted …)` → the slug is
+    the first token; trailing descriptions are ignored."""
+    raw = (kv.get("theme") or "").strip().lower()
+    if not raw:
+        return None
+    slug = raw.split()[0].strip("():,")
+    return slug if slug in THEME_REGISTRY else None
+
+
+def _theme_preset(concept: str | None) -> dict:
+    """The registry entry for a concept's theme slug, or {} if none/unknown."""
+    return THEME_REGISTRY.get(_theme_slug(_parse_concept(concept)) or "", {})
+
+
+def _theme_motif(concept: str | None) -> dict:
+    """Structural motif knobs for a concept — the theme preset's motif merged
+    over `_DEFAULT_MOTIF`, so unspecified knobs keep the historical look."""
+    preset = _theme_preset(concept)
+    return {**_DEFAULT_MOTIF, **(preset.get("motif") or {})}
+
+
 def _theme_type_scale(concept: str | None) -> dict:
     """Per-deck typography sizes — title / head / body / cover_* / caption /
     line_spacing. The concept can override any with a 'Type scale:' block:
@@ -855,7 +972,9 @@ def _theme_type_scale(concept: str | None) -> dict:
     original co-scientist's todo 035 (theme JSON `type_scale`).
     """
     kv = _parse_concept(concept)
-    out = dict(_DEFAULT_TYPE_SCALE)
+    # Defaults, then the theme preset's sizes, then concept overrides below.
+    preset_ts = THEME_REGISTRY.get(_theme_slug(kv) or "", {}).get("type_scale", {})
+    out = {**_DEFAULT_TYPE_SCALE, **preset_ts}
     # Float-valued keys; everything else (point sizes) coerces to int.
     float_keys = {"line_spacing", "scale_ratio"}
     for k in out:
@@ -901,9 +1020,11 @@ def _theme_fonts(concept: str | None) -> dict[str, str | None]:
                 return v
         return None
 
-    body = _font_family(g("body", "body_font"))
-    display = _font_family(g("display", "heading", "title_font"))
-    mono = _font_family(g("mono", "code_font"))
+    preset_fonts = THEME_REGISTRY.get(_theme_slug(kv) or "", {}).get("fonts", {})
+    body = _font_family(g("body", "body_font")) or _font_family(preset_fonts.get("body"))
+    display = (_font_family(g("display", "heading", "title_font"))
+               or _font_family(preset_fonts.get("display")))
+    mono = _font_family(g("mono", "code_font")) or _font_family(preset_fonts.get("mono"))
     return {"display": display or body, "body": body or display, "mono": mono}
 
 
@@ -1504,7 +1625,7 @@ def _add_hybrid_slide(slide, row, state, tmpd, *, sw, sh, accent, fg, bg,
 
 def _build_code_namespace(slide, row, state, slug, tmpd, *,
                           palette, fonts, type_scale, aspect, sw, sh,
-                          slide_count=None):
+                          slide_count=None, motif=None):
     """Build the namespace handed to a code slide's `exec()`. Pre-binds
     the slide object, theme primitives, python-pptx imports, and the
     `h` helpers namespace — including image-loading closures that
@@ -1594,13 +1715,28 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
         return _h.deck_chrome(
             target_slide, page_number=page_number, total=total, **kwargs)
 
+    # Auto-inject the deck's theme motif into the motif-aware helpers so that
+    # EXISTING slide code (which never passes `motif=`) renders in the chosen
+    # theme's structural style. An explicit `motif=` at the call site still
+    # wins. `motif=None`/default family reproduces the historical look.
+    _deck_motif = motif or _DEFAULT_MOTIF
+
+    def _with_motif(fn):
+        import functools
+
+        @functools.wraps(fn)
+        def _wrapped(*a, **kw):
+            kw.setdefault("motif", _deck_motif)
+            return fn(*a, **kw)
+        return _wrapped
+
     # Combine static helpers + state-aware image helpers into one `h`.
     h = SimpleNamespace(
-        accent_stripe=_h.accent_stripe,
-        title_block=_h.title_block,
+        accent_stripe=_with_motif(_h.accent_stripe),
+        title_block=_with_motif(_h.title_block),
         bullet_list=_h.bullet_list,
-        card=_h.card,
-        card_grid=_h.card_grid,
+        card=_with_motif(_h.card),
+        card_grid=_with_motif(_h.card_grid),
         pull_quote=_h.pull_quote,
         image_path=_image_from_path,
         image_region=_image_from_region,
@@ -1802,7 +1938,7 @@ def _detect_offslide_shapes(slide, *, sw: int, sh: int,
 
 def _add_code_slide(slide, row, state, slug, tmpd, *, sw, sh,
                     accent, fg, bg, fonts, palette_full, Inches, Pt,
-                    MSO_SHAPE, slide_count=None,
+                    MSO_SHAPE, slide_count=None, motif=None,
                     type_scale: dict = _DEFAULT_TYPE_SCALE) -> tuple[str | None, list[dict], list[dict]]:
     """Execute the slide's `code` against a prepared namespace.
 
@@ -1832,7 +1968,7 @@ def _add_code_slide(slide, row, state, slug, tmpd, *, sw, sh,
     ns = _build_code_namespace(
         slide, row, state, slug, tmpd,
         palette=palette, fonts=fonts, type_scale=type_scale,
-        aspect=aspect, sw=sw, sh=sh, slide_count=slide_count,
+        aspect=aspect, sw=sw, sh=sh, slide_count=slide_count, motif=motif,
     )
     try:
         exec(compile(code, f"<slide {row.get('id', '?')} code>", "exec"), ns)
@@ -1952,6 +2088,7 @@ def preview_slide(
     bg = _hex_to_rgb(colors["background"], "#FFFFFF")
     fonts = _theme_fonts(deck.get("concept"))
     type_scale = _theme_type_scale(deck.get("concept"))
+    motif = _theme_motif(deck.get("concept"))
 
     prs = Presentation()
     sw, sh = Inches(w_in), Inches(h_in)
@@ -1972,7 +2109,7 @@ def preview_slide(
             slide_obj, target, state, slug, tmpd, sw=sw, sh=sh,
             accent=accent, fg=fg, bg=bg, fonts=fonts, palette_full=colors,
             Inches=Inches, Pt=Pt, MSO_SHAPE=MSO_SHAPE,
-            type_scale=type_scale, slide_count=len(slides),
+            type_scale=type_scale, slide_count=len(slides), motif=motif,
         )
         if err:
             code_errors.append({"slide_number": sn, "slide_id": slide_id, "error": err})
@@ -2123,6 +2260,7 @@ def export_deck_to_pptx(
     bg = _hex_to_rgb(colors["background"], "#FFFFFF")
     fonts = _theme_fonts(deck.get("concept"))
     type_scale = _theme_type_scale(deck.get("concept"))
+    motif = _theme_motif(deck.get("concept"))
 
     prs = Presentation()
     sw, sh = Inches(w_in), Inches(h_in)
@@ -2158,7 +2296,7 @@ def export_deck_to_pptx(
                     accent=accent, fg=fg, bg=bg, fonts=fonts,
                     palette_full=colors,
                     Inches=Inches, Pt=Pt, MSO_SHAPE=MSO_SHAPE,
-                    type_scale=type_scale, slide_count=len(slides),
+                    type_scale=type_scale, slide_count=len(slides), motif=motif,
                 )
                 if overlaps:
                     overlap_warnings.append({
