@@ -15,6 +15,35 @@ from . import limits as _limits
 from .activity import log_event
 
 
+_AUTHOR_FIELDS = ("name", "affiliation", "email", "orcid")
+
+
+def normalize_authors(authors) -> list[dict]:
+    """Coerce a paper author list into the canonical shape
+    `[{name, affiliation, email, orcid, corresponding}, ...]`.
+
+    Back-compat: legacy papers stored `authors` as a plain `list[str]` of
+    names — each such entry becomes `{name, affiliation:"", ...}`. Dict
+    entries are kept but trimmed to the known fields (+ a bool
+    `corresponding`). Entries without a name are dropped."""
+    out: list[dict] = []
+    for a in authors or []:
+        if isinstance(a, str):
+            name = a.strip()
+            entry = {"name": name, "affiliation": "", "email": "", "orcid": ""}
+        elif isinstance(a, dict):
+            name = str(a.get("name", "")).strip()
+            entry = {f: str(a.get(f, "") or "").strip() for f in _AUTHOR_FIELDS}
+            entry["name"] = name
+            if a.get("corresponding"):
+                entry["corresponding"] = True
+        else:
+            continue
+        if entry["name"]:
+            out.append(entry)
+    return out
+
+
 def _paper_path(state: State, slug: str) -> str:
     return state.project_path("papers", slug)
 
@@ -85,7 +114,7 @@ def create_paper(
         "project_id": state.project_id,
         "slug": slug,
         "title": title.strip(),
-        "authors": list(authors or []),
+        "authors": normalize_authors(authors),
         "journal": journal,
         "doc_type": doc_type,
         "status": "draft",
@@ -131,6 +160,8 @@ def get_paper_state(state: State, slug: str) -> dict:
     paper = state.backend.get_doc(_paper_path(state, slug))
     if paper is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    # Normalize legacy list[str] authors to the canonical dict shape on read.
+    paper["authors"] = normalize_authors(paper.get("authors"))
     sections = [
         data
         for _, data in state.backend.list_collection(
@@ -173,7 +204,7 @@ def update_paper(
     if journal is not None: fields["journal"] = journal
     if status is not None: fields["status"] = status
     if target_date is not None: fields["target_date"] = target_date
-    if authors is not None: fields["authors"] = list(authors)
+    if authors is not None: fields["authors"] = normalize_authors(authors)
     if abstract is not None: fields["abstract"] = abstract
     if doc_type is not None:
         dt = doc_type.strip().lower()
@@ -192,6 +223,22 @@ def update_paper(
     if title is not None or abstract is not None:
         _regenerate_manuscript(state, slug)
     return state.backend.get_doc(path)
+
+
+def set_paper_authors(state: State, slug: str, authors: list) -> dict:
+    """Replace a paper's ordered author list. `authors` is a list of dicts
+    (`name` required; optional `affiliation`/`email`/`orcid`/`corresponding`)
+    or plain name strings. Returns the updated paper doc."""
+    path = _paper_path(state, slug)
+    if state.backend.get_doc(path) is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    normalized = normalize_authors(authors)
+    state.backend.update_doc(path, {"authors": normalized, "updated_at": now_iso()})
+    log_event(state, slug, action="paper_authors_set",
+              detail={"count": len(normalized)})
+    doc = state.backend.get_doc(path)
+    doc["authors"] = normalize_authors(doc.get("authors"))
+    return doc
 
 
 def delete_paper(state: State, slug: str) -> bool:

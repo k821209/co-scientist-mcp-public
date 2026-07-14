@@ -20,6 +20,7 @@ from .tools import figures as _figures
 from .tools import figure_lint as _figure_lint
 from .tools import plan as _plan
 from .tools import secrets as _secrets
+from .tools import authors as _authors
 from .tools import images as _images
 from .tools import assets as _assets
 from .tools import materials as _materials
@@ -1136,6 +1137,45 @@ def build_mcp(state: State) -> FastMCP:
     def delete_user_secret(key: str) -> dict[str, Any]:
         """Delete an account-wide secret. Returns {deleted: bool}."""
         return {"deleted": _secrets.delete_user_secret(state, key)}
+
+    @mcp.tool()
+    def list_authors() -> list[dict[str, Any]]:
+        """List the account-wide author library (name + affiliation + email +
+        orcid), shared across all the user's projects. Reuse these on any
+        paper's author list instead of re-typing an author + their affiliation.
+        Also editable in the dashboard Account tab."""
+        return _authors.list_authors(state)
+
+    @mcp.tool()
+    def add_author(name: str, affiliation: str = "", email: str = "",
+                   orcid: str = "") -> dict[str, Any]:
+        """Add a reusable author to the account library. Idempotent on
+        (name, affiliation) — repeated calls return the existing entry instead
+        of duplicating it. Returns the author doc (with its `id`)."""
+        return _authors.add_author(state, name, affiliation=affiliation,
+                                   email=email, orcid=orcid)
+
+    @mcp.tool()
+    def update_author(author_id: str, name: str = "", affiliation: str = "",
+                      email: str = "", orcid: str = "") -> dict[str, Any]:
+        """Update a library author's fields. Pass only the fields to change
+        (empty string = leave unchanged)."""
+        kw = {k: v for k, v in {"name": name, "affiliation": affiliation,
+                                "email": email, "orcid": orcid}.items() if v}
+        return _authors.update_author(state, author_id, **kw)
+
+    @mcp.tool()
+    def delete_author(author_id: str) -> dict[str, Any]:
+        """Delete an author from the account library. Returns {deleted: bool}."""
+        return {"deleted": _authors.delete_author(state, author_id)}
+
+    @mcp.tool()
+    def set_paper_authors(slug: str, authors: list[dict[str, Any]]) -> dict[str, Any]:
+        """Set a paper's ordered author list. Each author is a dict with
+        `name` (required) and optional `affiliation` / `email` / `orcid` /
+        `corresponding` (bool). Pick entries from list_authors() to reuse the
+        account library. Replaces the paper's current author list."""
+        return _papers.set_paper_authors(state, slug, authors)
 
     @mcp.tool()
     def get_plan() -> dict[str, Any]:
