@@ -182,6 +182,9 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
         "subjects": list(msg.get("subject") or []),
         "authors": authors,
         "journal": journal,
+        # CrossRef's abbreviated journal title (e.g. "Front Pharmacol") — used
+        # for compact citations / reference cards; None when CrossRef omits it.
+        "journal_short": _fix_mojibake((msg.get("short-container-title") or [None])[0] or "") or None,
         "year": year,
         # Bibliographic locators — needed for a complete citation
         # (volume:issue:pages). CrossRef gives `page` as "123-130".
@@ -227,6 +230,7 @@ def add_reference(
     title: str,
     authors: list[str] | str | None = None,
     journal: str | None = None,
+    journal_short: str | None = None,
     year: int | None = None,
     doi: str | None = None,
     pmid: str | None = None,
@@ -250,6 +254,7 @@ def add_reference(
         "title": title,
         "authors": list(authors) if isinstance(authors, list) else authors,
         "journal": journal,
+        "journal_short": journal_short,
         "year": year,
         "doi": doi,
         "pmid": pmid,
@@ -316,11 +321,16 @@ def get_reference(state: State, slug: str, citation_key: str) -> dict:
     return doc
 
 
-def list_references(state: State, slug: str) -> list[dict]:
-    """List references ordered by citation_key (lexicographic — natural for bib lists)."""
+def list_references(state: State, slug: str, cited_in: str | None = None) -> list[dict]:
+    """List references ordered by citation_key (lexicographic — natural for bib
+    lists). Pass `cited_in` (e.g. a short/figure id) to return only references
+    tagged with it in their `cited_in` list — lets a science short pull exactly
+    the works it cited to build its reference card / description block."""
     _ensure_paper(state, slug)
     pairs = state.backend.list_collection(state.project_path("papers", slug, "references"))
     refs = [data for _, data in pairs]
+    if cited_in is not None:
+        refs = [r for r in refs if cited_in in (r.get("cited_in") or [])]
     refs.sort(key=lambda r: r.get("citation_key", ""))
     return refs
 
@@ -415,6 +425,7 @@ def add_reference_by_doi(
         title=meta["title"],
         authors=meta["authors"],
         journal=meta["journal"],
+        journal_short=meta.get("journal_short"),
         year=meta["year"],
         doi=meta["doi"],
         volume=meta.get("volume"),

@@ -796,8 +796,11 @@ def build_mcp(state: State) -> FastMCP:
         return _references.get_reference(state, slug, citation_key)
 
     @mcp.tool()
-    def list_references(slug: str) -> list[dict[str, Any]]:
-        return _references.list_references(state, slug)
+    def list_references(slug: str, cited_in: str = "") -> list[dict[str, Any]]:
+        """List a paper's references. Pass `cited_in` (a short/figure id) to
+        return only references tagged with it — e.g. to build a science short's
+        reference card / description from exactly the works it cited."""
+        return _references.list_references(state, slug, cited_in=cited_in or None)
 
     @mcp.tool()
     def search_references(

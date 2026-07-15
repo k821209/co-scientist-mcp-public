@@ -179,6 +179,12 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   captions → `news.montage` Ken-Burns image band → burned captions → `add_video`
   (9:16) → `/video-publish`. Guardrails: source + publish date on screen, AI
   images disclosed. Prereq: `pip install edge-tts`.
+- `/science-short [topic]` — a science explainer Short with DOI-verified
+  references: research (2-source) → fact-check vs primary paper → reference
+  management in co-scientist (`search_works` → `verify_doi` →
+  `add_reference_by_doi(cited_in=[short_id])`, never hand-typed) → self-drawn
+  graphics + `news.build_short` → reference card + description auto-built from
+  `list_references(slug, cited_in=short_id)` via `vh.refs_card`.
 - `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
   full presentation pipeline: deck concept + slides + render
   (`render_deck`) + PPTX export (`export_deck_to_pptx`).
