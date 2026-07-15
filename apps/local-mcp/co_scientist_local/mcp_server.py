@@ -21,6 +21,7 @@ from .tools import figure_lint as _figure_lint
 from .tools import plan as _plan
 from .tools import secrets as _secrets
 from .tools import authors as _authors
+from .tools import manuscript_lint as _manuscript_lint
 from .tools import images as _images
 from .tools import assets as _assets
 from .tools import materials as _materials
@@ -1168,6 +1169,18 @@ def build_mcp(state: State) -> FastMCP:
     def delete_author(author_id: str) -> dict[str, Any]:
         """Delete an author from the account library. Returns {deleted: bool}."""
         return {"deleted": _authors.delete_author(state, author_id)}
+
+    @mcp.tool()
+    def lint_manuscript(slug: str) -> dict[str, Any]:
+        """Deterministic manuscript QA over a paper's sections — the prose
+        analogue of the deck layout lint. Flags the three writing failures
+        reviewers hit: content DUPLICATION (same sentence restated across
+        sections), SECTION LEAKAGE (results/statistics inside Methods, or
+        procedure detail inside Results), and non-academic STYLE (LLM-tell
+        phrases, run-on sentences). Returns grouped warnings + a summary;
+        `summary.clean == True` means zero issues. Run it before marking
+        sections complete and resolve every warning (hard done-gate)."""
+        return _manuscript_lint.lint_manuscript(state, slug)
 
     @mcp.tool()
     def set_paper_authors(slug: str, authors: list[dict[str, Any]]) -> dict[str, Any]:

@@ -34,10 +34,80 @@ description: Create a new paper or update sections of an existing one. Use when 
    state of all sections and the assembled manuscript.
 3. For each section the user wants to write:
    - Ask any clarifying questions (target audience, key claims).
-   - Draft the section content.
+   - Draft the section content **per the Writing craft rules below**
+     (section contracts, journal register, no duplication).
    - Call `mcp__co_scientist__update_section(slug, key, body=..., status='draft')`.
-4. After updating sections, call `mcp__co_scientist__get_paper_state(slug)`
-   again and show the user a summary of what changed.
+4. After updating sections, run `mcp__co_scientist__lint_manuscript(slug)`,
+   resolve every warning, then call `mcp__co_scientist__get_paper_state(slug)`
+   and show the user a summary of what changed (and the clean lint result).
+
+## Writing craft — read before drafting ANY section
+
+Real reviewers rejected three things: **results bleeding into Methods**,
+**non-journal prose**, and **repeated content**. Prevent all three while
+drafting, then verify with `lint_manuscript` (below) before you call a
+section `complete`.
+
+### 1. Section contracts — what each section INCLUDES and EXCLUDES
+
+Write only the content that section owns. A fact has exactly ONE home.
+
+| Section | Includes | NEVER put here |
+|---|---|---|
+| **Abstract** | 1–2 sentence background, aim, key result WITH the number, one takeaway | New info absent from the body; sentences copied verbatim from other sections |
+| **Introduction** | Context → the gap/problem → this study's aim/hypothesis | Methods detail; results; discussion of your own findings |
+| **Methods** | What you DID — materials, procedures, analyses — **past tense**, reproducible | **Any finding, statistic, p-value, or "we found/observed"**; interpretation |
+| **Results** | What you FOUND — observations, numbers, stats, figure/table callouts | How-to/procedure ("using the X kit… per manufacturer"); interpretation/"why" |
+| **Discussion** | Interpretation, comparison to prior work, mechanism, limitations | **New results/numbers not already in Results**; restating Results sentence-by-sentence |
+| **Conclusion** | The single main claim + implication/next step | New data; a paragraph-length recap of Results |
+
+Rule of thumb: **Methods = past-tense procedure, no findings. Results =
+findings, no procedure. Discussion = meaning, no new data.**
+
+### 2. Academic register (journal prose, not chat prose)
+
+- **Tense:** Methods & Results in **past** ("cells were treated", "yield
+  increased 32%"); established facts & interpretation in **present**
+  ("BLUP improves accuracy"). Keep it consistent within a paragraph.
+- **One claim per sentence.** Split any sentence over ~40 words. Prefer
+  subject-verb-object over nested clauses.
+- **Be specific, hedge honestly:** "increased 2.4-fold (p = 0.003)", not
+  "increased significantly a lot"; "suggests", not "proves".
+- **Cut LLM tells** — never write: *"It is important to note that…",
+  "plays a crucial role", "a wide range of", "delve into", "sheds light
+  on", "pave the way", "utilize"* (use "use"), *"in order to"* (use "to").
+  State the fact directly.
+- **Define a term once**, then reuse it; don't re-explain.
+- **Korean manuscripts** (보고서/국문 논문): draft natively in Korean
+  academic register (`~하였다 / ~로 나타났다`), consistent sentence endings,
+  keep only field-standard English abbreviations (GWAS, BLUP, QTL). Don't
+  translate from English — it reads as 번역체. Avoid `매우 중요한 역할을 한다`,
+  `아무리 강조해도 지나치지 않다`, 완곡어 남발.
+
+### 3. Say it once (de-duplication)
+
+Each finding, definition, and background fact appears **once, in its home
+section**. Legitimate cross-references RE-USE by pointing, not by repeating:
+the Abstract *summarizes* a result (rephrased, shorter) — it does not paste
+the Results sentence; the Discussion *interprets* a result — it does not
+restate it. If you catch yourself writing the same sentence twice, delete
+one and cross-reference.
+
+### 4. Hard done-gate — `lint_manuscript`
+
+Before marking sections `complete` (and before `/paper-export`), run:
+
+```
+mcp__co_scientist__lint_manuscript(slug)
+```
+
+It deterministically flags **duplication** (same sentence across sections),
+**section leakage** (results/stats in Methods, procedure in Results), and
+**style** (LLM-tell phrases, run-on sentences). Treat it like the deck
+layout lint: **a section isn't done until its warnings are resolved.** Fix
+the offending sentences (each warning quotes the sentence + its section),
+re-run until `summary.clean == true`, then report the clean result to the
+user. If you leave any warning intentionally, say which and why.
 
 ## Citation Format
 
@@ -70,7 +140,8 @@ Update section status as the work progresses:
 - `pending` — placeholder, nothing written
 - `in_progress` — actively drafting
 - `draft` — first complete draft
-- `complete` — content frozen, ready for review
+- `complete` — content frozen, ready for review (only after
+  `lint_manuscript` is clean for that section)
 
 Don't skip stages — the dashboard surfaces `in_progress` to the human so
 they know what you're actively editing.
