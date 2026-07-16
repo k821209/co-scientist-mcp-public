@@ -264,6 +264,44 @@ def set_paper_affiliations(state: State, slug: str, affiliations: list) -> dict:
     return doc
 
 
+SUBMISSION_STATUSES = (
+    "submitted", "under_review", "major_revision", "minor_revision",
+    "accepted", "in_press", "published", "rejected",
+)
+
+
+def set_paper_submission(state: State, slug: str, *, status: str,
+                         journal: str | None = None, submitted_at: str | None = None,
+                         manuscript_id: str | None = None, url: str | None = None,
+                         decision_at: str | None = None, notes: str | None = None) -> dict:
+    """Set (or clear) a paper's journal-submission status — the peer-review
+    pipeline stage shown on the paper card + Paper tab. `status` is one of
+    SUBMISSION_STATUSES, or "" / "none" to clear (mark not submitted). Optional
+    metadata (journal, submitted_at, manuscript_id, url, decision_at, notes) is
+    merged in. Distinct from the writing `status` (draft/complete)."""
+    path = _paper_path(state, slug)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    status = (status or "").strip().lower()
+    if status in ("", "none", "not_submitted"):
+        state.backend.update_doc(path, {"submission": {}, "updated_at": now_iso()})
+        return state.backend.get_doc(path)
+    if status not in SUBMISSION_STATUSES:
+        raise ValueError(f"status must be one of {SUBMISSION_STATUSES} (or empty to clear)")
+    sub = dict(existing.get("submission") or {})
+    sub["status"] = status
+    for k, v in {"journal": journal, "submitted_at": submitted_at,
+                 "manuscript_id": manuscript_id, "url": url,
+                 "decision_at": decision_at, "notes": notes}.items():
+        if v is not None:
+            sub[k] = v.strip() if isinstance(v, str) else v
+    sub["updated_at"] = now_iso()
+    state.backend.update_doc(path, {"submission": sub, "updated_at": now_iso()})
+    log_event(state, slug, action="paper_submission_set", detail={"status": status})
+    return state.backend.get_doc(path)
+
+
 def resync_paper_affiliations(state: State, slug: str) -> dict:
     """Opt-in: refresh a paper's cached affiliation TEXT from the account
     library by id. Papers snapshot the text at insert time (a point-in-time

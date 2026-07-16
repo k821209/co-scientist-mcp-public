@@ -1238,6 +1238,21 @@ def build_mcp(state: State) -> FastMCP:
         return _papers.set_paper_affiliations(state, slug, affiliations)
 
     @mcp.tool()
+    def set_paper_submission(slug: str, status: str, journal: str = "",
+                             submitted_at: str = "", manuscript_id: str = "",
+                             url: str = "", decision_at: str = "", notes: str = "") -> dict[str, Any]:
+        """Track a paper's JOURNAL-SUBMISSION status (peer-review pipeline stage,
+        shown on the paper card + Paper tab). `status` is one of: submitted,
+        under_review, major_revision, minor_revision, accepted, in_press,
+        published, rejected — or "" to clear (not submitted). Optional metadata:
+        journal (where submitted), submitted_at (date), manuscript_id, url,
+        decision_at, notes. Distinct from the writing status (draft/complete)."""
+        return _papers.set_paper_submission(
+            state, slug, status=status, journal=journal or None,
+            submitted_at=submitted_at or None, manuscript_id=manuscript_id or None,
+            url=url or None, decision_at=decision_at or None, notes=notes or None)
+
+    @mcp.tool()
     def resync_paper_affiliations(slug: str) -> dict[str, Any]:
         """Opt-in: refresh a paper's cached affiliation text from the account
         library by id (for a DRAFT whose affiliation was renamed/corrected).
