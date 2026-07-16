@@ -44,13 +44,22 @@ def _clean(name: str, affiliation: str = "", email: str = "",
     }
 
 
+def _clean_ids(affiliation_ids) -> list[str]:
+    return [str(x).strip() for x in (affiliation_ids or []) if str(x).strip()]
+
+
 def add_author(state: State, name: str, affiliation: str = "",
-               email: str = "", orcid: str = "") -> dict:
+               email: str = "", orcid: str = "", affiliation_ids=None) -> dict:
     """Add a reusable author to the account library. Idempotent on
     (name, affiliation): if an entry with the same name + affiliation
     already exists it is returned unchanged (email/orcid NOT overwritten —
-    use update_author for that) so repeated calls don't create duplicates."""
+    use update_author for that) so repeated calls don't create duplicates.
+
+    `affiliation_ids` (optional) references the account affiliation library,
+    so a reused author carries their normalized multi-affiliation mapping;
+    free-text `affiliation` stays as a fallback."""
     fields = _clean(name, affiliation, email, orcid)
+    ids = _clean_ids(affiliation_ids)
     for aid, data in state.backend.list_collection(_authors_path(state)):
         if (data.get("name", "").strip().lower() == fields["name"].lower()
                 and data.get("affiliation", "").strip().lower()
@@ -58,7 +67,39 @@ def add_author(state: State, name: str, affiliation: str = "",
             return {"id": aid, **data, "existing": True}
     aid = uuid.uuid4().hex[:12]
     now = now_iso()
-    doc = {"id": aid, **fields, "created_at": now, "updated_at": now}
+    doc = {"id": aid, **fields, "affiliation_ids": ids,
+           "created_at": now, "updated_at": now}
+    state.backend.set_doc(_author_path(state, aid), doc)
+    return {**doc, "existing": False}
+
+
+def upsert_author_by_name(state: State, name: str, affiliation: str = "",
+                          email: str = "", orcid: str = "",
+                          affiliation_ids=None) -> dict:
+    """Create-or-refresh a library author matched by NAME (case-insensitive).
+
+    Unlike add_author (idempotent, never overwrites), this updates the stored
+    fields — used to keep the account library in sync when a paper's authors
+    are set, so reusing that author later brings their affiliation mapping
+    along. Only non-empty values overwrite; affiliation_ids replace when given."""
+    fields = _clean(name, affiliation, email, orcid)
+    ids = _clean_ids(affiliation_ids)
+    for aid, data in state.backend.list_collection(_authors_path(state)):
+        if data.get("name", "").strip().lower() == fields["name"].lower():
+            for k in ("affiliation", "email", "orcid"):
+                if fields[k]:
+                    data[k] = fields[k]
+            data["name"] = fields["name"]
+            if ids:
+                data["affiliation_ids"] = ids
+            data.setdefault("affiliation_ids", [])
+            data["updated_at"] = now_iso()
+            state.backend.set_doc(_author_path(state, aid), data)
+            return {"id": aid, **data, "existing": True}
+    aid = uuid.uuid4().hex[:12]
+    now = now_iso()
+    doc = {"id": aid, **fields, "affiliation_ids": ids,
+           "created_at": now, "updated_at": now}
     state.backend.set_doc(_author_path(state, aid), doc)
     return {**doc, "existing": False}
 

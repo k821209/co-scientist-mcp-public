@@ -14,6 +14,8 @@ from ..manuscript import (
 )
 from ..state import State
 from ..util import new_id, now_iso, slugify, word_count
+from . import affiliations as _affiliations
+from . import authors as _authors
 from . import limits as _limits
 from .activity import log_event
 
@@ -204,13 +206,24 @@ def update_paper(
 
 def set_paper_authors(state: State, slug: str, authors: list) -> dict:
     """Replace a paper's ordered author list. `authors` is a list of dicts
-    (`name` required; optional `affiliation`/`email`/`orcid`/`corresponding`)
-    or plain name strings. Returns the updated paper doc."""
+    (`name` required; optional `affiliation`/`affiliation_ids`/`email`/`orcid`/
+    `corresponding`) or plain name strings. Each author is also upserted into
+    the account author library by name — carrying their affiliation mapping —
+    so reusing them on another paper brings it along. Returns the paper doc."""
     path = _paper_path(state, slug)
     if state.backend.get_doc(path) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
     normalized = normalize_authors(authors)
     state.backend.update_doc(path, {"authors": normalized, "updated_at": now_iso()})
+    # Keep the account author library in sync (upsert by name).
+    for a in normalized:
+        try:
+            _authors.upsert_author_by_name(
+                state, a["name"], affiliation=a.get("affiliation", ""),
+                email=a.get("email", ""), orcid=a.get("orcid", ""),
+                affiliation_ids=a.get("affiliation_ids"))
+        except Exception:
+            pass  # library sync is best-effort; never fail the paper write
     log_event(state, slug, action="paper_authors_set",
               detail={"count": len(normalized)})
     doc = state.backend.get_doc(path)
@@ -225,10 +238,20 @@ def set_paper_affiliations(state: State, slug: str, affiliations: list) -> dict:
     path = _paper_path(state, slug)
     if state.backend.get_doc(path) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
-    normalized = normalize_affiliations(affiliations)
-    state.backend.update_doc(path, {"affiliations": normalized, "updated_at": now_iso()})
+    # Unify id spaces: upsert each affiliation into the account library by text
+    # and use the LIBRARY id, so a paper affiliation IS a library entry — then
+    # update_affiliation propagates, and the same text never gets two ids.
+    unified: list[dict] = []
+    seen: set = set()
+    for a in normalize_affiliations(affiliations):
+        lib = _affiliations.add_affiliation(state, a["text"])   # idempotent on text
+        if lib["id"] in seen:
+            continue
+        seen.add(lib["id"])
+        unified.append({"id": lib["id"], "text": a["text"]})
+    state.backend.update_doc(path, {"affiliations": unified, "updated_at": now_iso()})
     log_event(state, slug, action="paper_affiliations_set",
-              detail={"count": len(normalized)})
+              detail={"count": len(unified)})
     doc = state.backend.get_doc(path)
     doc["affiliations"] = normalize_affiliations(doc.get("affiliations"))
     return doc

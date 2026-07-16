@@ -1153,12 +1153,15 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def add_author(name: str, affiliation: str = "", email: str = "",
-                   orcid: str = "") -> dict[str, Any]:
+                   orcid: str = "", affiliation_ids: list[str] | None = None) -> dict[str, Any]:
         """Add a reusable author to the account library. Idempotent on
         (name, affiliation) — repeated calls return the existing entry instead
-        of duplicating it. Returns the author doc (with its `id`)."""
+        of duplicating it. `affiliation_ids` (optional) references the account
+        affiliation library so a reused author carries their normalized
+        multi-affiliation mapping. Returns the author doc (with its `id`)."""
         return _authors.add_author(state, name, affiliation=affiliation,
-                                   email=email, orcid=orcid)
+                                   email=email, orcid=orcid,
+                                   affiliation_ids=affiliation_ids)
 
     @mcp.tool()
     def update_author(author_id: str, name: str = "", affiliation: str = "",
