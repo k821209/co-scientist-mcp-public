@@ -21,6 +21,7 @@ from .tools import figure_lint as _figure_lint
 from .tools import plan as _plan
 from .tools import secrets as _secrets
 from .tools import authors as _authors
+from .tools import affiliations as _affiliations
 from .tools import manuscript_lint as _manuscript_lint
 from .tools import images as _images
 from .tools import assets as _assets
@@ -1188,10 +1189,44 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def set_paper_authors(slug: str, authors: list[dict[str, Any]]) -> dict[str, Any]:
         """Set a paper's ordered author list. Each author is a dict with
-        `name` (required) and optional `affiliation` / `email` / `orcid` /
-        `corresponding` (bool). Pick entries from list_authors() to reuse the
-        account library. Replaces the paper's current author list."""
+        `name` (required) and optional `affiliation` (free-text fallback) /
+        `affiliation_ids` (list of ids into the paper's affiliation list) /
+        `email` / `orcid` / `corresponding` (bool). Pick entries from
+        list_authors() to reuse the account library. Replaces the list."""
         return _papers.set_paper_authors(state, slug, authors)
+
+    @mcp.tool()
+    def list_affiliations() -> list[dict[str, Any]]:
+        """List the account-wide affiliation library (reusable institution
+        strings shared across papers/projects), also editable in the Account
+        tab. Reference these by id from a paper's affiliation list."""
+        return _affiliations.list_affiliations(state)
+
+    @mcp.tool()
+    def add_affiliation(text: str) -> dict[str, Any]:
+        """Add a reusable affiliation to the account library. Idempotent on the
+        text — repeated calls return the existing entry (with its `id`)."""
+        return _affiliations.add_affiliation(state, text)
+
+    @mcp.tool()
+    def update_affiliation(affiliation_id: str, text: str) -> dict[str, Any]:
+        """Change a library affiliation's text (propagates by id everywhere it's
+        referenced)."""
+        return _affiliations.update_affiliation(state, affiliation_id, text)
+
+    @mcp.tool()
+    def delete_affiliation(affiliation_id: str) -> dict[str, Any]:
+        """Delete an affiliation from the account library. Returns {deleted}."""
+        return {"deleted": _affiliations.delete_affiliation(state, affiliation_id)}
+
+    @mcp.tool()
+    def set_paper_affiliations(slug: str, affiliations: list[dict[str, Any]]) -> dict[str, Any]:
+        """Set a paper's ordered, de-duplicated affiliation list — the numbered
+        list authors reference by id (superscripts in the exported author
+        block). Each entry is a dict with `text` (required) and optional `id`,
+        or a plain string. Assign ids to authors via set_paper_authors(...,
+        affiliation_ids=[...])."""
+        return _papers.set_paper_affiliations(state, slug, affiliations)
 
     @mcp.tool()
     def get_plan() -> dict[str, Any]:

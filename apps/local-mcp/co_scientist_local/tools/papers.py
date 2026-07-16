@@ -8,40 +8,14 @@ Paths used:
 from __future__ import annotations
 
 from ..backends.base import NotFound
-from ..manuscript import DOC_TYPES, compile_manuscript, sections_for_doc_type
+from ..manuscript import (
+    DOC_TYPES, compile_manuscript, sections_for_doc_type,
+    format_author_block, normalize_affiliations, normalize_authors,
+)
 from ..state import State
 from ..util import new_id, now_iso, slugify, word_count
 from . import limits as _limits
 from .activity import log_event
-
-
-_AUTHOR_FIELDS = ("name", "affiliation", "email", "orcid")
-
-
-def normalize_authors(authors) -> list[dict]:
-    """Coerce a paper author list into the canonical shape
-    `[{name, affiliation, email, orcid, corresponding}, ...]`.
-
-    Back-compat: legacy papers stored `authors` as a plain `list[str]` of
-    names — each such entry becomes `{name, affiliation:"", ...}`. Dict
-    entries are kept but trimmed to the known fields (+ a bool
-    `corresponding`). Entries without a name are dropped."""
-    out: list[dict] = []
-    for a in authors or []:
-        if isinstance(a, str):
-            name = a.strip()
-            entry = {"name": name, "affiliation": "", "email": "", "orcid": ""}
-        elif isinstance(a, dict):
-            name = str(a.get("name", "")).strip()
-            entry = {f: str(a.get(f, "") or "").strip() for f in _AUTHOR_FIELDS}
-            entry["name"] = name
-            if a.get("corresponding"):
-                entry["corresponding"] = True
-        else:
-            continue
-        if entry["name"]:
-            out.append(entry)
-    return out
 
 
 def _paper_path(state: State, slug: str) -> str:
@@ -115,6 +89,7 @@ def create_paper(
         "slug": slug,
         "title": title.strip(),
         "authors": normalize_authors(authors),
+        "affiliations": [],
         "journal": journal,
         "doc_type": doc_type,
         "status": "draft",
@@ -160,8 +135,10 @@ def get_paper_state(state: State, slug: str) -> dict:
     paper = state.backend.get_doc(_paper_path(state, slug))
     if paper is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
-    # Normalize legacy list[str] authors to the canonical dict shape on read.
+    # Normalize legacy list[str] authors + the affiliation list on read.
     paper["authors"] = normalize_authors(paper.get("authors"))
+    paper["affiliations"] = normalize_affiliations(paper.get("affiliations"))
+    paper["author_block"] = format_author_block(paper)
     sections = [
         data
         for _, data in state.backend.list_collection(
@@ -238,6 +215,22 @@ def set_paper_authors(state: State, slug: str, authors: list) -> dict:
               detail={"count": len(normalized)})
     doc = state.backend.get_doc(path)
     doc["authors"] = normalize_authors(doc.get("authors"))
+    return doc
+
+
+def set_paper_affiliations(state: State, slug: str, affiliations: list) -> dict:
+    """Replace a paper's ordered affiliation list (the numbered list authors
+    reference by id). `affiliations` is a list of dicts ({id?, text}) or plain
+    strings; de-duplicated by text, order preserved. Returns the updated paper."""
+    path = _paper_path(state, slug)
+    if state.backend.get_doc(path) is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    normalized = normalize_affiliations(affiliations)
+    state.backend.update_doc(path, {"affiliations": normalized, "updated_at": now_iso()})
+    log_event(state, slug, action="paper_affiliations_set",
+              detail={"count": len(normalized)})
+    doc = state.backend.get_doc(path)
+    doc["affiliations"] = normalize_affiliations(doc.get("affiliations"))
     return doc
 
 
