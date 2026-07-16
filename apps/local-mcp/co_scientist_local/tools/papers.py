@@ -221,6 +221,14 @@ def set_paper_authors(state: State, slug: str, authors: list) -> dict:
     if state.backend.get_doc(path) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
     normalized = normalize_authors(authors)
+    # Derive a display affiliation from affiliation_ids when the free-text is
+    # empty, so list_authors / dashboard / export never show a blank for an
+    # author linked only via the numbered list (feedback 147c27455598).
+    for a in normalized:
+        if not a.get("affiliation") and a.get("affiliation_ids"):
+            texts = _affiliations.resolve_texts(state, a["affiliation_ids"])
+            if texts:
+                a["affiliation"] = "; ".join(texts)
     state.backend.update_doc(path, {"authors": normalized, "updated_at": now_iso()})
     # Keep the account author library in sync (upsert by name).
     for a in normalized:

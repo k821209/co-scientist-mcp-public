@@ -52,6 +52,14 @@ def list_affiliations(state: State) -> list[dict]:
     return out
 
 
+def resolve_texts(state: State, affiliation_ids) -> list[str]:
+    """Institution strings for the given account-library affiliation ids —
+    order preserved, unknown ids skipped. Used to derive a display affiliation
+    for an author who's linked only via affiliation_ids (no free-text)."""
+    lib = {a["id"]: a["text"] for a in list_affiliations(state)}
+    return [lib[i] for i in (affiliation_ids or []) if i in lib]
+
+
 def update_affiliation(state: State, aff_id: str, text: str) -> dict:
     """Change a library affiliation's text. This updates the LIBRARY entry only.
     Papers deliberately keep the affiliation text captured when it was added (a
