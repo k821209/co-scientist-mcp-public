@@ -53,8 +53,11 @@ def list_affiliations(state: State) -> list[dict]:
 
 
 def update_affiliation(state: State, aff_id: str, text: str) -> dict:
-    """Change a library affiliation's text (propagates by id to every paper /
-    author that references it)."""
+    """Change a library affiliation's text. This updates the LIBRARY entry only.
+    Papers deliberately keep the affiliation text captured when it was added (a
+    point-in-time record — an author moving institutions must not retroactively
+    rewrite a submitted/published paper). To pull a corrected text into an
+    in-progress DRAFT, use the opt-in resync (papers.resync_paper_affiliations)."""
     path = _affiliation_path(state, aff_id)
     doc = state.backend.get_doc(path)
     if doc is None:

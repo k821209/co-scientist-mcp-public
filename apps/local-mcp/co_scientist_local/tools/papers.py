@@ -125,9 +125,16 @@ def create_paper(
 
 
 def list_papers(state: State) -> list[dict]:
-    """List all papers for the active user, ordered by `updated_at` desc."""
+    """List all papers for the active user, ordered by `updated_at` desc.
+
+    Authors + affiliations are normalized to the same canonical (stored-order)
+    shape get_paper_state returns, so the author order is consistent everywhere
+    (list == detail == export)."""
     pairs = state.backend.list_collection(state.project_path("papers"))
     papers = [data for _, data in pairs]
+    for p in papers:
+        p["authors"] = normalize_authors(p.get("authors"))
+        p["affiliations"] = normalize_affiliations(p.get("affiliations"))
     papers.sort(key=lambda p: p.get("updated_at", ""), reverse=True)
     return papers
 
@@ -254,6 +261,33 @@ def set_paper_affiliations(state: State, slug: str, affiliations: list) -> dict:
               detail={"count": len(unified)})
     doc = state.backend.get_doc(path)
     doc["affiliations"] = normalize_affiliations(doc.get("affiliations"))
+    return doc
+
+
+def resync_paper_affiliations(state: State, slug: str) -> dict:
+    """Opt-in: refresh a paper's cached affiliation TEXT from the account
+    library by id. Papers snapshot the text at insert time (a point-in-time
+    record — a corrected/renamed institution must NOT silently rewrite a
+    submitted/published paper), so this is user-triggered and never automatic.
+    Only entries whose id still exists in the library are updated; ids are
+    unchanged, so author superscript mappings are preserved. Returns the paper."""
+    path = _paper_path(state, slug)
+    paper = state.backend.get_doc(path)
+    if paper is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    affs = normalize_affiliations(paper.get("affiliations"))
+    lib = {a["id"]: a["text"] for a in _affiliations.list_affiliations(state)}
+    changed = 0
+    for a in affs:
+        if a["id"] in lib and lib[a["id"]] != a["text"]:
+            a["text"] = lib[a["id"]]
+            changed += 1
+    state.backend.update_doc(path, {"affiliations": affs, "updated_at": now_iso()})
+    log_event(state, slug, action="paper_affiliations_resynced",
+              detail={"changed": changed})
+    doc = state.backend.get_doc(path)
+    doc["affiliations"] = normalize_affiliations(doc.get("affiliations"))
+    doc["resynced"] = changed
     return doc
 
 

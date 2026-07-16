@@ -64,6 +64,13 @@ def add_author(state: State, name: str, affiliation: str = "",
         if (data.get("name", "").strip().lower() == fields["name"].lower()
                 and data.get("affiliation", "").strip().lower()
                 == fields["affiliation"].lower()):
+            # Idempotent match — but DO attach newly-passed affiliation_ids so a
+            # pre-existing author (created before ids were supported) can be
+            # upgraded in place instead of forcing a delete + re-add.
+            if ids and data.get("affiliation_ids") != ids:
+                data["affiliation_ids"] = ids
+                data["updated_at"] = now_iso()
+                state.backend.set_doc(_author_path(state, aid), data)
             return {"id": aid, **data, "existing": True}
     aid = uuid.uuid4().hex[:12]
     now = now_iso()
@@ -114,9 +121,10 @@ def list_authors(state: State) -> list[dict]:
 
 def update_author(state: State, author_id: str, *, name: str | None = None,
                   affiliation: str | None = None, email: str | None = None,
-                  orcid: str | None = None) -> dict:
+                  orcid: str | None = None, affiliation_ids=None) -> dict:
     """Update fields on an existing library author. Only the arguments you
-    pass are changed; the rest are left as-is."""
+    pass are changed; the rest are left as-is. `affiliation_ids` (a list)
+    replaces the stored references to the account affiliation library."""
     path = _author_path(state, author_id)
     doc = state.backend.get_doc(path)
     if doc is None:
@@ -126,6 +134,8 @@ def update_author(state: State, author_id: str, *, name: str | None = None,
     for key, val in updates.items():
         if val is not None:
             doc[key] = val.strip() if key != "name" else (val.strip() or doc[key])
+    if affiliation_ids is not None:
+        doc["affiliation_ids"] = _clean_ids(affiliation_ids)
     doc["updated_at"] = now_iso()
     state.backend.set_doc(path, doc)
     return doc

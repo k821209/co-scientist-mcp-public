@@ -1165,11 +1165,15 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def update_author(author_id: str, name: str = "", affiliation: str = "",
-                      email: str = "", orcid: str = "") -> dict[str, Any]:
+                      email: str = "", orcid: str = "",
+                      affiliation_ids: list[str] | None = None) -> dict[str, Any]:
         """Update a library author's fields. Pass only the fields to change
-        (empty string = leave unchanged)."""
+        (empty string = leave unchanged). `affiliation_ids` (a list) replaces
+        the author's references into the account affiliation library."""
         kw = {k: v for k, v in {"name": name, "affiliation": affiliation,
                                 "email": email, "orcid": orcid}.items() if v}
+        if affiliation_ids is not None:
+            kw["affiliation_ids"] = affiliation_ids
         return _authors.update_author(state, author_id, **kw)
 
     @mcp.tool()
@@ -1213,8 +1217,10 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def update_affiliation(affiliation_id: str, text: str) -> dict[str, Any]:
-        """Change a library affiliation's text (propagates by id everywhere it's
-        referenced)."""
+        """Change a library affiliation's text. Updates the LIBRARY entry only —
+        papers keep the affiliation text captured when it was added (a
+        point-in-time record; this does NOT rewrite existing papers). To pull a
+        corrected text into an in-progress draft, call resync_paper_affiliations."""
         return _affiliations.update_affiliation(state, affiliation_id, text)
 
     @mcp.tool()
@@ -1230,6 +1236,15 @@ def build_mcp(state: State) -> FastMCP:
         or a plain string. Assign ids to authors via set_paper_authors(...,
         affiliation_ids=[...])."""
         return _papers.set_paper_affiliations(state, slug, affiliations)
+
+    @mcp.tool()
+    def resync_paper_affiliations(slug: str) -> dict[str, Any]:
+        """Opt-in: refresh a paper's cached affiliation text from the account
+        library by id (for a DRAFT whose affiliation was renamed/corrected).
+        Papers snapshot text at insert time and are never rewritten
+        automatically; this is the explicit, user-triggered pull. Returns the
+        paper with `resynced` = how many entries changed."""
+        return _papers.resync_paper_affiliations(state, slug)
 
     @mcp.tool()
     def get_plan() -> dict[str, Any]:
