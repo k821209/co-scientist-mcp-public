@@ -206,7 +206,7 @@ def update_paper(
                 "word_count": word_count(abstract),
                 "updated_at": fields["updated_at"],
             })
-    if title is not None or abstract is not None:
+    if title is not None or abstract is not None or authors is not None:
         _regenerate_manuscript(state, slug)
     return state.backend.get_doc(path)
 
@@ -239,6 +239,9 @@ def set_paper_authors(state: State, slug: str, authors: list) -> dict:
                 affiliation_ids=a.get("affiliation_ids"))
         except Exception:
             pass  # library sync is best-effort; never fail the paper write
+    # Recompile the manuscript blob so the exported author block reflects the
+    # new list (export reads the stored blob — feedback 001ed42b1fee).
+    _regenerate_manuscript(state, slug)
     log_event(state, slug, action="paper_authors_set",
               detail={"count": len(normalized)})
     doc = state.backend.get_doc(path)
@@ -265,6 +268,7 @@ def set_paper_affiliations(state: State, slug: str, affiliations: list) -> dict:
         seen.add(lib["id"])
         unified.append({"id": lib["id"], "text": a["text"]})
     state.backend.update_doc(path, {"affiliations": unified, "updated_at": now_iso()})
+    _regenerate_manuscript(state, slug)   # refresh the exported author block
     log_event(state, slug, action="paper_affiliations_set",
               detail={"count": len(unified)})
     doc = state.backend.get_doc(path)
@@ -329,6 +333,8 @@ def resync_paper_affiliations(state: State, slug: str) -> dict:
             a["text"] = lib[a["id"]]
             changed += 1
     state.backend.update_doc(path, {"affiliations": affs, "updated_at": now_iso()})
+    if changed:
+        _regenerate_manuscript(state, slug)   # refresh the exported author block
     log_event(state, slug, action="paper_affiliations_resynced",
               detail={"changed": changed})
     doc = state.backend.get_doc(path)
