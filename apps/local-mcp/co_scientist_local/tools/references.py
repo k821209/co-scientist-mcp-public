@@ -110,6 +110,12 @@ def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
             payload = _json.loads(resp.read())
     except urllib.error.HTTPError as e:
         if e.code == 404:
+            # Data-deposition DOIs (Zenodo / figshare / Dryad) are registered
+            # with DataCite, not CrossRef — a CrossRef 404 doesn't mean the DOI
+            # is fake. Try DataCite before declaring it hallucinated.
+            dc = _fetch_datacite(doi, timeout=timeout)
+            if dc is not None:
+                return dc
             raise DoiNotFound(doi) from None
         body = ""
         try:
@@ -126,6 +132,68 @@ def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
         raise RuntimeError(f"CrossRef timeout ({timeout}s) for {doi!r}") from e
     msg = payload.get("message", {})
     return _normalize_crossref(msg, doi)
+
+
+_DATACITE_BASE = "https://api.datacite.org/dois/"
+
+
+def _fetch_datacite(doi: str, *, timeout: int = 15) -> dict | None:
+    """Resolve a DOI against DataCite (datasets / software / preprints). Returns
+    a normalized metadata dict, or None if DataCite has no record / is
+    unreachable (so the caller falls back to the CrossRef-404 hallucination
+    verdict rather than masking a genuinely fake DOI)."""
+    url = _DATACITE_BASE + urllib.parse.quote(doi, safe="/")
+    req = urllib.request.Request(
+        url, headers={"User-Agent": _CROSSREF_UA, "Accept": "application/vnd.api+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = _json.loads(resp.read())
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
+        return None
+    attr = (payload.get("data") or {}).get("attributes") or {}
+    if not attr:
+        return None
+    return _normalize_datacite(attr, doi)
+
+
+def _normalize_datacite(attr: dict, doi: str) -> dict:
+    """Flatten DataCite's response into the same shape as _normalize_crossref.
+    The repository (publisher, e.g. 'Zenodo') stands in for `journal`; `type` is
+    the DataCite resourceTypeGeneral lowered (dataset / software / text)."""
+    titles = attr.get("titles") or []
+    title = _fix_mojibake((titles[0].get("title") if titles else "") or "")
+    authors: list[str] = []
+    for c in attr.get("creators") or []:
+        given = (c.get("givenName") or "").strip()
+        family = (c.get("familyName") or "").strip()
+        if family:
+            authors.append(_fix_mojibake((given + " " + family).strip()))
+        elif c.get("name"):
+            authors.append(_fix_mojibake(str(c["name"]).strip()))
+    rtype = ((attr.get("types") or {}).get("resourceTypeGeneral") or "").lower() or "dataset"
+    year = attr.get("publicationYear")
+    abstract = ""
+    for dd in attr.get("descriptions") or []:
+        if dd.get("description"):
+            abstract = _fix_mojibake(str(dd["description"]))
+            break
+    publisher = _fix_mojibake(str(attr.get("publisher") or "")) or None
+    return {
+        "doi": (attr.get("doi") or doi).lower(),
+        "title": title,
+        "abstract": abstract,
+        "subjects": [],
+        "authors": authors,
+        "journal": publisher,                 # repository stands in for the venue
+        "journal_short": None,
+        "year": int(year) if year else None,
+        "volume": None, "issue": None, "pages": None,
+        "issn": None,
+        "publisher": publisher,
+        "url": attr.get("url") or f"https://doi.org/{doi}",
+        "type": rtype,
+        "source": "datacite",
+    }
 
 
 def _fix_mojibake(s: str) -> str:
@@ -386,8 +454,10 @@ def delete_reference(state: State, slug: str, citation_key: str) -> bool:
 
 
 def verify_doi(state: State, doi: str) -> dict:
-    """Resolve a DOI against CrossRef. Returns metadata if real, raises
-    DoiNotFound if CrossRef has no record of it (likely hallucinated).
+    """Resolve a DOI against CrossRef, falling back to DataCite. Returns
+    metadata if real (with `type` — e.g. dataset/software for a Zenodo/figshare/
+    Dryad deposit — and `source` = crossref|datacite), raises DoiNotFound only
+    when NEITHER registry has a record (then it's likely hallucinated).
 
     No Firestore writes. Use this to spot-check a single citation before
     inserting it into a manuscript.
