@@ -79,34 +79,44 @@ def format_author_block(paper: dict) -> dict:
     list; falls back to authors' free-text `affiliation` (de-duplicated,
     first-seen order) so legacy papers still render a block."""
     authors = normalize_authors(paper.get("authors"))
-    paper_affs = normalize_affiliations(paper.get("affiliations"))
-    if not paper_affs:
-        seen: dict = {}
-        for au in authors:
-            t = (au.get("affiliation") or "").strip()
-            if t and t.lower() not in seen:
-                seen[t.lower()] = True
-                paper_affs.append({"id": None, "text": t})
+    text_by_id = {a["id"]: a["text"] for a in normalize_affiliations(paper.get("affiliations"))}
 
-    num_by_id = {a["id"]: i + 1 for i, a in enumerate(paper_affs) if a.get("id")}
-    num_by_text = {a["text"].lower(): i + 1 for i, a in enumerate(paper_affs)}
+    # Assign affiliation numbers by ORDER OF FIRST APPEARANCE while scanning the
+    # ordered author list top-to-bottom (standard journal convention) — so the
+    # first author's first affiliation is always ^1^, derived from author order
+    # and never left stale by the stored affiliation-list order or a reorder.
+    order: list[tuple] = []      # (key, text) in first-appearance order
+    num: dict = {}               # key -> number
+    per_author: list[list] = []
+
+    def _reg(key, text):
+        if key not in num:
+            num[key] = len(order) + 1
+            order.append((key, text))
+
+    for au in authors:
+        keys: list = []
+        for aid in au.get("affiliation_ids", []):
+            text = text_by_id.get(aid)
+            if text is None:
+                continue
+            _reg(("id", aid), text)
+            keys.append(("id", aid))
+        if not keys:
+            t = (au.get("affiliation") or "").strip()
+            if t:
+                _reg(("text", t.lower()), t)
+                keys.append(("text", t.lower()))
+        per_author.append(keys)
 
     name_parts: list[str] = []
-    for au in authors:
-        nums: list[int] = []
-        for aid in au.get("affiliation_ids", []):
-            if aid in num_by_id:
-                nums.append(num_by_id[aid])
-        if not nums and au.get("affiliation"):
-            n = num_by_text.get(au["affiliation"].strip().lower())
-            if n:
-                nums.append(n)
-        nums = sorted(set(nums))
+    for au, keys in zip(authors, per_author):
+        nums = sorted({num[k] for k in keys})
         sup = f"^{','.join(map(str, nums))}^" if nums else ""
         star = "*" if au.get("corresponding") else ""
         name_parts.append(f"{au['name']}{sup}{star}")
 
-    aff_lines = [f"{i + 1}. {a['text']}" for i, a in enumerate(paper_affs)]
+    aff_lines = [f"{i + 1}. {text}" for i, (_key, text) in enumerate(order)]
     corr = next((au for au in authors if au.get("corresponding")), None)
     corr_line = ""
     if corr:
