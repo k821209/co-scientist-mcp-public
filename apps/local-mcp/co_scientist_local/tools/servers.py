@@ -1,10 +1,11 @@
 """Compute-server registry: user's HPC nodes and workstations.
 
-Paths:
-    doc:  projects/{pid}/servers/{alias}
-    sub:  projects/{pid}/servers/{alias}/envs/{env_name}
+ACCOUNT-scoped (a server is the user's asset, shared across every project):
+    doc:  users/{uid}/servers/{alias}
+    sub:  users/{uid}/servers/{alias}/envs/{env_name}
 
 `alias` is the natural key — same string the user puts in `~/.ssh/config`.
+Register a node once; every project on every machine can submit to it.
 
 **Important security boundary:** the `ssh_key` field stores a *path on the
 user's disk* (e.g. `~/.ssh/id_ed25519`), never the private key material
@@ -18,12 +19,20 @@ from ..state import State
 from ..util import now_iso
 
 
+def _servers_col(state: State) -> str:
+    return f"users/{state.owner_uid}/servers"
+
+
 def _server_path(state: State, alias: str) -> str:
-    return state.project_path("servers", alias)
+    return f"users/{state.owner_uid}/servers/{alias}"
+
+
+def _envs_col(state: State, alias: str) -> str:
+    return f"users/{state.owner_uid}/servers/{alias}/envs"
 
 
 def _env_path(state: State, alias: str, env_name: str) -> str:
-    return state.project_path("servers", alias, "envs", env_name)
+    return f"users/{state.owner_uid}/servers/{alias}/envs/{env_name}"
 
 
 _VALID_ENV_TYPES = {"conda", "venv", "module"}
@@ -45,8 +54,8 @@ def add_server(
     notes: str | None = None,
 ) -> dict:
     """Register a compute server. `alias` must be unique per user."""
-    if not alias.strip():
-        raise ValueError("alias is required")
+    if not alias.strip() or "/" in alias:
+        raise ValueError("alias is required and must contain no '/'")
     if not host.strip():
         raise ValueError("host is required")
     if not user.strip():
@@ -72,7 +81,7 @@ def add_server(
 
 def list_servers(state: State, *, active_only: bool = True) -> list[dict]:
     """List registered servers, sorted by alias."""
-    pairs = state.backend.list_collection(state.project_path("servers"))
+    pairs = state.backend.list_collection(_servers_col(state))
     servers = [data for _, data in pairs]
     if active_only:
         servers = [s for s in servers if s.get("active", True)]
@@ -130,7 +139,7 @@ def delete_server(state: State, alias: str) -> bool:
     if state.backend.get_doc(path) is None:
         return False
     # Cascade-delete envs
-    for env_id, _ in state.backend.list_collection(state.project_path("servers", alias, "envs")):
+    for env_id, _ in state.backend.list_collection(_envs_col(state, alias)):
         state.backend.delete_doc(_env_path(state, alias, env_id))
     state.backend.delete_doc(path)
     return True
@@ -167,7 +176,7 @@ def add_server_env(
 def list_server_envs(state: State, alias: str) -> list[dict]:
     if state.backend.get_doc(_server_path(state, alias)) is None:
         raise NotFound(f"server {alias!r} not registered")
-    pairs = state.backend.list_collection(state.project_path("servers", alias, "envs"))
+    pairs = state.backend.list_collection(_envs_col(state, alias))
     envs = [data for _, data in pairs]
     envs.sort(key=lambda e: e.get("env_name", ""))
     return envs
