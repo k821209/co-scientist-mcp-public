@@ -404,6 +404,28 @@ def _set_table_look(table, *, header: bool, banded_rows: bool) -> None:
     look.set(qn("w:noVBand"), "1")
 
 
+def _set_table_borders(table, *, size: int = 4, color: str = "000000") -> None:
+    """Force explicit borders on ALL edges + inside gridlines via direct
+    `<w:tblBorders>` formatting. The named table style ("Light Grid Accent 1")
+    defines borders, but some viewers (notably Hancom / 한컴오피스) drop the
+    OUTER top + bottom rules when they come only from the style — so we draw
+    them directly. `size` is in eighths of a point (4 = 0.5pt)."""
+    tbl_pr = table._tbl.tblPr
+    borders = tbl_pr.find(qn("w:tblBorders"))
+    if borders is None:
+        borders = tbl_pr.makeelement(qn("w:tblBorders"), {})
+        tbl_pr.append(borders)
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = borders.find(qn(f"w:{edge}"))
+        if el is None:
+            el = borders.makeelement(qn(f"w:{edge}"), {})
+            borders.append(el)
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), str(size))
+        el.set(qn("w:space"), "0")
+        el.set(qn("w:color"), color)
+
+
 def _render_table(doc, node: SyntaxTreeNode, asset_dir):
     rows: list[list[SyntaxTreeNode]] = []
     for section in node.children:  # thead / tbody
@@ -419,6 +441,9 @@ def _render_table(doc, node: SyntaxTreeNode, asset_dir):
     # no first/last-column emphasis (so data columns read evenly). Without a
     # `<w:tblLook>` the banding/header shading don't render in some viewers.
     _set_table_look(table, header=True, banded_rows=True)
+    # Draw all borders explicitly so the outer top + bottom rules always render
+    # (the style alone drops them in Hancom / some viewers).
+    _set_table_borders(table)
     for ri, cells in enumerate(rows):
         for ci in range(ncols):
             cell = table.cell(ri, ci)
