@@ -226,10 +226,17 @@ def submit_remote_job(
         5. Record an analysis_runs row.
     """
     server = get_server(state, server_alias)
-    if not server.get("default_workdir"):
+    # Base dir: this PROJECT's working directory on the server (if bound) takes
+    # precedence over the account server's default_workdir — so each project's
+    # runs land in its own directory. Falls back to the server default.
+    from . import workdirs as _workdirs
+    proj_wd = (_workdirs.get_project_workdir(state, server_alias) or {}).get("workdir")
+    base_workdir = (proj_wd or server.get("default_workdir") or "").strip()
+    if not base_workdir:
         return {
-            "error": f"server {server_alias!r} has no default_workdir set; "
-                     "update via update_server first."
+            "error": f"server {server_alias!r} has no working directory for this "
+                     "project — set one via set_project_workdir(alias, workdir, "
+                     "description=...) (or the server's default_workdir)."
         }
     ssh = state.require_ssh()
 
@@ -256,8 +263,8 @@ def submit_remote_job(
     if status.get("warnings"):
         polite_warnings.extend(status["warnings"])
 
-    # 2. Resolve remote dir + create
-    remote_dir = f"{server['default_workdir'].rstrip('/')}/analysis/{analysis_name}"
+    # 2. Resolve remote dir + create (under the project's base workdir)
+    remote_dir = f"{base_workdir.rstrip('/')}/analysis/{analysis_name}"
     rc, _, err = ssh.run(server, f"mkdir -p {shlex.quote(remote_dir)}")
     if rc != 0:
         return {"error": f"failed to create remote dir: {(err or '').strip()}"}

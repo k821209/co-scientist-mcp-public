@@ -35,6 +35,7 @@ from .tools import reviews as _reviews
 from .tools import runs as _runs
 from .tools import sections as _sections
 from .tools import servers as _servers
+from .tools import workdirs as _workdirs
 from .tools import ssh_ops as _ssh_ops
 from .tools import tables as _tables
 from .tools import todos as _todos
@@ -1085,6 +1086,29 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def delete_server_env(alias: str, env_name: str) -> dict[str, Any]:
         return {"deleted": _servers.delete_server_env(state, alias, env_name)}
+
+    # ─── per-project server working directories ──────────────────────────────
+    @mcp.tool()
+    def set_project_workdir(server_alias: str, workdir: str,
+                            description: str = "") -> dict[str, Any]:
+        """Bind THIS project's working directory on a registered server (the
+        absolute path where this project's data/code/outputs live) plus a
+        description of what's in it. submit_remote_job uses it as the base dir
+        (falling back to the server's default_workdir), so each project's runs
+        land in — and are documented against — a clear location."""
+        return _workdirs.set_project_workdir(state, server_alias, workdir,
+                                             description=description)
+
+    @mcp.tool()
+    def list_project_workdirs() -> list[dict[str, Any]]:
+        """List this project's server working-directory bindings (alias →
+        workdir + description)."""
+        return _workdirs.list_project_workdirs(state)
+
+    @mcp.tool()
+    def delete_project_workdir(server_alias: str) -> dict[str, Any]:
+        """Remove this project's working-directory binding for a server."""
+        return {"deleted": _workdirs.delete_project_workdir(state, server_alias)}
 
     # ─── analysis runs ───────────────────────────────────────────────────────
     @mcp.tool()
