@@ -53,6 +53,18 @@ exist. Run `/paper-revision` to walk through and address them. Every
 `update_review(..., status='accepted', response='...')` shows up in the
 dashboard immediately (Firestore listeners).
 
+## Analysis provenance — record EVERY run
+
+Any computation that produces a manuscript **figure, table, or number**
+(local Bash, `launch_local_job`, or an HPC job) must leave a run record —
+which server, which command, which git version made which result. Prefer the
+recording paths (`/analysis-run`, `launch_local_job`, `submit_remote_job`);
+they capture host/command/env/log/pid automatically. If you ran something
+ad-hoc (a `zcat | …`, a figure script, a one-off ssh), back-fill it with
+`create_analysis(...)` + `record_analysis_run(host=, command=, …)`. A silent
+gap here directly undermines the paper's reproducibility claim. Reconcile with
+`list_analysis_runs` / `scan_untracked_jobs`.
+
 ## Remote Job Rule (Hard Block)
 
 **Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.

@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-12a"
+GUIDE_VERSION = "2026-07-18a"
 
 
 def render_guide() -> str:
@@ -102,8 +102,10 @@ On every session start:
 
 The user's compute — HPC nodes, lab workstations, their cores/RAM/GPUs
 and conda/venv/module environments — is **structured data**, not memory.
-It lives in the servers registry (`/projects/{{pid}}/servers`) and drives
-the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
+It lives in the ACCOUNT-wide servers registry (`/users/{{uid}}/servers`,
+shared across every project; managed on the dashboard **Servers** page) and
+drives each project's **Runs tab**, the politeness caps, and
+`submit_remote_job`.
 
 - When the user describes a machine they compute on (host, login user,
   cores, GPUs, an HPC alias from their `~/.ssh/config`), register it with
@@ -115,6 +117,29 @@ the dashboard's **Runs tab**, the politeness caps, and `submit_remote_job`.
   compute details sitting in memory, move them to the registry and prune
   the memory entry.
 - `ssh_key` stores a *path on the user's disk*, never key material.
+
+## Analysis provenance — RECORD EVERY RUN (not optional)
+
+Every computation that produces a manuscript figure, table, or number —
+whether a local Bash command, `launch_local_job`, or an HPC job — MUST leave
+a run record, so the paper can state *which server, which command, which git
+version produced which result*. That provenance is exactly what reviewers and
+reproducers need, and this is the #1 silently-skipped step: running an
+analysis via raw Bash/ssh and moving on leaves a permanent gap.
+
+- **Prefer the recording paths** — `/analysis-run`, `launch_local_job`, or
+  `submit_remote_job`. They create the run record (host, command, env_name,
+  log_path, pid) automatically. Do NOT hand-roll a raw `ssh <alias> "nohup …"`
+  or a bare local Bash run for a result-producing analysis.
+- **Already ran it ad-hoc?** Back-fill immediately: `create_analysis(...)`
+  then `record_analysis_run(..., host=, command=, env_name=, log_path=, pid=)`.
+  A quick `zcat | …`, a figure script, a one-off `gm_compare` — all count.
+- **Figure/table generation IS an analysis** — record the command that made
+  each `figure_N.png` / table CSV, not just the "big" jobs.
+- Reconcile periodically: `list_analysis_runs` shows what's recorded;
+  `scan_untracked_jobs` finds detached job-like processes with no record.
+  If the user asks "which server did we run on / where's the record" and you
+  can't answer from `analysis_runs`, that's the gap this rule prevents.
 
 ## Available skills
 

@@ -9,6 +9,16 @@ description: Run a computational analysis (local or HPC) within a named group at
 GATK pipeline," "compute X from Y data," "do a t-test on …", "make
 figure 2 from this CSV."
 
+**This is the DEFAULT path for ANY computation that produces a manuscript
+figure, table, or number — not just "big" jobs.** A quick `zcat | awk`, a
+one-off `gm_compare`, a plotting script, an ssh command on a registered node:
+all of it needs a run record (host · command · env · log · pid) or the
+paper's provenance has a silent hole ("which server / which command made
+Fig 3?" must be answerable from `analysis_runs`). Never run a result-producing
+analysis via raw Bash/ssh and move on. If you already did, **back-fill it now**
+with `create_analysis(...)` + `record_analysis_run(host=, command=, …)`, and
+reconcile with `scan_untracked_jobs` / `list_analysis_runs`.
+
 ## What it does
 
 Wraps a computation in a tracked record on a specific paper:
