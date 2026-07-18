@@ -1090,14 +1090,16 @@ def build_mcp(state: State) -> FastMCP:
     # ─── per-project server working directories ──────────────────────────────
     @mcp.tool()
     def set_project_workdir(server_alias: str, workdir: str,
-                            description: str = "") -> dict[str, Any]:
-        """Bind THIS project's working directory on a registered server (the
-        absolute path where this project's data/code/outputs live) plus a
-        description of what's in it. submit_remote_job uses it as the base dir
-        (falling back to the server's default_workdir), so each project's runs
-        land in — and are documented against — a clear location."""
+                            description: str = "", env_name: str = "") -> dict[str, Any]:
+        """Bind how THIS project uses a registered server: `workdir` (absolute
+        path where this project's data/code/outputs live), `description` (what's
+        in it), and `env_name` (the conda/venv env this project uses there).
+        submit_remote_job uses the workdir as the base dir and activates the env
+        by default (both falling back to the server's defaults), so each
+        project's runs land in — and are documented against — a clear location
+        and environment."""
         return _workdirs.set_project_workdir(state, server_alias, workdir,
-                                             description=description)
+                                             description=description, env_name=env_name)
 
     @mcp.tool()
     def list_project_workdirs() -> list[dict[str, Any]]:

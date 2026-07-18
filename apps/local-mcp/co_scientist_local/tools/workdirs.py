@@ -29,11 +29,12 @@ def _wd_path(state: State, alias: str) -> str:
 
 
 def set_project_workdir(state: State, server_alias: str, workdir: str,
-                        description: str = "") -> dict:
-    """Bind (or update) this project's working directory on `server_alias`.
-    `workdir` is the absolute path on that server where the project's data /
-    code / outputs live; `description` says what's in it (free text). Returns
-    the binding doc."""
+                        description: str = "", env_name: str = "") -> dict:
+    """Bind (or update) how this project uses `server_alias`: `workdir` is the
+    absolute path on that server where the project's data/code/outputs live,
+    `description` says what's in it, and `env_name` is the conda/venv/module
+    environment this project uses there (submit_remote_job activates it by
+    default). Returns the binding doc."""
     path = _wd_path(state, server_alias)
     if not (workdir or "").strip():
         raise ValueError("workdir is required")
@@ -43,6 +44,7 @@ def set_project_workdir(state: State, server_alias: str, workdir: str,
         "server_alias": server_alias.strip(),
         "workdir": workdir.strip(),
         "description": (description or "").strip(),
+        "env_name": (env_name or "").strip(),
         "created_at": existing.get("created_at", now),
         "updated_at": now,
     }

@@ -226,18 +226,20 @@ def submit_remote_job(
         5. Record an analysis_runs row.
     """
     server = get_server(state, server_alias)
-    # Base dir: this PROJECT's working directory on the server (if bound) takes
-    # precedence over the account server's default_workdir — so each project's
-    # runs land in its own directory. Falls back to the server default.
+    # This PROJECT's binding on the server (workdir + env) takes precedence over
+    # the account server's defaults — so each project's runs land in its own
+    # directory and use its own environment. Falls back to the server defaults.
     from . import workdirs as _workdirs
-    proj_wd = (_workdirs.get_project_workdir(state, server_alias) or {}).get("workdir")
-    base_workdir = (proj_wd or server.get("default_workdir") or "").strip()
+    binding = _workdirs.get_project_workdir(state, server_alias) or {}
+    base_workdir = (binding.get("workdir") or server.get("default_workdir") or "").strip()
     if not base_workdir:
         return {
             "error": f"server {server_alias!r} has no working directory for this "
                      "project — set one via set_project_workdir(alias, workdir, "
-                     "description=...) (or the server's default_workdir)."
+                     "description=..., env_name=...) (or the server's default_workdir)."
         }
+    if env_name is None and binding.get("env_name"):
+        env_name = binding["env_name"]   # default env from the project binding
     ssh = state.require_ssh()
 
     # 1. Politeness
