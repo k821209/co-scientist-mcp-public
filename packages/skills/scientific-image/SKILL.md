@@ -52,19 +52,26 @@ overlaps, off-canvas elements, and arrows crossing unrelated boxes. Instead:
 1. **Represent the layout as a spec** — `nodes: [{id, x, y, w, h}]` ((x,y) =
    box bottom-left, y-up) and `edges: [{src, dst, src_side?, dst_side?}]` on a
    `canvas_w × canvas_h`.
-2. **Lint deterministically before rendering:**
+2. **Lint deterministically before rendering.** Give each box a `label` +
+   `font_size` (pt) and pass the figure size so overflow is caught too:
    ```
-   mcp__co_scientist__lint_figure_layout(nodes, canvas_w, canvas_h,
-                                         edges=edges, min_gap=<pad>)
+   mcp__co_scientist__lint_figure_layout(
+       nodes, canvas_w, canvas_h, edges=edges, min_gap=<pad>,
+       figure_w_in=<figsize[0]>, figure_h_in=<figsize[1]>)
    ```
-   → `{ok, issues, counts}` for **box_overlap**, **out_of_canvas**, and
-   **arrow_crosses_box** (an edge passing through an unrelated node — the defect
-   a visual review reliably misses). Iterate on the spec until `ok`, THEN render.
-3. **Label overflow — check at render time, not with a heuristic.** Do NOT
-   estimate fit from `len(text)*fontsize`; it mis-fires. Use matplotlib's real
-   extent: `t.get_window_extent(fig.canvas.get_renderer())`, transform to data
-   units, and compare against the box rect. Shrink font / widen box / wrap if it
-   doesn't fit.
+   → `{ok, issues, counts}` for **box_overlap**, **out_of_canvas**,
+   **arrow_crosses_box** (an edge through an unrelated node — the defect a
+   visual review reliably misses), and **label_overflow** (a box's text doesn't
+   fit — reports measured vs available size + a suggested max font / min box).
+   Nodes: `{id, x, y, w, h, label?, font_size?, padding?, wrap?}`. Iterate on
+   the spec until `ok`, THEN render.
+3. **Label overflow is now linted deterministically** (a CJK-aware
+   char-advance estimate, using `figure_w_in`/`figure_h_in` to map box DATA
+   units ↔ text POINTS — the part a naive `len(text)*fontsize` gets wrong). Fix
+   flagged labels by shrinking the font (`suggested_max_font`), enlarging the
+   box (`suggested_min_box`), or setting `wrap=True`. For borderline hits,
+   confirm with matplotlib's real extent
+   (`t.get_window_extent(fig.canvas.get_renderer())`) at render.
 
 This turns the unreliable render-and-eyeball loop into a deterministic one.
 

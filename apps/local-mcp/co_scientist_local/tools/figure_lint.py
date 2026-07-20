@@ -13,14 +13,61 @@ and lint the geometry BEFORE rendering (feedback ec879d1d0e17):
 Coordinates: (x, y) is a box's BOTTOM-LEFT corner, w x h its size, y-up, canvas
 [0,W] x [0,H] — matplotlib data-coordinate convention.
 
-NOT covered here: label overflow. Doing it right needs the renderer's actual
-text extent (matplotlib `Text.get_window_extent`), NOT a len(chars)*fontsize
-heuristic (which mis-fires). Check that at render time — see the /scientific-image
-skill.
+  4. label_overflow — a node's text doesn't fit inside its box (feedback
+     f10b60c89067, parity with the deck linter). Box w/h are DATA units and
+     font_size is POINTS, so this needs the figure size (`figure_w_in`,
+     `figure_h_in`) to map data-units↔points — that mapping is the part a naive
+     len(chars)*fontsize heuristic gets wrong. Pass a node `label` + `font_size`
+     (pt) [+ `padding` in data units, `wrap`], and the figure size, and it flags
+     labels whose estimated extent exceeds the box interior, with the measured
+     vs available size + a suggested max font / min box. The text extent is a
+     CJK-aware char-advance ESTIMATE (no renderer), so borderline cases still
+     merit a render check; clear overflows it catches deterministically.
 """
 from __future__ import annotations
 
 _SIDES = {"center", "top", "bottom", "left", "right"}
+
+# Per-character advance as a fraction of the em (font size), by rough class.
+# A CJK/Hangul/Kana glyph is ~full-width; Latin varies a lot by letter.
+def _char_em(ch: str) -> float:
+    o = ord(ch)
+    if o >= 0x1100 and (0x1100 <= o <= 0x11FF or 0x2E80 <= o <= 0xA4CF
+                        or 0xAC00 <= o <= 0xD7A3 or 0xF900 <= o <= 0xFAFF
+                        or 0xFF00 <= o <= 0xFF60 or 0x3000 <= o <= 0x303F):
+        return 1.0                       # full-width CJK / Hangul / kana / CJK punct
+    if ch in "MWＭＷ@%—":
+        return 0.90
+    if ch in "mw&":
+        return 0.80
+    if ch == " ":
+        return 0.30
+    if ch in "iIl.,;:'!|jtf()[]-":
+        return 0.33
+    if ch.isupper() or ch.isdigit():
+        return 0.62
+    return 0.52
+
+
+def _text_width_pt(text: str, font_pt: float) -> float:
+    return font_pt * sum(_char_em(c) for c in text)
+
+
+def _wrap_lines(text: str, max_w_pt: float, font_pt: float) -> list[str]:
+    """Greedy word-wrap to `max_w_pt`. Also splits on existing newlines. A single
+    word wider than the box stays on its own (over-wide) line."""
+    out: list[str] = []
+    for raw in (text or "").split("\n"):
+        line = ""
+        for word in raw.split(" "):
+            cand = word if not line else f"{line} {word}"
+            if _text_width_pt(cand, font_pt) <= max_w_pt or not line:
+                line = cand
+            else:
+                out.append(line)
+                line = word
+        out.append(line)
+    return out or [""]
 
 
 def _rect(n: dict) -> tuple[float, float, float, float]:
@@ -83,12 +130,19 @@ def lint_layout(
     canvas_w: float,
     canvas_h: float,
     min_gap: float = 0.0,
+    figure_w_in: float | None = None,
+    figure_h_in: float | None = None,
 ) -> dict:
     """Lint a figure layout spec. Returns
     {ok: bool, issues: [{type, ...}], counts: {...}}.
 
-    nodes: [{id, x, y, w, h, ...}]  — (x,y)=bottom-left, y-up.
+    nodes: [{id, x, y, w, h, label?, font_size?, padding?, wrap?}] —
+        (x,y)=bottom-left, y-up. `label`+`font_size` (pt) enable the
+        label_overflow check; `padding` (data units, default 0) is the interior
+        inset; `wrap`=True checks wrapped height instead of single-line width.
     edges: [{src, dst, src_side?, dst_side?}] — sides in center|top|bottom|left|right.
+    figure_w_in/figure_h_in: figure size in inches — REQUIRED for label_overflow
+        (maps data units ↔ points). Omit to skip the label check.
     """
     edges = edges or []
     by_id = {n["id"]: n for n in nodes}
@@ -132,7 +186,57 @@ def lint_layout(
                     "crosses": n["id"],
                 })
 
+    # 4. label overflow (needs the figure size to map data units ↔ points)
+    _TOL = 1.02   # 2% slack so a label that just touches the edge doesn't fire
+    labelled = [n for n in nodes if str(n.get("label", "")).strip() and n.get("font_size")]
+    if labelled and (figure_w_in and figure_h_in and canvas_w > 0 and canvas_h > 0):
+        ppx = (figure_w_in * 72.0) / canvas_w      # points per data-unit, x
+        ppy = (figure_h_in * 72.0) / canvas_h
+        for n in labelled:
+            text = str(n["label"])
+            fs = float(n["font_size"])
+            pad = float(n.get("padding", 0) or 0)
+            avail_w = max(0.0, (float(n["w"]) - 2 * pad) * ppx)
+            avail_h = max(0.0, (float(n["h"]) - 2 * pad) * ppy)
+            if n.get("wrap"):
+                lines = _wrap_lines(text, avail_w, fs)
+                meas_w = max(_text_width_pt(ln, fs) for ln in lines)   # widest (unbreakable) line
+                meas_h = len(lines) * fs * 1.25
+            else:
+                meas_w = _text_width_pt(text, fs)
+                meas_h = fs * 1.2                                       # single-line cap+descender
+            over_w = meas_w > avail_w * _TOL
+            over_h = meas_h > avail_h * _TOL
+            if over_w or over_h:
+                axis = "both" if over_w and over_h else ("width" if over_w else "height")
+                fit_font = fs
+                if meas_w > 0 and meas_h > 0:
+                    fit_font = round(fs * min(avail_w / meas_w, avail_h / meas_h), 1)
+                issues.append({
+                    "type": "label_overflow",
+                    "node": n["id"],
+                    "axis": axis,
+                    "measured_pt": {"w": round(meas_w, 1), "h": round(meas_h, 1)},
+                    "available_pt": {"w": round(avail_w, 1), "h": round(avail_h, 1)},
+                    "suggested_max_font": fit_font,
+                    "suggested_min_box": {
+                        "w": round(meas_w / ppx + 2 * pad, 3),
+                        "h": round(meas_h / ppy + 2 * pad, 3),
+                    },
+                    "note": "estimated extent (CJK-aware char-advance, no renderer) — "
+                            "shrink the font, enlarge the box, or set wrap=True",
+                })
+    elif labelled:
+        issues.append({
+            "type": "label_check_skipped",
+            "reason": "pass figure_w_in + figure_h_in (figure size in inches) to "
+                      "enable label_overflow — box w/h are data units, font_size is points.",
+            "labelled_nodes": [n["id"] for n in labelled],
+        })
+
     counts: dict[str, int] = {}
     for it in issues:
         counts[it["type"]] = counts.get(it["type"], 0) + 1
-    return {"ok": not issues, "issues": issues, "counts": counts}
+    # A skipped label check is informational, not a failure.
+    ok = not [it for it in issues if it["type"] != "label_check_skipped"]
+    return {"ok": ok, "issues": issues, "counts": counts}
