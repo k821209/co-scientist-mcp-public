@@ -60,11 +60,48 @@ _STYLE_TELLS = [
     (r"\butiliz(?:e|es|ed|ing)\b", "prefer 'use'"),
     (r"in order to\b", "prefer 'to'"),
     (r"due to the fact that", "prefer 'because'"),
+    # Forward references / signpost pointers — keep each paragraph self-contained.
+    (r"(?:is|are|will be) (?:developed|discussed|described|addressed|presented|examined) (?:in|below|later)(?: the)? (?:Discussion|Results|Methods|section|below)",
+     "forward reference — say it here, don't point elsewhere"),
+    (r"as (?:discussed|described|shown|noted|mentioned) (?:below|later|above|earlier)",
+     "signpost pointer — state it in place or cross-reference a figure/section number"),
+    (r"\bsee (?:the )?(?:Discussion|Results|Methods|section) below\b",
+     "forward pointer — reorder so the reader has it when needed"),
+    # 'not X but Y' writerly construction — prefer a plain declarative.
+    (r"\bnot\b[^.,;]{1,40}\bbut (?:rather|instead)\b",
+     "'not X but Y' — state Y plainly"),
+    (r"\brather than a\b", "writerly contrast — a plain declarative usually reads clearer"),
     (r"매우 중요한 역할을", "막연한 중요성 — 무엇을 하는지 서술"),
     (r"아무리 강조해도 지나치지 않", "상투구 — 삭제"),
     (r"할 수 있을 것으로 사료된다", "완곡 남발 — 단정하거나 근거 제시"),
 ]
 _STYLE_TELLS = [(re.compile(p, re.I), why) for p, why in _STYLE_TELLS]
+
+# Rhetorical / AI-favored words that read as filler when repeated — flagged when
+# one appears >= _RHETORICAL_MAX times across the manuscript (a PI bounced
+# "vetted" used 6x). Domain nouns legitimately repeat, so this is a CURATED list
+# of non-domain rhetorical words only, to keep false positives near zero.
+_RHETORICAL = {
+    "vetted", "robust", "robustly", "leverage", "leverages", "leveraged",
+    "delve", "seamless", "seamlessly", "comprehensive", "comprehensively",
+    "nuanced", "intricate", "pivotal", "crucial", "crucially", "notably",
+    "importantly", "arguably", "meticulous", "meticulously", "underscore",
+    "underscores", "underscoring", "showcase", "showcases", "myriad",
+    "furthermore", "moreover", "additionally",
+}
+_RHETORICAL_MAX = 4
+
+# Bare comparatives that hide WHAT varies (size? count? length?) — advisory.
+# Only flagged when NOT part of an explicit "… than …" comparison (checked in
+# code): "a larger set" fires; "higher than the 2-fold cutoff" does not.
+_VAGUE_COMPARATIVE = re.compile(
+    r"\b(larger|bigger|smaller|greater|higher|lower)\b", re.I)
+
+
+def _is_vague_comparative(sent: str, m: "re.Match") -> bool:
+    """True if the comparative isn't resolved by a 'than …' clause soon after."""
+    tail = sent[m.end():m.end() + 40].lower()
+    return " than " not in tail and not tail.lstrip().startswith("than ")
 
 # Which canonical sections each check applies to.
 _METHODS_KEYS = {"methods", "materials", "materials_and_methods", "methods_and_materials"}
@@ -187,6 +224,26 @@ def lint_manuscript(state, slug: str) -> dict:
                           "words": len(re.findall(r"[A-Za-z]+", sent)),
                           "note": f"sentence > {_LONG_SENTENCE_WORDS} words — split it",
                           "sentence": sent[:180]})
+        m = _VAGUE_COMPARATIVE.search(sent)
+        if m and _is_vague_comparative(sent, m):
+            style.append({"kind": "vague_comparative", "section": title,
+                          "match": m.group(0),
+                          "note": "ambiguous comparative — state exactly what varies "
+                                  "(more isoforms? longer CDS? higher score?)",
+                          "sentence": sent[:180]})
+
+    # Overused rhetorical words across the whole manuscript (count once).
+    from collections import Counter
+    word_counts: Counter = Counter()
+    for _k, _t, sent, _toks in sents:
+        for w in re.findall(r"[a-z]+", sent.lower()):
+            if w in _RHETORICAL:
+                word_counts[w] += 1
+    for word, cnt in word_counts.items():
+        if cnt >= _RHETORICAL_MAX:
+            style.append({"kind": "overused_word", "word": word, "count": cnt,
+                          "note": f"'{word}' used {cnt}x — vary or cut repeated "
+                                  "rhetorical words"})
 
     duplication = duplication[:_MAX_PER_KIND]
     leakage = leakage[:_MAX_PER_KIND]

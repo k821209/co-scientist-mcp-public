@@ -84,6 +84,41 @@ findings, no procedure. Discussion = meaning, no new data.**
   translate from English — it reads as 번역체. Avoid `매우 중요한 역할을 한다`,
   `아무리 강조해도 지나치지 않다`, 완곡어 남발.
 
+### 2b. Clarity over eloquence — draft plain from the start
+
+Default to the **plainest phrasing that stays precise**. "Writerly" LLM prose
+gets bounced sentence-by-sentence by a careful PI; each bounce is a
+comment→edit→resolve round-trip. Draft in this register from the first pass,
+and run this **pre-submission self-check** on every section, caption, and
+legend:
+
+1. **Plain declaratives, not writerly contrasts.** Avoid *"not X but Y"*,
+   *"larger than X rather than a correction of it"*, decorative em-dash
+   appositives, and **elegant variation** (the same idea reworded for flavor —
+   name it once, reuse the same term). Say the thing directly.
+2. **Every term defined or plainly glossed on first use.** Jargon with no gloss
+   ("wall-clock cost", "uniform-confidence set", "structural concordance")
+   forces the reader to guess — give a plain phrase or a one-clause definition.
+3. **No ambiguous quantity words.** "larger" / "higher" — of *what*? State
+   exactly what varies: *more isoforms*, *more exons*, *longer CDS*, *higher
+   BUSCO*. Not bare "larger".
+4. **Introduce a concept before you invoke it.** Don't reference "the tiers"
+   before the confidence-tier idea is defined. Definition precedes use.
+5. **One topic per paragraph; no forward references or out-of-place asides.**
+   Keep each genome's result in its own section; don't drop another genome's
+   number mid-section, a data-availability note mid-analysis, or *"…is
+   developed in the Discussion"* pointers. Reorder so the reader has what they
+   need where they need it.
+6. **Don't overuse a rhetorical word.** If "vetted" / "robust" / "leverage" /
+   "comprehensive" appears many times, vary or cut it.
+7. **No result-like numbers in Methods.** Methods describes the method; actual
+   values/metrics go to Results. (See §1 + the `results_in_methods` lint.)
+
+`lint_manuscript` (§4) now flags several of these deterministically —
+`overused_word`, `vague_comparative`, forward-reference/writerly `style_tell`s,
+and `results_in_methods` — but the judgment calls (jargon-without-gloss,
+term-before-definition, one-topic-per-paragraph) are yours: run the checklist.
+
 ### 3. Say it once (de-duplication)
 
 Each finding, definition, and background fact appears **once, in its home
@@ -103,7 +138,9 @@ mcp__co_scientist__lint_manuscript(slug)
 
 It deterministically flags **duplication** (same sentence across sections),
 **section leakage** (results/stats in Methods, procedure in Results), and
-**style** (LLM-tell phrases, run-on sentences). Treat it like the deck
+**style** (LLM-tell + writerly/forward-reference phrases, run-on sentences,
+`vague_comparative` bare "larger/higher", `overused_word` repeated rhetorical
+words). Treat it like the deck
 layout lint: **a section isn't done until its warnings are resolved.** Fix
 the offending sentences (each warning quotes the sentence + its section),
 re-run until `summary.clean == true`, then report the clean result to the
