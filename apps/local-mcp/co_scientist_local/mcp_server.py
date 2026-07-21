@@ -1461,6 +1461,20 @@ def build_mcp(state: State) -> FastMCP:
         """List previously-exported files for a paper."""
         return _exports.list_exports(state, slug)
 
+    @mcp.tool()
+    def delete_export(slug: str, filename: str) -> dict[str, Any]:
+        """Remove an attached/exported file from a paper's Exports area (doc +
+        blob) so a stale supplementary file doesn't ship in the package.
+        Returns {deleted: bool}."""
+        return {"deleted": _exports.delete_export(state, slug, filename)}
+
+    @mcp.tool()
+    def rename_export(slug: str, filename: str, new_filename: str) -> dict[str, Any]:
+        """Rename an attached/exported file (moves its blob + doc), so renaming a
+        supplementary data file doesn't leave the old one behind as a duplicate.
+        Returns the updated export metadata."""
+        return _exports.rename_export(state, slug, filename, new_filename)
+
     # ─── journal CSL registry ────────────────────────────────────────────────
     @mcp.tool()
     def register_journal_csl(

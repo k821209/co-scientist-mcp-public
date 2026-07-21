@@ -949,3 +949,52 @@ def list_exports(state: State, slug: str) -> list[dict]:
     items = [data for _, data in pairs]
     items.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
     return items
+
+
+def delete_export(state: State, slug: str, filename: str) -> bool:
+    """Remove an attached/exported file from a paper's Exports area (its doc +
+    blob), so a stale supplementary file doesn't ship in the package. Returns
+    whether it existed."""
+    if state.backend.get_doc(state.project_path("papers", slug)) is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    name = (filename or "").strip()
+    if not name or "/" in name or "\\" in name:
+        raise ValueError(f"invalid export filename: {filename!r}")
+    path = state.project_path("papers", slug, "exports", name)
+    if state.backend.get_doc(path) is None:
+        return False
+    state.backend.delete_blob(path)
+    state.backend.delete_doc(path)
+    return True
+
+
+def rename_export(state: State, slug: str, filename: str, new_filename: str) -> dict:
+    """Rename an attached/exported file (moves its blob + doc to the new name),
+    so renaming a supplementary data file doesn't leave the old one behind.
+    Returns the updated export metadata."""
+    if state.backend.get_doc(state.project_path("papers", slug)) is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    old = (filename or "").strip()
+    new = (new_filename or "").strip()
+    for n in (old, new):
+        if not n or "/" in n or "\\" in n:
+            raise ValueError(f"invalid export filename: {n!r}")
+    old_path = state.project_path("papers", slug, "exports", old)
+    meta = state.backend.get_doc(old_path)
+    if meta is None:
+        raise NotFound(f"export not found: {old!r} for {slug!r}")
+    if new == old:
+        return meta
+    new_path = state.project_path("papers", slug, "exports", new)
+    if state.backend.get_doc(new_path) is not None:
+        raise ValueError(f"export {new!r} already exists; delete it first or pick another name")
+    data = state.backend.get_blob(old_path)
+    if data is not None:
+        state.backend.put_blob(new_path, data)
+    meta = {**meta, "filename": new, "format": (new.rsplit(".", 1)[-1].lower()
+            if "." in new else meta.get("format", "data")),
+            "blob_path": new_path, "updated_at": now_iso()}
+    state.backend.set_doc(new_path, meta)
+    state.backend.delete_blob(old_path)
+    state.backend.delete_doc(old_path)
+    return {**meta, "dashboard_url": state.dashboard_url("papers", slug)}
