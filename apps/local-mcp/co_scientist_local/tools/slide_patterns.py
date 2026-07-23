@@ -95,18 +95,24 @@ def _emit_text(slide, text, *, left, top, width, height,
     _h._autoshrink(tf)
     if anchor is not None:
         tf.vertical_anchor = anchor
-    p = tf.paragraphs[0]
-    p.line_spacing = line_spacing
-    if align is not None:
-        p.alignment = align
-    run = p.add_run()
-    run.text = text or ""
-    run.font.size = Pt(actual_pt)
-    run.font.bold = bold
-    run.font.italic = italic
-    run.font.color.rgb = color
-    if font_name:
-        run.font.name = font_name
+    # Render each explicit line as its OWN paragraph so every line shares the
+    # same alignment axis. A multi-line string packed into one run leaves the
+    # lines aligned inconsistently under soffice (a near-full-width line reads
+    # as left-flush while a short line centers) — the title-slide subtitle bug.
+    lines = (text or "").split("\n") or [""]
+    for i, line in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.line_spacing = line_spacing
+        if align is not None:
+            p.alignment = align
+        run = p.add_run()
+        run.text = line
+        run.font.size = Pt(actual_pt)
+        run.font.bold = bold
+        run.font.italic = italic
+        run.font.color.rgb = color
+        if font_name:
+            run.font.name = font_name
     return tb
 
 
@@ -639,7 +645,10 @@ def title_slide(slide, *, title: str, subtitle: str = "",
     rule_gap = Pt(_h.SPACING_UNIT_PT * 2)
     rule_h = Pt(6)
     eyebrow_h = Pt(eyebrow_pt * 1.8) if eyebrow else 0
-    sub_h = Pt(sub_pt * 1.8) if subtitle else 0
+    # Height must cover every subtitle line (multi-line subtitles were clipped
+    # by a fixed one-line height).
+    sub_lines = (subtitle.count("\n") + 1) if subtitle else 0
+    sub_h = Pt(sub_pt * 1.5 * sub_lines + sub_pt * 0.3) if subtitle else 0
     block_h = (eyebrow_h + (Pt(4) if eyebrow else 0)
                + title_h
                + (rule_gap + rule_h if subtitle else 0)

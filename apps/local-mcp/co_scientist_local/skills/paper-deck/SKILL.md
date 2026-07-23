@@ -81,9 +81,12 @@ unity header — ready for rendering.
    "done".** Every `preview_slide` / `export_deck_to_pptx` return carries
    `overlap_warnings`, `bounds_warnings`, `layout_warnings`
    (shape-overlap · footer-overlap · uneven-card-heights · tiny-image ·
-   inner-margin) and `placeholder_warnings`. These are not advisory — a
-   deck with any of them is NOT finished. Fix the slide and re-preview
-   until all four lists are empty; only then present it as done. (`font_warnings`
+   inner-margin), `placeholder_warnings`, and `image_placement_warnings`
+   (an uploaded/rendered region image the slide `code` never placed — it's
+   auto-placed at the region's geometry as a fallback; position it explicitly
+   with `h.image_region(id, …)` to clear the warning). These are not advisory —
+   a deck with any of them is NOT finished. Fix the slide and re-preview
+   until all lists are empty; only then present it as done. (`font_warnings`
    are host-font availability and may be tolerated — say so if you leave any.)
    This lint is heavily invested in specifically so no overlapping band,
    footer collision, or ragged card row ever ships unseen.

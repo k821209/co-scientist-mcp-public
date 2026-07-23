@@ -781,15 +781,23 @@ def _normalize_image_for_pptx(img_path: str, target_width: int = 1920):
 
 
 def _place_picture(slide, img_path: str, *, left, top, box_w, box_h,
-                   fit: str = "contain") -> None:
+                   fit: str = "contain", inset: int = 0) -> None:
     """Place an image inside the box at (left, top, box_w, box_h).
 
     fit='contain' — scaled to fit entirely, centered, letterboxed; never
     crops (figures, charts, tables). fit='cover' — fills the box, the
     overflowing edges cropped (eyecatch, decorative, photos).
 
+    `inset` (EMU, all sides) shrinks the placement box slightly so the image
+    doesn't paint over the box's own border — a hairline default keeps an
+    image inside a card/box looking flush while its outline survives.
+
     Every image is normalized to Keynote-safe RGB JPEG ≤ 1920px (todo 032)
     before embedding."""
+    if inset:
+        inset = max(0, min(int(inset), int(min(box_w, box_h) // 2 - 1)))
+        left, top = int(left) + inset, int(top) + inset
+        box_w, box_h = int(box_w) - 2 * inset, int(box_h) - 2 * inset
     pic = slide.shapes.add_picture(_normalize_image_for_pptx(img_path), left, top)
     iw, ih = pic.width, pic.height
     if fit == "cover" and iw > 0 and ih > 0:
@@ -1625,7 +1633,7 @@ def _add_hybrid_slide(slide, row, state, tmpd, *, sw, sh, accent, fg, bg,
 
 def _build_code_namespace(slide, row, state, slug, tmpd, *,
                           palette, fonts, type_scale, aspect, sw, sh,
-                          slide_count=None, motif=None):
+                          slide_count=None, motif=None, placed_regions=None):
     """Build the namespace handed to a code slide's `exec()`. Pre-binds
     the slide object, theme primitives, python-pptx imports, and the
     `h` helpers namespace — including image-loading closures that
@@ -1666,13 +1674,31 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
             f"{len(args)} positional args"
         )
 
-    def _image_from_path(*args, left, top, width, height, fit="contain"):
+    def _inset_emu(inner_margin):
+        """Resolve inner_margin → EMU inset. 'hairline' (default, ~1.5pt) keeps
+        an image inside a box looking flush while its border survives; 'none'/0
+        = true flush; a number = that many points."""
+        if inner_margin in (None, "hairline"):
+            return int(Pt(1.5))
+        if inner_margin in ("none", 0, "0"):
+            return 0
+        try:
+            return int(Pt(float(inner_margin)))
+        except (TypeError, ValueError):
+            return int(Pt(1.5))
+
+    def _image_from_path(*args, left, top, width, height, fit="contain",
+                         inner_margin="hairline"):
         _, path = _peel_slide(args, want_one_after=True)
         _place_picture(slide, str(path),
-                       left=left, top=top, box_w=width, box_h=height, fit=fit)
+                       left=left, top=top, box_w=width, box_h=height, fit=fit,
+                       inset=_inset_emu(inner_margin))
 
-    def _image_from_region(*args, left, top, width, height, fit="contain"):
+    def _image_from_region(*args, left, top, width, height, fit="contain",
+                           inner_margin="hairline"):
         _, region_id = _peel_slide(args, want_one_after=True)
+        if placed_regions is not None:
+            placed_regions.add(region_id)
         region = next(
             (r for r in (row.get("regions") or [])
              if r.get("id") == region_id), None,
@@ -1691,15 +1717,18 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
         tmp = pathlib.Path(tmpd) / f"region_{row['id']}_{region_id}.png"
         tmp.write_bytes(blob)
         _place_picture(slide, str(tmp),
-                       left=left, top=top, box_w=width, box_h=height, fit=fit)
+                       left=left, top=top, box_w=width, box_h=height, fit=fit,
+                       inset=_inset_emu(inner_margin))
 
-    def _image_from_figure(*args, left, top, width, height, fit="contain"):
+    def _image_from_figure(*args, left, top, width, height, fit="contain",
+                           inner_margin="hairline"):
         _, figure_number = _peel_slide(args, want_one_after=True)
         png = _figure_png(state, slug, int(figure_number))
         tmp = pathlib.Path(tmpd) / f"figure_{figure_number}_{row['id']}.png"
         tmp.write_bytes(png)
         _place_picture(slide, str(tmp),
-                       left=left, top=top, box_w=width, box_h=height, fit=fit)
+                       left=left, top=top, box_w=width, box_h=height, fit=fit,
+                       inset=_inset_emu(inner_margin))
 
     def _deck_chrome(*args, page_number=_PAGE_AUTO, total=_TOTAL_AUTO, **kwargs):
         """Wrap h.deck_chrome to default `page_number` to this slide's
@@ -1965,18 +1994,47 @@ def _add_code_slide(slide, row, state, slug, tmpd, *, sw, sh,
         "highlight": _hex_to_rgb(palette_full["highlight"], "#FFC107"),
     }
     aspect = "16:9"  # only used as a hint inside the snippet
+    placed_regions: set = set()
     ns = _build_code_namespace(
         slide, row, state, slug, tmpd,
         palette=palette, fonts=fonts, type_scale=type_scale,
         aspect=aspect, sw=sw, sh=sh, slide_count=slide_count, motif=motif,
+        placed_regions=placed_regions,
     )
     try:
         exec(compile(code, f"<slide {row.get('id', '?')} code>", "exec"), ns)
     except Exception as e:  # noqa: BLE001 — surface to the caller
-        return f"{type(e).__name__}: {e}", [], []
+        return f"{type(e).__name__}: {e}", [], [], []
+    # Auto-place any uploaded/rendered region image the code never positioned,
+    # using the region's OWN geometry, so an uploaded image doesn't silently
+    # vanish (feedback b1c750b12460). Warn so the author can fine-tune.
+    unplaced: list[dict] = []
+    for r in (row.get("regions") or []):
+        rid = r.get("id")
+        bp = r.get("image_blob_path")
+        if not bp or rid in placed_regions:
+            continue
+        blob = state.backend.get_blob(bp)
+        if not blob:
+            continue
+        has_geom = all(k in r for k in ("x", "y", "w", "h"))
+        if has_geom:
+            tmp = pathlib.Path(tmpd) / f"autoregion_{row.get('id')}_{rid}.png"
+            tmp.write_bytes(blob)
+            _place_picture(slide, str(tmp),
+                           left=int(r["x"] * sw), top=int(r["y"] * sh),
+                           box_w=int(r["w"] * sw), box_h=int(r["h"] * sh),
+                           fit=r.get("fit") or "contain", inset=int(Pt(1.5)))
+            unplaced.append({"region": rid, "auto_placed": True,
+                             "note": "uploaded image auto-placed at its region "
+                                     "geometry; call h.image_region to position it"})
+        else:
+            unplaced.append({"region": rid, "auto_placed": False,
+                             "note": "uploaded image not placed and the region has "
+                                     "no geometry — call h.image_region(id, ...)"})
     warnings = _detect_text_overlaps(slide)
     offslide = _detect_offslide_shapes(slide, sw=sw, sh=sh)
-    return None, warnings, offslide
+    return None, warnings, offslide, unplaced
 
 
 def _render_pdf_to_pngs(pdf_path: pathlib.Path, out_dir: pathlib.Path,
@@ -2100,12 +2158,13 @@ def preview_slide(
     code_errors: list[dict] = []
     overlap_warnings: list[dict] = []
     bounds_warnings: list[dict] = []
+    image_placement_warnings: list[dict] = []
     png_local: str | None = None
     png_blob: str | None = None
     sn = target.get("slide_number")
     with tempfile.TemporaryDirectory() as tmpd:
         slide_obj = prs.slides.add_slide(prs.slide_layouts[6])
-        err, overlaps, offslide = _add_code_slide(
+        err, overlaps, offslide, unplaced = _add_code_slide(
             slide_obj, target, state, slug, tmpd, sw=sw, sh=sh,
             accent=accent, fg=fg, bg=bg, fonts=fonts, palette_full=colors,
             Inches=Inches, Pt=Pt, MSO_SHAPE=MSO_SHAPE,
@@ -2113,6 +2172,8 @@ def preview_slide(
         )
         if err:
             code_errors.append({"slide_number": sn, "slide_id": slide_id, "error": err})
+        if unplaced:
+            image_placement_warnings.append({"slide_number": sn, "slide_id": slide_id, "regions": unplaced})
         if overlaps:
             overlap_warnings.append({"slide_number": sn, "slide_id": slide_id, "pairs": overlaps})
         if offslide:
@@ -2154,6 +2215,7 @@ def preview_slide(
         "code_errors": code_errors,
         "overlap_warnings": overlap_warnings,
         "bounds_warnings": bounds_warnings,
+        "image_placement_warnings": image_placement_warnings,
         "font_warnings": _font_warnings(fonts),
         "placeholder_warnings": _scan_deck_placeholders(prs),
         "layout_warnings": _scan_deck_layout(prs, int(sh)),
@@ -2278,6 +2340,7 @@ def export_deck_to_pptx(
     code_errors: list[dict] = []
     overlap_warnings: list[dict] = []
     bounds_warnings: list[dict] = []
+    image_placement_warnings: list[dict] = []
     image_slides = 0
     text_slides = 0
     hybrid_slides = 0
@@ -2291,13 +2354,19 @@ def export_deck_to_pptx(
                 # natively (docs/todo/002). On exec failure we degrade
                 # to plain text so the deck still exports — the error
                 # surfaces in `code_errors[]` of the result.
-                err, overlaps, offslide = _add_code_slide(
+                err, overlaps, offslide, unplaced = _add_code_slide(
                     slide, s, state, slug, tmpd, sw=sw, sh=sh,
                     accent=accent, fg=fg, bg=bg, fonts=fonts,
                     palette_full=colors,
                     Inches=Inches, Pt=Pt, MSO_SHAPE=MSO_SHAPE,
                     type_scale=type_scale, slide_count=len(slides), motif=motif,
                 )
+                if unplaced:
+                    image_placement_warnings.append({
+                        "slide_number": s.get("slide_number"),
+                        "slide_id": s.get("id"),
+                        "regions": unplaced,
+                    })
                 if overlaps:
                     overlap_warnings.append({
                         "slide_number": s.get("slide_number"),
@@ -2501,6 +2570,7 @@ def export_deck_to_pptx(
         "code_errors": code_errors,
         "overlap_warnings": overlap_warnings,
         "bounds_warnings": bounds_warnings,
+        "image_placement_warnings": image_placement_warnings,
         "font_warnings": _font_warnings(fonts),
         "placeholder_warnings": _scan_deck_placeholders(prs),
         "layout_warnings": _scan_deck_layout(prs, int(sh)),
