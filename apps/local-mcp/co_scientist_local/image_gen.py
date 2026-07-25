@@ -23,6 +23,59 @@ class QuotaExceeded(Exception):
     """Raised when the Cloud Function returns 429 (monthly image quota hit)."""
 
 
+def _multipart_body(fields: dict, files: dict) -> tuple[bytes, str]:
+    """Encode multipart/form-data. `fields`: {name: value}. `files`:
+    {name: (filename, bytes, content_type)}. Returns (body, content_type)."""
+    import uuid as _uuid
+    boundary = "----coScientist" + _uuid.uuid4().hex
+    out: list[bytes] = []
+    for name, val in fields.items():
+        if val is None:
+            continue
+        out += [f"--{boundary}".encode(),
+                f'Content-Disposition: form-data; name="{name}"'.encode(),
+                b"", str(val).encode()]
+    for name, spec in files.items():
+        if not spec or spec[1] is None:
+            continue
+        fname, data, ctype = spec
+        out += [f"--{boundary}".encode(),
+                f'Content-Disposition: form-data; name="{name}"; filename="{fname}"'.encode(),
+                f"Content-Type: {ctype}".encode(), b"", data]
+    out += [f"--{boundary}--".encode(), b""]
+    return b"\r\n".join(out), f"multipart/form-data; boundary={boundary}"
+
+
+def _openai_images_edit(*, api_key: str, prompt: str, image: bytes,
+                        mask: bytes | None, size: str, model: str,
+                        quality: str | None = None, timeout: int = 290) -> bytes:
+    """POST to OpenAI /v1/images/edits (gpt-image edit / inpaint). Returns PNG
+    bytes. Shared by the local direct-key path and mirrored in the Cloud
+    Function."""
+    import base64
+    import json as _json
+    import urllib.request
+    fields: dict = {"model": model or "gpt-image-2", "prompt": prompt,
+                    "size": size, "n": "1"}
+    if quality:
+        fields["quality"] = quality
+    files = {"image": ("image.png", image, "image/png"),
+             "mask": ("mask.png", mask, "image/png") if mask else None}
+    body, ctype = _multipart_body(fields, {k: v for k, v in files.items() if v})
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/images/edits", data=body,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": ctype})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        payload = _json.loads(resp.read())
+    item = (payload.get("data") or [{}])[0]
+    if item.get("b64_json"):
+        return base64.b64decode(item["b64_json"])
+    if item.get("url"):
+        with urllib.request.urlopen(item["url"], timeout=120) as r:
+            return r.read()
+    raise RuntimeError(f"OpenAI edit response had no image data: {payload!r}")
+
+
 class ImageGenerator(Protocol):
     def generate(
         self,
@@ -37,6 +90,22 @@ class ImageGenerator(Protocol):
         `quality` (gpt-image: low/medium/high/auto) is passed to the provider
         when set; None leaves the provider default.
         """
+        ...
+
+    def edit(
+        self,
+        *,
+        prompt: str,
+        image: bytes,
+        mask: bytes | None = None,
+        aspect_ratio: str = "1:1",
+        model: str = "gpt-image-2",
+        quality: str | None = None,
+    ) -> bytes:
+        """Edit `image` (PNG bytes) guided by `prompt`, optionally within the
+        transparent area of `mask`. Returns PNG bytes. Use for character-
+        consistency (keep the face, change outfit/pose), outpaint, object
+        removal. Not every backend supports it (Gemini free tier does not)."""
         ...
 
 
@@ -77,6 +146,13 @@ class LocalGeminiImageGenerator:
             if hasattr(part, "inline_data") and getattr(part.inline_data, "data", None):
                 return part.inline_data.data
         raise RuntimeError("no image bytes in Gemini response")
+
+    def edit(self, *, prompt, image, mask=None, aspect_ratio="1:1",
+             model="imagen-3", quality=None) -> bytes:
+        raise RuntimeError(
+            "image editing (reference image) is not supported on the Gemini "
+            "free tier — set OPENAI_API_KEY for the OpenAI edit path, or use a "
+            "Pro subscription (Cloud Function)")
 
 
 class LocalOpenAIImageGenerator:
@@ -155,6 +231,19 @@ class LocalOpenAIImageGenerator:
                 return r.read()
         raise RuntimeError(f"OpenAI response had no image data: {payload!r}")
 
+    def edit(self, *, prompt, image, mask=None, aspect_ratio="1:1",
+             model="gpt-image-2", quality=None) -> bytes:
+        import urllib.error
+        size = self.SIZE_MAP.get(aspect_ratio, "1024x1024")
+        try:
+            return _openai_images_edit(
+                api_key=self._api_key, prompt=prompt, image=image, mask=mask,
+                size=size, model=model or self._default_model, quality=quality,
+                timeout=290)
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")[:500]
+            raise RuntimeError(f"OpenAI edit HTTP {e.code}: {err_body}") from e
+
 
 class CloudFunctionImageGenerator:
     """Subscribed-tier (Pro+): HTTPS POST to the Firebase Cloud Function
@@ -221,6 +310,43 @@ class CloudFunctionImageGenerator:
                 raise PermissionError(msg) from e
             raise RuntimeError(f"Cloud Function HTTP {e.code}: {err_body}") from e
 
+    def edit(self, *, prompt, image, mask=None, aspect_ratio="1:1",
+             model=None, quality=None) -> bytes:
+        import base64
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        token = self._get_id_token()
+        payload: dict = {
+            "prompt": prompt, "aspect_ratio": aspect_ratio,
+            "input_image": base64.b64encode(image).decode("ascii"),
+        }
+        if mask:
+            payload["mask"] = base64.b64encode(mask).decode("ascii")
+        if model:
+            payload["model"] = model
+        if quality:
+            payload["quality"] = quality
+        req = urllib.request.Request(
+            self._url, data=_json.dumps(payload).encode("utf-8"),
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=310) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")[:500]
+            try:
+                detail = _json.loads(err_body)
+            except Exception:
+                detail = {"error": err_body}
+            if e.code == 429:
+                raise QuotaExceeded(detail.get("message") or "quota exceeded") from e
+            if e.code == 403:
+                raise PermissionError(detail.get("error") or "forbidden") from e
+            raise RuntimeError(f"Cloud Function HTTP {e.code}: {err_body}") from e
+
 
 class FakeImageGenerator:
     """Test image generator.
@@ -251,5 +377,16 @@ class FakeImageGenerator:
         self.calls.append({
             "prompt": prompt, "aspect_ratio": aspect_ratio, "model": model,
             "quality": quality,
+        })
+        return self._png
+
+    def edit(self, *, prompt, image, mask=None, aspect_ratio="1:1",
+             model="gpt-image-2", quality=None) -> bytes:
+        if self._quota_exceeded:
+            raise QuotaExceeded("test-quota-exceeded")
+        self.calls.append({
+            "op": "edit", "prompt": prompt, "aspect_ratio": aspect_ratio,
+            "model": model, "quality": quality,
+            "image_bytes": len(image or b""), "has_mask": mask is not None,
         })
         return self._png

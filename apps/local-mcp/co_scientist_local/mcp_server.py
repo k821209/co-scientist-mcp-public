@@ -1519,6 +1519,8 @@ def build_mcp(state: State) -> FastMCP:
         overwrite: bool = False,
         apply_style: bool = True,
         quality: str | None = None,
+        input_image: str | None = None,
+        mask: str | None = None,
     ) -> dict[str, Any]:
         """Generate an image via the configured ImageGenerator (local or cloud-fn).
 
@@ -1544,12 +1546,20 @@ def build_mcp(state: State) -> FastMCP:
         The project's image style (set in the dashboard under Memory → Image
         style) is prepended to the prompt automatically. Pass
         `apply_style=False` to generate without it for a one-off image.
+
+        Pass `input_image` (a local path, asset_id, or asset filename) to EDIT
+        that image instead of generating from scratch — keep a recurring
+        character's face while changing outfit/pose, outpaint a bust to
+        full-body, or remove an object. An optional `mask` (same forms; a PNG
+        whose transparent region is what gets regenerated) confines the edit.
+        Editing is OpenAI-only.
         """
         return _images.generate_image(
             state, slug, prompt=prompt, figure_number=figure_number,
             asset_filename=asset_filename, aspect_ratio=aspect_ratio,
             model=model, caption=caption, overwrite=overwrite,
             apply_style=apply_style, quality=quality,
+            input_image=input_image, mask=mask,
         )
 
     @mcp.tool()

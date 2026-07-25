@@ -24,6 +24,24 @@ from . import figures as _figures
 from .papers import _paper_path
 
 
+def _resolve_image_ref(state: State, slug: str | None, ref: str) -> bytes:
+    """Resolve an image reference to PNG bytes. `ref` may be a local file path,
+    an asset_id, or an asset filename (looked up in the paper's assets when a
+    slug is given, else the project's assets). Used for edit input/mask."""
+    p = pathlib.Path(ref).expanduser()
+    if p.is_file():
+        return p.read_bytes()
+    seg = ("papers", slug, "assets") if slug else ("assets",)
+    for filename, data in state.backend.list_collection(state.project_path(*seg)):
+        if data.get("asset_id") == ref or filename == ref:
+            blob = state.backend.get_blob(data.get("blob_path") or "")
+            if blob is not None:
+                return blob
+    raise NotFound(
+        f"input image {ref!r} not found — pass a local file path, an asset_id, "
+        "or an asset filename")
+
+
 def _project_image_style(state: State) -> str:
     """Project-wide image style defined in the web dashboard, stored at
     `projects/{pid}/settings/image_style` as a composed `style_text` string
@@ -51,11 +69,19 @@ def generate_image(
     overwrite: bool = False,
     apply_style: bool = True,
     quality: str | None = None,
+    input_image: str | None = None,
+    mask: str | None = None,
 ) -> dict:
     """Generate an image; either register it as a figure or store as an asset.
 
     The project's dashboard-defined image style (if any) is prepended to the
     prompt unless `apply_style=False`.
+
+    `input_image` (a local path, asset_id, or asset filename) switches to EDIT
+    mode: the image is edited to match `prompt` — keep a character's face while
+    changing outfit/pose, outpaint a bust to full-body, remove an object. An
+    optional `mask` (same forms; a PNG whose TRANSPARENT area is what gets
+    regenerated) confines the edit. Editing is OpenAI-only.
 
     Returns:
         - figure mode: the figure doc + {prompt, model, style_applied}
@@ -72,9 +98,17 @@ def generate_image(
     final_prompt = f"{prompt.strip()}\n\nVisual style: {style}" if style else prompt
 
     gen = state.require_image_gen()
-    png = gen.generate(
-        prompt=final_prompt, aspect_ratio=aspect_ratio, model=model, quality=quality,
-    )
+    if input_image is not None:
+        img_bytes = _resolve_image_ref(state, slug, input_image)
+        mask_bytes = _resolve_image_ref(state, slug, mask) if mask else None
+        png = gen.edit(
+            prompt=final_prompt, image=img_bytes, mask=mask_bytes,
+            aspect_ratio=aspect_ratio, model=model, quality=quality,
+        )
+    else:
+        png = gen.generate(
+            prompt=final_prompt, aspect_ratio=aspect_ratio, model=model, quality=quality,
+        )
 
     if figure_number is not None:
         # Spill to a temp file so add_figure's existing local_path path works.
@@ -102,6 +136,7 @@ def generate_image(
             "prompt": prompt, "model": model,
             "style_applied": style or None,
             "aspect_ratio": aspect_ratio, "quality": quality,
+            "edited": input_image is not None,
             "dashboard_url": state.dashboard_url("papers", slug),
         }
 
@@ -122,6 +157,7 @@ def generate_image(
         "aspect_ratio": aspect_ratio,
         "quality": quality,
         "style_applied": style or None,
+        "edited_from": input_image or None,
         "created_at": now_iso(),
     })
     return {
@@ -129,6 +165,7 @@ def generate_image(
         "size_bytes": len(png), "prompt": prompt, "model": model,
         "style_applied": style or None,
         "aspect_ratio": aspect_ratio, "quality": quality,
+        "edited": input_image is not None,
         "scope": "paper" if slug else "project",
         "dashboard_url": state.dashboard_url("papers", slug) if slug else state.dashboard_url(),
     }
