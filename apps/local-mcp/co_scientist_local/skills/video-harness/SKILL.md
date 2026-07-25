@@ -140,6 +140,53 @@ tiny, unreadable text; punch in instead:
   first third, glide to `f1`, hold — follow a moving pointer (e.g. DOCX left
   page → right page).
 
+## 3c — Synthesized shorts: beat-driven assembly (`vh.steps.beats`)
+
+For a Short with **no source recording** (news, product review, person feature),
+the unit is a *beat*: one narration sentence-group plus the picture that carries
+it. Beats mix freely — a quoted broadcast clip, a self-drawn card, a CC photo —
+which `news.build_short` (stills only) and `news.build_clip_short` (clips only)
+cannot do. That mixing is why episodes used to carry a hand-written 120-line
+`assemble.py`; use the library instead:
+
+```python
+from vh.steps.beats import build_beat_short
+BEATS = [                      # (id, kind, VO text, visual, in_point, caption, credit)
+  ("b0", "clip", "훅 문장…",  "keynote", 11.0, "폴드7의 후속이 아니다", "영상 · 제조사 공식"),
+  ("b1", "gfx",  "본문…",     "g_lineup", 0.0, None, None),
+  ("b2", "photo","본문…",     "img/x.jpg", 0.0, "캡션", "사진 · …/Wikimedia (CC BY-SA)"),
+]
+build_beat_short(BEATS, "out/ep.mp4", workdir="wd",
+                 clips={"keynote": "clips/keynote.mp4"}, gfx_dir=".",
+                 precrop={"keynote": "crop=iw:ih*0.90:0:0,"},   # burned-in subs/banner
+                 outro="outro.png", bgm="bgm.wav")
+```
+
+What the function encodes so you don't re-derive it per episode:
+
+- **Audio-led timing** — each beat's VO is synthesized separately and *its*
+  length sets the segment length. Never one long VO cut to fit pictures.
+- **Blur-pad, never side-crop** — a 16:9 source is width-fitted over a blurred
+  copy of itself; cover-cropping to 9:16 throws away ~44% of the width.
+- **`precrop` per source** — broadcast clips carry burned-in captions and station
+  banners; the ratio differs per source, so measure it per source.
+- **Credit on every quoted frame**, `eyecatch` punch text on the cold open.
+- **Length assertions** — a clip too short for its beat fails the build instead
+  of silently freezing on its last frame.
+
+**Cards: draw them with `vh.cardkit`.** A divider line placed at a guessed offset
+(`y + 30`) runs straight through big glyphs; the render still succeeds, so it
+ships unless someone opens a frame. `Card.text()` records each glyph bbox and
+`Card.rule()` raises if the line would cross one — position accents off
+`Card.bottom(...) + margin`, never off a guessed offset.
+
+**Then actually check the output** (`vh.qc`): `contact_sheet()` tiles the whole
+video into one PNG — **read it**; `narration_match(video, script)` transcribes the
+finished file and diffs it against the script (≥0.93 is normal for Korean TTS;
+a sudden drop means a beat's audio never made it in). Pick clip in-points from a
+contact sheet of the *source* too — a guessed in-point lands on a panel reaction
+or a cutaway often enough to matter.
+
 ## 4 — Register in the Video tab
 
 ```

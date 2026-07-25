@@ -76,3 +76,12 @@ check (spell abbreviations in Hangul for the TTS). Then `add_video` →
 ## Related
 `[[shorts-reference-management]]`, `[[factcheck-discipline]]`. Same lineage as
 `/news-short`, `build_rank_race`, and `vh.style_gallery`.
+
+## Assembly
+
+Mixed graphics + quoted clips go through `vh.steps.beats.build_beat_short`
+(see "3c" in `/video-harness`): one beat per narration unit, audio-led timing,
+blur-pad reframing, per-source pre-crop, credit burned on every quoted frame.
+Draw the explainer cards with `vh.cardkit` — its `rule()` guard fails the build
+rather than shipping a divider line through a number — and verify with
+`vh.qc.contact_sheet` (read it) + `vh.qc.narration_match` (≥0.93).

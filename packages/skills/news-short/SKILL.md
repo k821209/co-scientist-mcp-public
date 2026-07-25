@@ -97,6 +97,15 @@ ones — use it as a fallback for short clips only.)
    - This replaces the old ~180-line hand-assembly. Do **not** use
      `compose_summary` here (it asplits a non-existent audio track and snaps
      segments, desyncing captions).
+   - **Mixing stills and clips in one episode → use `vh.steps.beats`, not this.**
+     `build_short` is stills-only and `build_clip_short` is clips-only; a real
+     news/review episode usually wants a quoted clip for the cold open, drawn
+     cards for the numbers, and a photo for the person. See "3c — Synthesized
+     shorts: beat-driven assembly" in `/video-harness` — same VO/credit/BGM
+     conventions, one call, and it asserts clip length instead of freezing.
+     Draw the cards with `vh.cardkit` (its layout guard turns "divider line
+     through the price" into a build failure) and check the result with
+     `vh.qc.contact_sheet` + `vh.qc.narration_match` before you register it.
 4. **Register + publish:** `add_video(..., aspect_ratio="9:16")` →
    `/video-publish` (news defaults to **unlisted**).
 
