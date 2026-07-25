@@ -501,11 +501,13 @@ def build_mcp(state: State) -> FastMCP:
         return _reviews.review_triage_summary(state, slug)
 
     @mcp.tool()
-    def count_open_user_comments(slug: str) -> int:
+    def count_open_user_comments(slug: str, deck_id: str | None = None) -> int:
         """How many unresolved human comments exist — dashboard ('user') AND
         shared/public-page ('external') feedback, excluding AI reviewer notes.
-        Used for the SessionStart banner."""
-        return _reviews.count_open_user_comments(state, slug)
+        Counts BOTH manuscript review comments AND deck slide comments (all of
+        the paper's decks, or just `deck_id` if given). Used for the
+        SessionStart banner."""
+        return _reviews.count_open_user_comments(state, slug, deck_id)
 
     @mcp.tool()
     def list_paper_comments(

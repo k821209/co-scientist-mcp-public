@@ -447,11 +447,28 @@ def review_triage_summary(state: State, slug: str) -> dict:
     }
 
 
-def count_open_user_comments(state: State, slug: str) -> int:
+def count_open_user_comments(state: State, slug: str,
+                             deck_id: str | None = None) -> int:
     """Open, human-authored comments — both dashboard ('user') and shared/public
     page ('external') feedback. Excludes 'ai' (virtual reviewer) comments.
 
-    Used by the SessionStart hook to surface 'you have N new comments'.
+    Counts BOTH manuscript review comments AND deck slide comments (across all
+    of the paper's decks, or just `deck_id` if given) — the SessionStart banner
+    must not miss slide comments (feedback c3dea48d8225).
     """
     open_reviews = list_reviews(state, slug, status="open")
-    return sum(1 for r in open_reviews if r.get("source") != "ai")
+    n = sum(1 for r in open_reviews if r.get("source") != "ai")
+    # Deck slide comments live under each deck's slides — count them too.
+    from . import decks as _decks
+    try:
+        deck_ids = ([deck_id] if deck_id
+                    else [d["id"] for d in _decks.list_decks(state, slug)])
+    except Exception:
+        deck_ids = []
+    for did in deck_ids:
+        try:
+            comments = _decks.list_deck_comments(state, slug, did, status="open")
+        except Exception:
+            continue
+        n += sum(1 for c in comments if c.get("source") != "ai")
+    return n

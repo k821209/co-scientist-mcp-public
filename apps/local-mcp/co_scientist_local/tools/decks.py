@@ -415,6 +415,12 @@ def set_slide_regions(
     whereas a `hybrid` slide only lays down region pictures — so snapping
     a code slide to hybrid would silently drop its text/shape overlay.
 
+    On a CODE slide, position each region in the snippet with
+    `h.image_region(region_id, left=, top=, width=, height=, fit=)`. Any
+    rendered region the snippet does NOT place is auto-placed at its own
+    x/y/w/h as a fallback and reported in `image_placement_warnings`, so a
+    rendered image never silently vanishes.
+
     Replaces any existing regions. A region whose *source* (render_mode +
     figure_number / prompt / code) is unchanged keeps its rendered image,
     so re-positioning a region doesn't force a re-render.
@@ -433,9 +439,15 @@ def set_slide_regions(
             (r.get("prompt") or "").strip(), (r.get("code") or "").strip(),
         )
 
-    # Carry rendered images across when a region's source is unchanged.
-    prior = {
-        _source_key(r): r
+    # Carry a rendered image across when the SAME region (matched by its
+    # positional id, r1/r2/…) keeps the same source. Keying by source alone
+    # collapsed several code-shape regions — which share the empty
+    # (render_mode, None, "", "") source key — onto one blob, so re-calling
+    # set_slide_regions overwrote every region's image with the last one's
+    # (data loss, feedback 4ac0b3cc3582). Position-keyed matching keeps each
+    # region's own image while still avoiding a re-render on reposition.
+    prior_by_id = {
+        r.get("id"): r
         for r in (cur.get("regions") or [])
         if r.get("image_blob_path")
     }
@@ -444,9 +456,13 @@ def set_slide_regions(
     for i, raw in enumerate(regions):
         reg = _validate_region(raw, i)
         reg["id"] = f"r{i + 1}"
-        old = prior.get(_source_key(reg))
-        reg["image_blob_path"] = old.get("image_blob_path") if old else None
-        reg["rendered_at"] = old.get("rendered_at") if old else None
+        old = prior_by_id.get(reg["id"])
+        if old and _source_key(old) == _source_key(reg):
+            reg["image_blob_path"] = old.get("image_blob_path")
+            reg["rendered_at"] = old.get("rendered_at")
+        else:
+            reg["image_blob_path"] = None
+            reg["rendered_at"] = None
         normalized.append(reg)
 
     # Preserve `code` mode (image placeholder use) whenever the slide is
