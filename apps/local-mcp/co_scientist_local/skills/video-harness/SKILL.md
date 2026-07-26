@@ -187,6 +187,18 @@ a sudden drop means a beat's audio never made it in). Pick clip in-points from a
 contact sheet of the *source* too — a guessed in-point lands on a panel reaction
 or a cutaway often enough to matter.
 
+**If any stage REGENERATES the voice** — a generative lip-sync (LTX and
+friends), a voice conversion, a re-dub — it may change the WORDS, not just the
+timbre: a real episode shipped-to-review had "7월 14일" come back as
+"10월 14일" (wrong date), "핵 역량" as "핵 영향", in 3 of 7 clips.
+`narration_match` can't see this (a mismatch there looks like whisper
+mis-hearing). Use `narration_drift(reference_audio, output)` — it transcribes
+BOTH with the same model so the ASR's own errors cancel, and reports the
+differing spans. Run it **per clip before assembly** (re-rendering one clip beats
+redoing the episode), and keep **dates, figures, and proper nouns out of the
+spoken line** entirely — put them on the card, where a generator can't rewrite
+them. (Same reason abbreviations get spelled out: a TTS read "AIVO" as "aewo".)
+
 ## 4 — Register in the Video tab
 
 ```
