@@ -53,6 +53,13 @@ exactly the works it cited.
 Self-drawn graphic cards (PIL `render_*.py`, zero copyright) + narration via
 `news.build_short(script, shots, ...)`. Map every spoken sentence to a frame.
 
+**Keep the spoken script and the on-screen text separate.** edge-tts mangles
+mixed alphanumeric IDs (`SN 2024afav`) and mis-chunks big Arabic figures in
+Korean (`13조 1700억` → "일 ,삼조…"). In the SPOKEN script spell amounts, years,
+and units ≥ 10,000 out in Hangul ("십삼조 천칠백억 원", "삼십오 기가와트"); keep
+the digits on the card. `vh.qc.narration_match` folds Korean numerals toward
+digits before scoring, so following this costs no ratio.
+
 ### 4. Reference card + description — auto-filled from the store
 Pull the short's cited works and hand them straight to `vh.refs_card` (input
 shape == the reference dicts the store returns):

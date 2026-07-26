@@ -49,7 +49,11 @@ ones — use it as a fallback for short clips only.)
    alphanumeric IDs / species codes (e.g. `SN 2024afav`) in the spoken script —
    edge-tts mangles them; say them in words or omit, and show the exact form on
    screen only. (`align_to_script` pulls caption text from the script, so the
-   on-screen wording stays exact.)
+   on-screen wording stays exact.) **Same for big numbers:** edge-tts mis-chunks
+   Arabic figures in Korean (`13조 1700억` → "일 ,삼조…"), so spell amounts,
+   years, and units ≥ 10,000 out in Hangul in the SPOKEN script ("십삼조
+   천칠백억 원") and keep the digits on the card. `qc.narration_match` folds
+   Korean numerals toward digits before scoring, so this costs no ratio.
 2. **Images** for the top band — **match the imagery to the topic:**
    - **Conceptual** stories (mechanisms, policy) → abstract/metaphoric **AI art**
      works well.
