@@ -183,6 +183,17 @@ type, not from constants: `Card.ink(text, font)` measures the real glyph box and
 `Card.stack_height(rows, pad=, gap=)` gives the height that leaves equal inner
 margins (`Card.fit_font` for auto-shrink).
 
+**Every card needs a headline. Ask: is the biggest text on this card what the
+card is trying to say?** If not, the headline is missing — an eyebrow plus a
+table reads as an untitled table even when the layout is perfect. Use the named
+pair `Card.kicker(y, "기상청 53년 분석")` + `Card.headline(y, "여름은 실제로
+길어졌다", rule_gap=26)`; `save()` prints a soft warning when a card has a kicker
+and nothing much bigger (a big figure like "71만 5천 명" legitimately IS the
+headline, so it's a warning, not an error — `check_hierarchy=False` to silence).
+For list rows use `Card.row(y, left, right, sub=...)`: it keeps the parts as one
+left-anchored group instead of splitting them to opposite margins, which reads as
+three scattered fragments.
+
 **Quote a clip INSIDE the card, not as a separate cut.** `Card.window(name, x, y,
 w, h)` reserves a framed rectangle (saved to `<card>.windows.json`), then
 `build_beat_short(..., ref_video={name: (clip, in_point)})` plays the clip there
