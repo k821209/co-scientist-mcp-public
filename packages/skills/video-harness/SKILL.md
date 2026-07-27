@@ -217,7 +217,11 @@ timbre: a real episode shipped-to-review had "7월 14일" come back as
 mis-hearing). Use `narration_drift(reference_audio, output)` — it transcribes
 BOTH with the same model so the ASR's own errors cancel, and reports the
 differing spans. Run it **per clip before assembly** (re-rendering one clip beats
-redoing the episode), and keep **dates, figures, and proper nouns out of the
+redoing the episode). If a figure must be spoken, **write it in Hangul** — the
+same date re-rendered as "칠월 십사일" came back correct where "7월 14일" had
+drifted, so the digit tokens are the weak spot; treat that as *less risky*, not
+safe (generation is non-deterministic), and keep the two-way check. Otherwise keep
+**dates, figures, and proper nouns out of the
 spoken line** entirely — put them on the card, where a generator can't rewrite
 them. (Same reason abbreviations get spelled out: a TTS read "AIVO" as "aewo".)
 
