@@ -178,7 +178,29 @@ What the function encodes so you don't re-derive it per episode:
 (`y + 30`) runs straight through big glyphs; the render still succeeds, so it
 ships unless someone opens a frame. `Card.text()` records each glyph bbox and
 `Card.rule()` raises if the line would cross one — position accents off
-`Card.bottom(...) + margin`, never off a guessed offset.
+`Card.bottom(...) + margin`, never off a guessed offset. Size panels from the
+type, not from constants: `Card.ink(text, font)` measures the real glyph box and
+`Card.stack_height(rows, pad=, gap=)` gives the height that leaves equal inner
+margins (`Card.fit_font` for auto-shrink).
+
+**Quote a clip INSIDE the card, not as a separate cut.** `Card.window(name, x, y,
+w, h)` reserves a framed rectangle (saved to `<card>.windows.json`), then
+`build_beat_short(..., ref_video={name: (clip, in_point)})` plays the clip there
+for the whole beat. A separate `kind="clip"` beat needs a filler line ("here's
+that video") purely to give the cut a duration; the window doesn't — one real
+episode went 138s → 122s with MORE quotes and no empty narration, and the cold
+open reads better because the first frame already moves. Rules that cost real
+time to learn:
+- Window x/y/w/h must be **even** (h264_nvenc rejects odd dimensions with a
+  useless exit 234) — `window()` snaps down and says so.
+- **Do NOT precrop a clip inside a window** — the opposite of the full-screen
+  rule. Nothing collides with our layout in there, a half-cropped caption band
+  looks worse, and cropping kills the broadcaster logo that shows where the
+  quote came from. The clip is fitted whole (`decrease` + pad).
+- Grab **~75s** of source: the assembler asserts the in-point leaves enough
+  material for the beat, and you want room to pick a good passage.
+- Pick in-points off a `contact_sheet` of the source, and start a cold-open
+  window on **motion** (a still frame wastes the eyecatch).
 
 **Then actually check the output** (`vh.qc`): `contact_sheet()` tiles the whole
 video into one PNG — **read it**; `narration_match(video, script)` transcribes the
