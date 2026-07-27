@@ -220,6 +220,17 @@ a sudden drop means a beat's audio never made it in). Pick clip in-points from a
 contact sheet of the *source* too — a guessed in-point lands on a panel reaction
 or a cutaway often enough to matter.
 
+**Lint the VO script BEFORE synthesizing it** — `qc.lint_vo(text)`, run
+automatically per beat by `build_beat_short` (`lint_script=False` to silence).
+`narration_match` is an after-the-fact net with holes: whisper normalises what it
+hears, so a line read with the wrong number word transcribes back to the digits
+you wrote and passes. Three real traps, each with its own fix:
+- Arabic numerals get chopped (`13조` → "일 ,삼조") → spell them in Hangul.
+- digits + a counter take the NATIVE reading (`7번` → "일곱 번", which
+  transcribes as "7번" and looks fine) → write `칠 번`.
+- `십일일`/`이십일일` are mis-**heard** however you spell them (11일 sounds like
+  12일) → drop the day from the VO, keep it on the card.
+
 **If any stage REGENERATES the voice** — a generative lip-sync (LTX and
 friends), a voice conversion, a re-dub — it may change the WORDS, not just the
 timbre: a real episode shipped-to-review had "7월 14일" come back as
