@@ -220,6 +220,23 @@ a sudden drop means a beat's audio never made it in). Pick clip in-points from a
 contact sheet of the *source* too — a guessed in-point lands on a panel reaction
 or a cutaway often enough to matter.
 
+**Get the length before you render** — `build_beat_short(..., dry_run=True)`
+synthesizes only the VO and returns `{total, beats:[{bid, vo, seg, lint}]}`. A
+beat is as long as edge-tts takes to read it, which is hard to guess (a "+10s"
+edit came out +34s and blew the 3-minute Shorts ceiling), and every correction
+otherwise costs a full rebuild — `final_encode="copy"` still renders every
+segment. Fit the ceiling by editing the SCRIPT first, then build once. The
+per-beat `seg` values are also the length a **generated diagram** must be timed
+to: a diagram rendered at a fixed framerate that runs longer than its beat shows
+only its head, so its final conclusion never reaches the screen (the assembler
+now warns when a window uses less than half its source).
+
+**Put the source line in ONE place.** A beat's `credit` overlay is pinned to the
+screen while a gfx card drifts under the Ken Burns zoom, so a card that draws its
+own source line ends up colliding with it mid-beat. Draw it on the card with
+`Card.source(...)` (recorded in the sidecar — the assembler then skips its own
+credit and says so) *or* pass `credit=`, not both.
+
 **Lint the VO script BEFORE synthesizing it** — `qc.lint_vo(text)`, run
 automatically per beat by `build_beat_short` (`lint_script=False` to silence).
 `narration_match` is an after-the-fact net with holes: whisper normalises what it
