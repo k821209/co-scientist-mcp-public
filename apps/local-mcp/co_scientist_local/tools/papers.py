@@ -214,9 +214,13 @@ def update_paper(
 def set_paper_authors(state: State, slug: str, authors: list) -> dict:
     """Replace a paper's ordered author list. `authors` is a list of dicts
     (`name` required; optional `affiliation`/`affiliation_ids`/`email`/`orcid`/
-    `corresponding`) or plain name strings. Each author is also upserted into
-    the account author library by name — carrying their affiliation mapping —
-    so reusing them on another paper brings it along. Returns the paper doc."""
+    `corresponding`/`equal_contribution`) or plain name strings. In the exported
+    author block `corresponding` renders a † (all corresponding emails are
+    listed) and `equal_contribution` renders a * with a shared "contributed
+    equally" footnote — distinct symbols so an author can carry both. Each
+    author is also upserted into the account author library by name — carrying
+    their affiliation mapping — so reusing them on another paper brings it
+    along. Returns the paper doc."""
     path = _paper_path(state, slug)
     if state.backend.get_doc(path) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")

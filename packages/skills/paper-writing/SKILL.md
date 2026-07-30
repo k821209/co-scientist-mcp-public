@@ -93,9 +93,14 @@ and run this **pre-submission self-check** on every section, caption, and
 legend:
 
 1. **Plain declaratives, not writerly contrasts.** Avoid *"not X but Y"*,
-   *"larger than X rather than a correction of it"*, decorative em-dash
-   appositives, and **elegant variation** (the same idea reworded for flavor —
-   name it once, reuse the same term). Say the thing directly.
+   *"larger than X rather than a correction of it"*, and **elegant variation**
+   (the same idea reworded for flavor; name it once, reuse the same term). Say
+   the thing directly.
+1b. **Prefer commas / colons / parentheses over em-dashes (—).** Many reviewers
+   read them as informal, and paired em-dash asides make long sentences hard to
+   parse. A single em-dash → a comma (or a colon when it introduces a
+   list/definition); a paired aside → parentheses. `lint_manuscript` flags each
+   `—` (`em_dash`).
 2. **Every term defined or plainly glossed on first use.** Jargon with no gloss
    ("wall-clock cost", "uniform-confidence set", "structural concordance")
    forces the reader to guess — give a plain phrase or a one-clause definition.

@@ -91,6 +91,11 @@ _RHETORICAL = {
 }
 _RHETORICAL_MAX = 4
 
+# Em-dash (U+2014) or a double-hyphen used as one. NOT an en-dash (– U+2013,
+# legitimate numeric range) or a minus (− U+2212). Advisory — many journal
+# reviewers read em-dashes as informal.
+_EM_DASH = re.compile(r"—|(?<=\w)--(?=\w)|(?<=\w) -- (?=\w)")
+
 # Bare comparatives that hide WHAT varies (size? count? length?) — advisory.
 # Only flagged when NOT part of an explicit "… than …" comparison (checked in
 # code): "a larger set" fires; "higher than the 2-fold cutoff" does not.
@@ -230,6 +235,12 @@ def lint_manuscript(state, slug: str) -> dict:
                           "match": m.group(0),
                           "note": "ambiguous comparative — state exactly what varies "
                                   "(more isoforms? longer CDS? higher score?)",
+                          "sentence": sent[:180]})
+        for m in _EM_DASH.finditer(sent):
+            style.append({"kind": "em_dash", "section": title, "match": m.group(0),
+                          "note": "em-dash reads as informal to many reviewers — "
+                                  "a single dash → comma (or colon if it introduces "
+                                  "a list/definition); a paired aside → parentheses",
                           "sentence": sent[:180]})
 
     # Overused rhetorical words across the whole manuscript (count once).

@@ -38,6 +38,8 @@ def normalize_authors(authors) -> list[dict]:
             entry["name"] = str(a.get("name", "")).strip()
             if a.get("corresponding"):
                 entry["corresponding"] = True
+            if a.get("equal_contribution"):
+                entry["equal_contribution"] = True
             ids = a.get("affiliation_ids")
             if isinstance(ids, list):
                 clean = [str(x).strip() for x in ids if str(x).strip()]
@@ -109,18 +111,30 @@ def format_author_block(paper: dict) -> dict:
                 keys.append(("text", t.lower()))
         per_author.append(keys)
 
+    # Marks (journal convention): * = equal contribution, † = corresponding.
+    # They were previously conflated on a single "*", so a paper with both lost
+    # the distinction; and only the first corresponding author was ever shown.
     name_parts: list[str] = []
     for au, keys in zip(authors, per_author):
-        nums = sorted({num[k] for k in keys})
-        sup = f"^{','.join(map(str, nums))}^" if nums else ""
-        star = "*" if au.get("corresponding") else ""
-        name_parts.append(f"{au['name']}{sup}{star}")
+        tokens = [str(n) for n in sorted({num[k] for k in keys})]
+        if au.get("equal_contribution"):
+            tokens.append("\\*")     # escaped so pandoc doesn't read * as emphasis
+        if au.get("corresponding"):
+            tokens.append("†")
+        sup = f"^{','.join(tokens)}^" if tokens else ""
+        name_parts.append(f"{au['name']}{sup}")
 
     aff_lines = [f"{i + 1}. {text}" for i, (_key, text) in enumerate(order)]
-    corr = next((au for au in authors if au.get("corresponding")), None)
-    corr_line = ""
+
+    notes: list[str] = []
+    if any(au.get("equal_contribution") for au in authors):
+        notes.append("\\* These authors contributed equally to this work.")
+    corr = [au for au in authors if au.get("corresponding")]
     if corr:
-        corr_line = "\\* Corresponding author" + (f": {corr['email']}" if corr.get("email") else "")
+        emails = [au["email"] for au in corr if au.get("email")]
+        label = "† Corresponding author" + ("s" if len(corr) > 1 else "")
+        notes.append(label + (": " + ", ".join(emails) if emails else ""))
+    corr_line = "\n".join(notes)
 
     names_line = ", ".join(name_parts)
     md = "\n\n".join(p for p in [names_line, "\n".join(aff_lines), corr_line] if p)

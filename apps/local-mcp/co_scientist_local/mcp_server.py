@@ -1233,8 +1233,10 @@ def build_mcp(state: State) -> FastMCP:
         """Set a paper's ordered author list. Each author is a dict with
         `name` (required) and optional `affiliation` (free-text fallback) /
         `affiliation_ids` (list of ids into the paper's affiliation list) /
-        `email` / `orcid` / `corresponding` (bool). Pick entries from
-        list_authors() to reuse the account library. Replaces the list."""
+        `email` / `orcid` / `corresponding` (bool → † + email listed; multiple
+        allowed) / `equal_contribution` (bool → * + a shared "contributed
+        equally" footnote). Pick entries from list_authors() to reuse the
+        account library. Replaces the list."""
         return _papers.set_paper_authors(state, slug, authors)
 
     @mcp.tool()
