@@ -23,6 +23,7 @@ from .tools import secrets as _secrets
 from .tools import authors as _authors
 from .tools import affiliations as _affiliations
 from .tools import manuscript_lint as _manuscript_lint
+from .tools import legend_lint as _legend_lint
 from .tools import images as _images
 from .tools import assets as _assets
 from .tools import materials as _materials
@@ -1227,6 +1228,21 @@ def build_mcp(state: State) -> FastMCP:
         `summary.clean == True` means zero issues. Run it before marking
         sections complete and resolve every warning (hard done-gate)."""
         return _manuscript_lint.lint_manuscript(state, slug)
+
+    @mcp.tool()
+    def lint_legends(slug: str) -> dict[str, Any]:
+        """Deterministic legend QA — the figure/table analogue of
+        lint_manuscript. Flags legends that grew a mini-Results: over-LONG
+        (figure/SFig legend info>150/warn>220 words; table caption scored far
+        more leniently, info>300/warn>450, since footnotes define columns),
+        BODY_DUPLICATION (a legend sentence that also appears near-verbatim in a
+        section body — the real "restates Results" signal), and INTERPRETIVE
+        phrasing that belongs in Results. Reads the same text the export emits
+        (figure caption+legend joined, table caption). Returns {findings,
+        summary}; each finding has the flags, word_count, duplicated_spans and a
+        trim suggestion. prepare_export also surfaces a one-line summary per item
+        in its warnings/legend_warnings."""
+        return _legend_lint.lint_legends(state, slug)
 
     @mcp.tool()
     def set_paper_authors(slug: str, authors: list[dict[str, Any]]) -> dict[str, Any]:

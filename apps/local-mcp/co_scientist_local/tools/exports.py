@@ -454,6 +454,17 @@ def prepare_export(state: State, slug: str) -> dict:
             "or fix the reference)"
         )
 
+    # Legend QA — over-long or Results-duplicating figure/table legends. One
+    # summary line per flagged item feeds the pre-flight warnings; the full
+    # detail is available from lint_legends(slug).
+    from . import legend_lint as _legend_lint
+    legend_report = _legend_lint.lint_legends(state, slug)
+    legend_warnings = [
+        f"{f['item']} legend: {', '.join(f['flags'])} ({f['word_count']} words)"
+        for f in legend_report["findings"]
+    ]
+    warnings.extend(legend_warnings)
+
     return {
         "slug": slug,
         "paper": paper,
@@ -466,6 +477,7 @@ def prepare_export(state: State, slug: str) -> dict:
         "references": refs,
         "bibtex": bibtex,
         "placeholders": placeholders,
+        "legend_warnings": legend_warnings,
         "unresolved_citations": unresolved,
         "csl_filename": csl["csl_filename"],
         "csl_slug": csl["csl_slug"],

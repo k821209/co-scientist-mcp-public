@@ -33,6 +33,10 @@ The tool returns a bundle with a `warnings` array plus dedicated lists:
 
 - `placeholders[]` — TBD / TK / XXX / TODO / FIXME / `[...]` markers
 - `unresolved_citations[]` — `{doi:…}` references not in `references/`
+- `legend_warnings[]` — figure/table legends that are over-long or restate the
+  Results (one line each). Run `lint_legends(slug)` for the full detail
+  (flags, duplicated spans, trim suggestion). A legend should describe the
+  panels + key numbers + cross-refs; move derivation/interpretation to Results.
 - `warnings[]` — short human-readable summary
 - `csl_filename` / `csl_slug` / `csl_source` / `csl_status` — the
   citation style resolved from `paper.journal` (see step 4). Resolved
