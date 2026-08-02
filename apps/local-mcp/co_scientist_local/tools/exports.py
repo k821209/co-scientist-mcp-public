@@ -803,6 +803,15 @@ def export_to_path(
                 manuscript_text, staged_figs, [],
             )
             tbl_heading, fig_heading = "Tables", "Figures"
+            # Place the bibliography BEFORE the Tables/Figures appendices:
+            # pandoc --citeproc fills an explicit `#refs` div in place, else it
+            # appends the bibliography at document END — after Tables/Figures,
+            # which is the wrong order for journal submission. Expected:
+            # body → References → Tables → Figure legends → Figures. Pandoc-only
+            # (docx_native has no citeproc); only when the paper has references.
+            if engine == "pandoc" and bundle["references"]:
+                manuscript_text = (manuscript_text.rstrip()
+                                   + "\n\n## References\n\n::: {#refs}\n:::\n")
         else:
             manuscript_text = "# Supplementary Material\n"
             tbl_heading, fig_heading = "Supplementary Tables", "Supplementary Figures"

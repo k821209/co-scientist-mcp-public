@@ -40,6 +40,23 @@ _ROSTER_GROUP_RE = re.compile(
     r"accessions?|isolates?|plastomes?|individuals?|taxa|sequences?|strains?|"
     r"assemblies|reads)\b", re.I)
 
+# A roster ENUMERATES sample composition — where/what kind the samples are, not
+# just a count. Require a composition qualifier (region / nationality /
+# collection-type / a species binomial like "C. rostrata"); otherwise "24
+# samples … the top-1 reference accession …" (a method/column sentence that
+# happens to carry a count + a comma list) is not a roster.
+_COMPOSITION_RX = re.compile(
+    r"\b(?:korean?|u\.?s\.?|american|chinese|japan(?:ese)?|europ(?:e|ean)|"
+    r"african|domestic|wild|cultivated|field|greenhouse|herbarium|natural|"
+    r"population|cohort|accessions? from|collected)\b"
+    r"|\b[A-Z][a-z]*\.\s+[a-z]{3,}\b", re.I)
+# Column/method-description stems a table caption legitimately carries — never a
+# roster even when a count + comma-list is present.
+_METHOD_COLUMN_RX = re.compile(
+    r"\bcolumns?\s+(?:report|are|show|list|contain|give)\b|\beach column\b"
+    r"|\bsubmitted to\b|\bcomputed (?:by|as)\b|\bcalculated (?:by|as)\b"
+    r"|\brun (?:through|with)\b", re.I)
+
 # A pointer sentence: "…cataloged/listed/described … in (Supplementary) Table/
 # Results/Methods…". Adds no table-reading value on its own.
 _POINTER_RX = re.compile(
@@ -223,7 +240,10 @@ def lint_legends(state: State, slug: str) -> dict:
         if len(rm) >= 2:
             span = text[rm[0].start():rm[-1].end()]
             toks = {w.lower() for w in _words(span) if len(w) >= 2}
-            if toks and len(toks & body_tokens) / len(toks) >= _ROSTER_MIN_TOKEN:
+            # composition qualifier present, not a column/method sentence, and the
+            # roster actually recurs in a body section (it's a RESTATEMENT).
+            if (_COMPOSITION_RX.search(span) and not _METHOD_COLUMN_RX.search(text)
+                    and toks and len(toks & body_tokens) / len(toks) >= _ROSTER_MIN_TOKEN):
                 out.append({"kind": "sample_roster_restatement",
                             "sentence": span[:200],
                             "note": "sample-composition roster that also appears in "
