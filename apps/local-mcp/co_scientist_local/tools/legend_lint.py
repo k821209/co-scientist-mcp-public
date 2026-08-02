@@ -27,7 +27,27 @@ _TAB_INFO, _TAB_WARN = 300, 450
 
 _SHINGLE = 6           # n-gram size for the body-duplication check
 _DUP_MIN = 0.60        # containment above which a legend sentence "restates" the body
-_MAX_DUP_SPANS = 4     # cap reported spans per legend
+_MAX_DUP_SPANS = 25    # safety cap only — enumerate every duplicated sentence so
+                       # they all clear in one pass (feedback f6e40039cc9e)
+_ROSTER_MIN_TOKEN = 0.60   # token overlap with the body for a roster "restatement"
+
+# A sample-composition roster: two or more "<n> <group-word>" pairs in one
+# sentence ("19 Korean field collections, four U.S. specimens…"). "four" etc.
+# are spelled numbers, so allow a leading number word too.
+_ROSTER_GROUP_RE = re.compile(
+    r"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b"
+    r"[\w.\-'’ ]{0,32}?\b(?:samples?|specimens?|collections?|genomes?|"
+    r"accessions?|isolates?|plastomes?|individuals?|taxa|sequences?|strains?|"
+    r"assemblies|reads)\b", re.I)
+
+# A pointer sentence: "…cataloged/listed/described … in (Supplementary) Table/
+# Results/Methods…". Adds no table-reading value on its own.
+_POINTER_RX = re.compile(
+    r"\b(?:catalog(?:u)?ed|listed|described|detailed|reported|tabulated|shown|"
+    r"given|summariz(?:ed|es)|presented|available|provided)\b[^.]*?"
+    r"\b(?:in|separately in)\b[^.]*?"
+    r"\b(?:Supplementary\s+)?(?:Table|Fig(?:ure)?|Results|Methods|Discussion|"
+    r"Appendix|Supplementary)\b", re.I)
 
 # A caption sentence that POINTS elsewhere (cross-reference / navigation) or
 # DEFINES a column, rather than asserting a column value as fact — column_redundant
@@ -152,10 +172,14 @@ def lint_legends(state: State, slug: str) -> dict:
     """Scan every figure / table / supplementary legend. Returns
     {slug, findings: [...], summary: {...}}.
 
-    Each finding: {item, type, number, word_count, level (info|warn),
-    flags (long|body_duplication|interpretive), duplicated_spans:
-    [{sentence, section, overlap}], suggestion}. `level` is warn if any flag is
-    warn-grade, else info; an item with no flags is omitted.
+    Each finding: {item, type, number, word_count, level (info|warn), flags, and
+    detail lists. Flags: long, body_duplication (EVERY duplicated sentence is
+    enumerated in duplicated_spans, each with its section + a trim suggestion),
+    interpretive, sample_roster_restatement (a sample-composition list also in
+    the body), bare_cross_reference (a "…described/listed in Table/Results…"
+    pointer), and table-only column_redundant / excluded_data_note (in
+    caption_smells). `level` is warn if any flag is warn-grade, else info; an
+    item with no flags is omitted.
     """
     sections = list_sections(state, slug)
     # Pre-shingle each section body once; the duplication check is containment of
@@ -180,9 +204,36 @@ def lint_legends(state: State, slug: str) -> dict:
                     best, best_sec = overlap, title
             if best >= _DUP_MIN:
                 spans.append({"sentence": sent[:200], "section": best_sec,
-                              "overlap": round(best, 2)})
+                              "overlap": round(best, 2),
+                              "suggestion": f"cut — already in {best_sec}"})
         spans.sort(key=lambda x: x["overlap"], reverse=True)
-        return spans[:_MAX_DUP_SPANS]
+        return spans[:_MAX_DUP_SPANS]     # every duplicated sentence, not just one
+
+    # Roster / pointer smells (reworded restatements that 6-gram containment
+    # misses). Uses the body's token SET so a reordered roster still matches.
+    body_tokens = {w.lower() for s in sections
+                   for w in _words(s.get("body") or "") if len(w) >= 2}
+
+    def _prose_smells(text: str) -> list[dict]:
+        # Detect on the FULL text, not per-sentence: the naive sentence splitter
+        # breaks on abbreviation periods ("U.S.", "C. rostrata"), which fragments
+        # a roster mid-list.
+        out: list[dict] = []
+        rm = list(_ROSTER_GROUP_RE.finditer(text))
+        if len(rm) >= 2:
+            span = text[rm[0].start():rm[-1].end()]
+            toks = {w.lower() for w in _words(span) if len(w) >= 2}
+            if toks and len(toks & body_tokens) / len(toks) >= _ROSTER_MIN_TOKEN:
+                out.append({"kind": "sample_roster_restatement",
+                            "sentence": span[:200],
+                            "note": "sample-composition roster that also appears in "
+                                    "the body — give the total and cross-reference, "
+                                    "don't re-list the groups."})
+        for pm in _POINTER_RX.finditer(text):
+            out.append({"kind": "bare_cross_reference", "sentence": pm.group(0)[:200],
+                        "note": "pointer to another location — keep only if it "
+                                "guides the reader to specific rows; else cut."})
+        return out
 
     def _interpretive(text: str) -> list[str]:
         hits = []
@@ -210,14 +261,14 @@ def lint_legends(state: State, slug: str) -> dict:
         interp = _interpretive(text)
         if interp:
             flags.append("interpretive"); level = level or "info"
-        caption_smells: list[dict] = []
+        caption_smells: list[dict] = _prose_smells(text)
         if table_content is not None:
-            caption_smells = _table_caption_smells(text, table_content)
-            for s in caption_smells:
-                if s["kind"] not in flags:
-                    flags.append(s["kind"])
-            if caption_smells:
-                level = level or "info"
+            caption_smells += _table_caption_smells(text, table_content)
+        for s in caption_smells:
+            if s["kind"] not in flags:
+                flags.append(s["kind"])
+        if caption_smells:
+            level = level or "info"
         if not flags:
             return
         sugg = None
