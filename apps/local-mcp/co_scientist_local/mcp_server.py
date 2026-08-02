@@ -1236,8 +1236,11 @@ def build_mcp(state: State) -> FastMCP:
         (figure/SFig legend info>150/warn>220 words; table caption scored far
         more leniently, info>300/warn>450, since footnotes define columns),
         BODY_DUPLICATION (a legend sentence that also appears near-verbatim in a
-        section body — the real "restates Results" signal), and INTERPRETIVE
-        phrasing that belongs in Results. Reads the same text the export emits
+        section body — the real "restates Results" signal), INTERPRETIVE
+        phrasing that belongs in Results, and (table captions only)
+        COLUMN_REDUNDANT (a sentence restating a value already shown in a table
+        column) + EXCLUDED_DATA_NOTE (meta-notes about data not in the table).
+        Reads the same text the export emits
         (figure caption+legend joined, table caption). Returns {findings,
         summary}; each finding has the flags, word_count, duplicated_spans and a
         trim suggestion. prepare_export also surfaces a one-line summary per item
