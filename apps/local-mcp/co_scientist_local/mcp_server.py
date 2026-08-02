@@ -1842,16 +1842,41 @@ def build_mcp(state: State) -> FastMCP:
         privacy: str = "unlisted", made_for_kids: bool = False,
         publish_at: str | None = None, language: str | None = "ko",
         local_path: str | None = None, force: bool = False,
+        playlist: str | None = None,
     ) -> dict[str, Any]:
         """Upload a Video-tab item to YouTube (or update metadata if already
         uploaded). Defaults to privacy='unlisted' — set 'public' ONLY after the
         user explicitly confirms; publishing is outward-facing. 9:16 ≤3min gets
-        a #Shorts tag. Saves the YouTube id/URL on the Video doc (idempotent)."""
+        a #Shorts tag. Saves the YouTube id/URL on the Video doc (idempotent).
+        `playlist` (id or exact title) files the video into that playlist after
+        upload, creating it if the title is new — for series organization."""
         return _youtube.youtube_upload(
             state, video_id, title=title, description=description, tags=tags,
             category_id=category_id, privacy=privacy, made_for_kids=made_for_kids,
-            publish_at=publish_at, language=language, local_path=local_path, force=force,
+            publish_at=publish_at, language=language, local_path=local_path,
+            force=force, playlist=playlist,
         )
+
+    @mcp.tool()
+    def youtube_list_playlists() -> list[dict[str, Any]]:
+        """List the connected channel's YouTube playlists — [{playlist_id, title,
+        privacy, item_count, url}]. Uses the existing connection (no re-consent)."""
+        return _youtube.youtube_list_playlists(state)
+
+    @mcp.tool()
+    def youtube_create_playlist(title: str, description: str = "",
+                                privacy: str = "public") -> dict[str, Any]:
+        """Create a YouTube playlist. Returns {playlist_id, title, privacy, url}.
+        `privacy` is public|unlisted|private."""
+        return _youtube.youtube_create_playlist(
+            state, title, description=description, privacy=privacy)
+
+    @mcp.tool()
+    def youtube_add_to_playlist(playlist_id_or_title: str, video_id: str) -> dict[str, Any]:
+        """Add a video to a playlist. `playlist_id_or_title` = a playlist id or an
+        exact title; `video_id` = a Video-tab slug (resolved to its uploaded
+        YouTube id) or a raw YouTube id."""
+        return _youtube.youtube_add_to_playlist(state, playlist_id_or_title, video_id)
 
     @mcp.tool()
     def youtube_status(video_id: str) -> dict[str, Any]:

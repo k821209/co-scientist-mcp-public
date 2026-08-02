@@ -341,12 +341,17 @@ def youtube_upload(
     category_id: str = "22", privacy: str = "unlisted", made_for_kids: bool = False,
     publish_at: str | None = None, language: str | None = "ko",
     local_path: str | None = None, force: bool = False,
+    playlist: str | None = None,
 ) -> dict:
     """Upload a Video-tab item to YouTube (or update its metadata if already
     uploaded). Defaults to **unlisted** — pass privacy='public' explicitly, and
     only after the user confirms. 9:16 videos ≤3 min get a #Shorts tag. The
     YouTube id/URL are saved on the Video doc (idempotent; re-run updates
-    metadata unless force=True re-uploads)."""
+    metadata unless force=True re-uploads).
+
+    `playlist` (id or exact title) files the video into that playlist after
+    upload — creating the playlist if the title doesn't exist yet — for
+    hands-free series organization. The result carries a `playlist` entry."""
     if privacy not in _VALID_PRIVACY:
         raise ValueError(f"privacy must be one of {sorted(_VALID_PRIVACY)}")
     video = _videos.get_video(state, video_id)   # raises NotFound
@@ -393,9 +398,61 @@ def youtube_upload(
         "youtube_uploaded_at": now_iso(),
         "updated_at": now_iso(),
     })
-    return {"action": action, "video_id": video_id, "youtube_video_id": yt_id,
-            "youtube_url": url, "privacy": meta["status"]["privacyStatus"],
-            "shorts": is_short}
+    result = {"action": action, "video_id": video_id, "youtube_video_id": yt_id,
+              "youtube_url": url, "privacy": meta["status"]["privacyStatus"],
+              "shorts": is_short}
+    if playlist:
+        try:
+            pid = _resolve_playlist_id(at, playlist)
+        except ValueError:
+            # Unknown title → create it (matches the "series auto-organize" intent).
+            pid = youtube_create_playlist(state, playlist)["playlist_id"]
+        result["playlist"] = _add_to_playlist(at, pid, yt_id)
+    return result
+
+
+def youtube_list_playlists(state: State) -> list[dict]:
+    """List the connected channel's playlists — [{playlist_id, title, privacy,
+    item_count, url}]. Uses the existing YouTube connection (no re-consent)."""
+    return _list_playlists(_access_token())
+
+
+def youtube_create_playlist(state: State, title: str, *, description: str = "",
+                            privacy: str = "public") -> dict:
+    """Create a YouTube playlist (playlists.insert). Returns {playlist_id, title,
+    privacy, url}. Reuses the existing YouTube connection."""
+    if privacy not in _VALID_PRIVACY:
+        raise ValueError(f"privacy must be one of {sorted(_VALID_PRIVACY)}")
+    if not (title or "").strip():
+        raise ValueError("title is required")
+    resp = _api_json(_access_token(), _PLAYLISTS_URL + "?part=snippet,status",
+                     method="POST", body={
+                         "snippet": {"title": title.strip(), "description": description},
+                         "status": {"privacyStatus": privacy}})
+    pid = resp["id"]
+    return {"playlist_id": pid, "title": title.strip(), "privacy": privacy,
+            "url": f"https://www.youtube.com/playlist?list={pid}"}
+
+
+def _add_to_playlist(access_token: str, playlist_id: str, yt_video_id: str) -> dict:
+    resp = _api_json(access_token, _PLAYLIST_ITEMS_URL + "?part=snippet",
+                     method="POST", body={"snippet": {
+                         "playlistId": playlist_id,
+                         "resourceId": {"kind": "youtube#video", "videoId": yt_video_id}}})
+    return {"playlist_id": playlist_id, "youtube_video_id": yt_video_id,
+            "playlist_item_id": resp.get("id")}
+
+
+def youtube_add_to_playlist(state: State, playlist_id_or_title: str,
+                            video_id: str) -> dict:
+    """Add a video to a playlist (playlistItems.insert). `playlist_id_or_title`
+    is a raw playlist id or an exact playlist title; `video_id` is a Video-tab
+    slug (resolved to its uploaded YouTube id) or a raw YouTube id. Returns
+    {playlist_id, youtube_video_id, playlist_item_id}."""
+    at = _access_token()
+    pid = _resolve_playlist_id(at, playlist_id_or_title)
+    yt = _resolve_youtube_video_id(state, video_id)
+    return _add_to_playlist(at, pid, yt)
 
 
 def youtube_status(state: State, video_id: str) -> dict:
@@ -419,6 +476,85 @@ def _channels_mine(access_token: str) -> list[dict]:
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read().decode()).get("items", []) or []
+
+
+_PLAYLISTS_URL = "https://www.googleapis.com/youtube/v3/playlists"
+_PLAYLIST_ITEMS_URL = "https://www.googleapis.com/youtube/v3/playlistItems"
+
+
+def _api_json(access_token: str, url: str, *, method: str = "GET",
+              body: dict | None = None) -> dict:
+    """Authenticated JSON request to the YouTube Data API. Playlist calls use the
+    same OAuth token as upload — the connected scope already covers .../youtube
+    (playlists + playlistItems), so no re-consent is needed."""
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Authorization": f"Bearer {access_token}"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:400]
+        raise RuntimeError(
+            f"YouTube API {method} {url.split('?')[0].rsplit('/', 1)[-1]} → "
+            f"HTTP {e.code}: {detail}") from e
+
+
+def _list_playlists(access_token: str) -> list[dict]:
+    out: list[dict] = []
+    page = None
+    while True:
+        url = (_PLAYLISTS_URL
+               + "?part=snippet,status,contentDetails&mine=true&maxResults=50")
+        if page:
+            url += "&pageToken=" + page
+        resp = _api_json(access_token, url)
+        for it in resp.get("items", []) or []:
+            out.append({
+                "playlist_id": it["id"],
+                "title": (it.get("snippet") or {}).get("title", ""),
+                "privacy": (it.get("status") or {}).get("privacyStatus"),
+                "item_count": (it.get("contentDetails") or {}).get("itemCount"),
+                "url": f"https://www.youtube.com/playlist?list={it['id']}",
+            })
+        page = resp.get("nextPageToken")
+        if not page:
+            return out
+
+
+def _resolve_playlist_id(access_token: str, playlist_id_or_title: str) -> str:
+    """Accept a raw playlist id OR an exact title (matched among the user's
+    playlists). Raises if a title is ambiguous or unknown."""
+    key = (playlist_id_or_title or "").strip()
+    pls = _list_playlists(access_token)
+    for p in pls:
+        if p["playlist_id"] == key:
+            return key
+    matches = [p for p in pls if p["title"] == key]
+    if len(matches) == 1:
+        return matches[0]["playlist_id"]
+    if len(matches) > 1:
+        raise ValueError(
+            f"multiple playlists titled {key!r} — pass the playlist_id instead")
+    raise ValueError(
+        f"no playlist matching {key!r} — create it with "
+        "youtube_create_playlist(), or pass an existing playlist_id")
+
+
+def _resolve_youtube_video_id(state: State, video_id: str) -> str:
+    """A Video-tab slug (resolved to its uploaded youtube id) OR a raw YouTube id."""
+    from ..backends.base import NotFound
+    try:
+        v = _videos.get_video(state, video_id)
+    except NotFound:
+        return video_id                       # already a YouTube id
+    yt = v.get("youtube_video_id")
+    if not yt:
+        raise ValueError(
+            f"Video {video_id!r} isn't on YouTube yet — run youtube_upload first")
+    return yt
 
 
 def youtube_check(state: State) -> dict:

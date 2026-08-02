@@ -197,7 +197,10 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   device-flow OAuth → `youtube_upload` from the local mp4 → URL saved on the
   video). Long-form or #Shorts. **Default privacy unlisted; public only on
   explicit user confirmation** (outward-facing). Idempotent (re-run updates
-  metadata). Needs the user's YOUTUBE_CLIENT_ID/SECRET.
+  metadata). Needs the user's YOUTUBE_CLIENT_ID/SECRET. Playlists (same OAuth,
+  no re-consent): `youtube_create_playlist`, `youtube_add_to_playlist`,
+  `youtube_list_playlists`, or pass `playlist=` to `youtube_upload` to file the
+  video into a series playlist on publish (created if the title is new).
 - `/news-short` — synthesize a vertical news Short from text (no source video):
   fact-check → script → `news.edge_tts_speak` (free Korean neural TTS; Kokoro
   has no Korean) → `news.align_to_script(transcribe(...), script)` for accurate
