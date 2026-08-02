@@ -29,6 +29,22 @@ _SHINGLE = 6           # n-gram size for the body-duplication check
 _DUP_MIN = 0.60        # containment above which a legend sentence "restates" the body
 _MAX_DUP_SPANS = 4     # cap reported spans per legend
 
+# A caption sentence that POINTS elsewhere (cross-reference / navigation) or
+# DEFINES a column, rather than asserting a column value as fact — column_redundant
+# must not fire on these.
+_CROSSREF_RX = re.compile(
+    r"\b(?:described|defined|listed|reported|shown|detailed|discussed|given|"
+    r"summariz(?:ed|es)|explained)\s+in\b"
+    r"|\bsee\b|\brefer to\b"
+    r"|\b(?:Results|Methods|Discussion|Introduction|Supplementary)\b"
+    r"|\b(?:Fig(?:ure)?|Table)s?\.?\s*S?\d"
+    r"|=|\bdefined as\b|\bdenotes?\b|\brefers? to\b", re.I)
+
+
+def _is_crossref_or_definition(sentence: str) -> bool:
+    return bool(_CROSSREF_RX.search(sentence))
+
+
 # Caption meta-commentary about data that ISN'T in the table.
 _EXCLUDED_RX = re.compile(
     r"\bnot (?:included|tabulated|shown|listed|reported)\b"
@@ -95,7 +111,11 @@ def _table_caption_smells(caption: str, content: str) -> list[dict]:
     cols = _table_columns(content)
     # column_redundant: a distinct cell value that covers >= 2 rows and appears
     # verbatim in a caption sentence. Matches VALUES, not headers, so a footnote
-    # that DEFINES a column ("Raw FASTQ volume = …") is not flagged.
+    # that DEFINES a column ("Raw FASTQ volume = …") is not flagged. A sentence
+    # that NAVIGATES to/from those rows ("the Tier-2 cases are described in
+    # Results") or DEFINES the column is a cross-reference, not a restatement —
+    # skip it (feedback 3a041228b48a). Flag only when the value is asserted as a
+    # fact about the rows.
     for name, vals in cols.items():
         counts: dict = {}
         for v in vals:
@@ -106,7 +126,7 @@ def _table_caption_smells(caption: str, content: str) -> list[dict]:
                 continue
             val_rx = re.compile(r"(?<!\w)" + re.escape(val) + r"(?!\w)")
             for sent in sents:
-                if val_rx.search(sent):
+                if val_rx.search(sent) and not _is_crossref_or_definition(sent):
                     out.append({"kind": "column_redundant", "match": val,
                                 "column": name, "sentence": sent[:200],
                                 "note": f"'{val}' is already shown in the "

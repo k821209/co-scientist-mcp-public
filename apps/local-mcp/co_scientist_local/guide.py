@@ -314,7 +314,12 @@ it survives a new machine and the user can see it.
 
 ## Citation format + hallucination check
 
-Inline DOI: `{{doi:10.1234/example}}`. References auto-managed via
+Inline DOI: `{{doi:10.1234/example}}`. For a DOI-less registered ref
+(software, books, reports, GenBank submissions) cite by its citation_key:
+`{{cite:andrews2010}}` (alias `{{ref:key}}`) — otherwise citeproc drops it
+from the rendered bibliography even though it's in the .bib. Adjacent citation
+tokens of any kind collapse into one parenthetical, so `{{doi:A}}{{cite:b}}`
+is fine. References auto-managed via
 `mcp__co_scientist__add_reference_by_doi(slug, doi)` — fetches title,
 authors, journal, year from CrossRef so you never invent them. Refuses
 DOIs CrossRef can't find (404 → almost always a hallucinated citation).

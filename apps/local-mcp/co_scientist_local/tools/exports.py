@@ -41,9 +41,18 @@ from . import tables as _tables
 
 
 _DOI_INLINE_RE = re.compile(r"\{doi:([^}]+)\}")
-# A run of adjacent {doi:…} markers (optionally whitespace-separated), so a
-# stacked citation collapses into a single pandoc group instead of [@a][@b].
-_DOI_RUN_RE = re.compile(r"\{doi:[^}]+\}(?:\s*\{doi:[^}]+\})*")
+# Inline citation tokens: {doi:DOI} (resolved via the ref list) and
+# {ref:key}/{cite:key} (a registered citation_key directly — for DOI-less works
+# like software/books/reports that have no DOI to resolve). A raw pandoc
+# [@key] the author wrote is also folded in.
+_CITE_KEY_RE = re.compile(r"\{(?:ref|cite):([^}]+)\}")
+_RAW_CITE_RE = re.compile(r"\[@([^\]]+)\]")
+# One citation TOKEN, and a RUN of adjacent tokens (optionally whitespace-
+# separated). The run collapses into ONE pandoc group `[@a; @b; @c]` — never
+# `[@a][@b]` (pandoc reads adjacent brackets as a link) and never a `{doi}` group
+# left abutting a following `[@key]` (the bug in feedback 57964d23cdef).
+_CITE_TOKEN = r"(?:\{doi:[^}]+\}|\{(?:ref|cite):[^}]+\}|\[@[^\]]+\])"
+_CITE_RUN_RE = re.compile(_CITE_TOKEN + r"(?:\s*" + _CITE_TOKEN + r")*")
 _PLACEHOLDER_RE = re.compile(r"\b(TBD|TK|XXX|TODO|FIXME)\b", re.IGNORECASE)
 _BRACKET_PLACEHOLDER_RE = re.compile(r"\[(?:\.{3}|placeholder|tbd|tk|xxx|todo|fixme)\]", re.IGNORECASE)
 
@@ -147,33 +156,56 @@ def _rewrite_inline_citations(
     caller can warn; they're the same set prepare_export already reports as
     `unresolved_citations`.
 
-    A RUN of adjacent markers `{doi:A}{doi:B}` must collapse into ONE pandoc
-    citation group `[@a; @b]`, not `[@a][@b]` — pandoc parses `[@a][@b]` as a
-    markdown link `[text](target)` and mangles the output (the canonical body
-    form is adjacent tokens, so this hits every stacked citation).
+    Also resolves `{ref:key}`/`{cite:key}` (a registered citation_key directly,
+    for DOI-less works) and folds an author-written raw `[@key]` into the group.
+    A RUN of ANY adjacent citation tokens collapses into ONE pandoc group
+    `[@a; @b]`, not `[@a][@b]` — pandoc parses `[@a][@b]` as a markdown link and
+    mangles the output; this also fixes a `{doi}` run left abutting a following
+    `[@key]` (feedback 57964d23cdef).
+
+    Returns (text, unresolved) where unresolved holds DOIs with no registered
+    reference AND `{ref:key}` keys that aren't a registered citation_key — both
+    left literal so the caller can warn.
     """
     key_by_doi = {
         (r.get("doi") or "").strip().lower(): r["citation_key"]
         for r in refs
         if r.get("doi") and r.get("citation_key")
     }
+    known_keys = {r["citation_key"] for r in refs if r.get("citation_key")}
     unmatched: list[str] = []
 
     def repl(m: re.Match) -> str:
         keys: list[str] = []
         leftover: list[str] = []
-        for doi in _DOI_INLINE_RE.findall(m.group(0)):
-            d = doi.strip()
-            key = key_by_doi.get(d.lower())
-            if key:
-                keys.append(key)
-            else:
-                unmatched.append(d)
-                leftover.append("{doi:%s}" % doi)
-        cite = "[%s]" % "; ".join("@" + k for k in keys) if keys else ""
+        for tm in re.finditer(_CITE_TOKEN, m.group(0)):
+            tok = tm.group(0)
+            if tok.startswith("{doi:"):
+                d = _DOI_INLINE_RE.match(tok).group(1).strip()
+                key = key_by_doi.get(d.lower())
+                if key:
+                    keys.append(key)
+                else:
+                    unmatched.append(d)
+                    leftover.append("{doi:%s}" % d)
+            elif tok.startswith("[@"):
+                for k in _RAW_CITE_RE.match(tok).group(1).split(";"):
+                    k = k.strip().lstrip("@").strip()
+                    if k:
+                        keys.append(k)
+            else:  # {ref:key} / {cite:key}
+                k = _CITE_KEY_RE.match(tok).group(1).strip()
+                if k in known_keys:
+                    keys.append(k)
+                else:
+                    unmatched.append(k)
+                    leftover.append(tok)     # leave literal so the gap is visible
+        seen: set = set()
+        ordered = [k for k in keys if not (k in seen or seen.add(k))]
+        cite = "[%s]" % "; ".join("@" + k for k in ordered) if ordered else ""
         return cite + "".join(leftover)
 
-    return _DOI_RUN_RE.sub(repl, text), unmatched
+    return _CITE_RUN_RE.sub(repl, text), unmatched
 
 
 def _figures_appendix(
@@ -393,6 +425,21 @@ def prepare_export(state: State, slug: str) -> dict:
     known_dois = {r["doi"] for r in refs if r.get("doi")}
     unresolved = sorted(set(cited_dois) - known_dois)
 
+    # A registered ref only appears in the rendered bibliography if it is cited
+    # inline; citeproc drops uncited entries even though they're in the .bib. A
+    # DOI-less ref has no {doi:} token, so unless it is cited via {ref:key} /
+    # {cite:key} / [@key] it silently vanishes. Warn about those.
+    cited_keys = {k.lower() for k in _CITE_KEY_RE.findall(manuscript)}
+    cited_keys |= {k.strip().lstrip("@").strip().lower()
+                   for grp in _RAW_CITE_RE.findall(manuscript) for k in grp.split(";")}
+    cited_keys |= {r["citation_key"].lower() for r in refs
+                   if r.get("doi") and r.get("citation_key")
+                   and r["doi"] in cited_dois}
+    uncited_doiless = sorted(
+        r["citation_key"] for r in refs
+        if not r.get("doi") and r.get("citation_key")
+        and r["citation_key"].lower() not in cited_keys)
+
     taxa = _references.get_reference_taxa(state)
     bibtex = "".join(_ref_to_bibtex(r, taxa) for r in refs)
 
@@ -413,6 +460,12 @@ def prepare_export(state: State, slug: str) -> dict:
         warnings.append(f"{len(placeholders)} placeholder marker(s) in manuscript")
     if unresolved:
         warnings.append(f"{len(unresolved)} unresolved {{doi:…}} citation(s)")
+    if uncited_doiless:
+        warnings.append(
+            f"{len(uncited_doiless)} DOI-less registered ref(s) not inline-cited "
+            f"→ absent from the rendered bibliography ({', '.join(uncited_doiless[:6])}"
+            f"{'…' if len(uncited_doiless) > 6 else ''}); cite them with "
+            f"{{cite:key}} / {{ref:key}}")
     for s in bundle["sections"]:
         if s.get("status") == "pending" and (s.get("word_count") or 0) == 0:
             warnings.append(f"section '{s['key']}' is empty")
@@ -479,6 +532,7 @@ def prepare_export(state: State, slug: str) -> dict:
         "placeholders": placeholders,
         "legend_warnings": legend_warnings,
         "unresolved_citations": unresolved,
+        "doiless_uncited_refs": uncited_doiless,
         "csl_filename": csl["csl_filename"],
         "csl_slug": csl["csl_slug"],
         "csl_source": csl["csl_source"],
