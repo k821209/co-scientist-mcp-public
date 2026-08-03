@@ -204,3 +204,14 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
   supplementary figures/tables (≥ 101). The default `scope="main"` export
   excludes them; export both files when supplementary content exists (see
   step 4).
+- "The journal also wants a marked-up / tracked-changes copy" →
+  `/tracked-changes-export`. It compares this clean `.docx` against the
+  previously submitted one with LibreOffice, so real `w:ins`/`w:del` marks land
+  in the file. Do NOT diff the markdown for this: that produces coloured
+  strikethrough with zero revision marks, which Word's review pane cannot show
+  and a reviewer cannot accept or reject.
+- **Anything you build locally is NOT uploaded.** `export_to_path` uploads its
+  own output only; a locally produced file (tracked-changes docx, response
+  letter, converted table) needs an explicit
+  `attach_export(slug, local_path=…, scope=…)` or it never appears on the
+  dashboard.

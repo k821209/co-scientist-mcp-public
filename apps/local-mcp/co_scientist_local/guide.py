@@ -162,7 +162,16 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   unresolved-DOI pre-flight check; auto-resolves the journal's CSL
   citation style (in-code map → kebab guess → per-project registry,
   downloaded from the CSL styles repo); uploads result to Storage so the
-  dashboard's Paper page lists it.
+  dashboard's Paper page lists it. **Only `export_to_path` uploads by
+  itself** — ANY file you build locally (tracked-changes docx, a response
+  letter, a converted table) needs an explicit
+  `attach_export(slug, local_path=…, scope=…)`, or it silently never
+  reaches the dashboard.
+- `/tracked-changes-export` — a real marked-up `.docx` (genuine `w:ins`/
+  `w:del`) between the submitted version and the current one, by comparing
+  two RENDERED docx files with headless LibreOffice. Never diff the
+  markdown: that yields coloured strikethrough with zero revision marks —
+  Word's review pane shows nothing and nothing can be accepted.
 - `/literature-review [topic] [slug?]` — CrossRef keyword search via
   `search_works`, candidate-then-pick UX, registers selected via
   `add_reference_by_doi`, writes a structured synthesis.
