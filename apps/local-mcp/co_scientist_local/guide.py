@@ -210,6 +210,10 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   no re-consent): `youtube_create_playlist`, `youtube_add_to_playlist`,
   `youtube_list_playlists`, or pass `playlist=` to `youtube_upload` to file the
   video into a series playlist on publish (created if the title is new).
+  Thumbnails: pass `thumbnail=` (local PNG/JPEG ≤2MB — 1280x720 for 16:9,
+  1080x1920 for a Short) to `youtube_upload`, or `youtube_set_thumbnail` later.
+  Custom thumbnails require a VERIFIED channel; a refusal is reported in
+  `thumbnail_error` and never fails the upload.
 - `/news-short` — synthesize a vertical news Short from text (no source video):
   fact-check → script → `news.edge_tts_speak` (free Korean neural TTS; Kokoro
   has no Korean) → `news.align_to_script(transcribe(...), script)` for accurate

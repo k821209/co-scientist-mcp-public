@@ -1847,20 +1847,31 @@ def build_mcp(state: State) -> FastMCP:
         privacy: str = "unlisted", made_for_kids: bool = False,
         publish_at: str | None = None, language: str | None = "ko",
         local_path: str | None = None, force: bool = False,
-        playlist: str | None = None,
+        playlist: str | None = None, thumbnail: str | None = None,
     ) -> dict[str, Any]:
         """Upload a Video-tab item to YouTube (or update metadata if already
         uploaded). Defaults to privacy='unlisted' — set 'public' ONLY after the
         user explicitly confirms; publishing is outward-facing. 9:16 ≤3min gets
         a #Shorts tag. Saves the YouTube id/URL on the Video doc (idempotent).
         `playlist` (id or exact title) files the video into that playlist after
-        upload, creating it if the title is new — for series organization."""
+        upload, creating it if the title is new — for series organization.
+        `thumbnail` (local PNG/JPEG ≤2MB, e.g. 1280x720 or 1080x1920) sets a
+        custom thumbnail in the same call; it needs a VERIFIED channel, and a
+        refusal is reported in `thumbnail_error` instead of failing the upload."""
         return _youtube.youtube_upload(
             state, video_id, title=title, description=description, tags=tags,
             category_id=category_id, privacy=privacy, made_for_kids=made_for_kids,
             publish_at=publish_at, language=language, local_path=local_path,
-            force=force, playlist=playlist,
+            force=force, playlist=playlist, thumbnail=thumbnail,
         )
+
+    @mcp.tool()
+    def youtube_set_thumbnail(video_id: str, thumbnail_path: str) -> dict[str, Any]:
+        """Set a custom thumbnail on an already-uploaded video (thumbnails.set).
+        `video_id` = a Video-tab slug (resolved to its uploaded YouTube id) or a
+        raw YouTube id; `thumbnail_path` = local PNG/JPEG ≤2MB. Requires a
+        verified channel (403 otherwise). Uses the existing YouTube connection."""
+        return _youtube.youtube_set_thumbnail(state, video_id, thumbnail_path)
 
     @mcp.tool()
     def youtube_list_playlists() -> list[dict[str, Any]]:

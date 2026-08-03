@@ -341,7 +341,7 @@ def youtube_upload(
     category_id: str = "22", privacy: str = "unlisted", made_for_kids: bool = False,
     publish_at: str | None = None, language: str | None = "ko",
     local_path: str | None = None, force: bool = False,
-    playlist: str | None = None,
+    playlist: str | None = None, thumbnail: str | None = None,
 ) -> dict:
     """Upload a Video-tab item to YouTube (or update its metadata if already
     uploaded). Defaults to **unlisted** — pass privacy='public' explicitly, and
@@ -351,7 +351,12 @@ def youtube_upload(
 
     `playlist` (id or exact title) files the video into that playlist after
     upload — creating the playlist if the title doesn't exist yet — for
-    hands-free series organization. The result carries a `playlist` entry."""
+    hands-free series organization. The result carries a `playlist` entry.
+
+    `thumbnail` (local PNG/JPEG ≤2MB) sets a custom thumbnail on the video, so a
+    publish is one call. Custom thumbnails need a VERIFIED channel; if YouTube
+    refuses, the upload still succeeded and the error lands in the result's
+    `thumbnail_error` rather than raising."""
     if privacy not in _VALID_PRIVACY:
         raise ValueError(f"privacy must be one of {sorted(_VALID_PRIVACY)}")
     video = _videos.get_video(state, video_id)   # raises NotFound
@@ -401,6 +406,16 @@ def youtube_upload(
     result = {"action": action, "video_id": video_id, "youtube_video_id": yt_id,
               "youtube_url": url, "privacy": meta["status"]["privacyStatus"],
               "shorts": is_short}
+    if thumbnail:
+        # Never fail a completed upload over a thumbnail: an unverified channel
+        # is refused with 403, and the video itself is already published.
+        tp = pathlib.Path(thumbnail).expanduser()
+        try:
+            if not tp.is_file():
+                raise FileNotFoundError(f"thumbnail not found: {thumbnail}")
+            result["thumbnail"] = _set_thumbnail(at, yt_id, tp)
+        except Exception as e:  # noqa: BLE001 — reported, not raised
+            result["thumbnail_error"] = f"{type(e).__name__}: {e}"
     if playlist:
         try:
             pid = _resolve_playlist_id(at, playlist)
@@ -409,6 +424,59 @@ def youtube_upload(
             pid = youtube_create_playlist(state, playlist)["playlist_id"]
         result["playlist"] = _add_to_playlist(at, pid, yt_id)
     return result
+
+
+_THUMBNAIL_URL = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
+_THUMB_MAX_BYTES = 2 * 1024 * 1024        # YouTube's limit for thumbnails.set
+_THUMB_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+
+
+def _set_thumbnail(access_token: str, yt_id: str, path: pathlib.Path) -> dict:
+    """thumbnails.set — POST the image bytes for a video we own.
+
+    Same OAuth token as upload (the .../auth/youtube scope covers it), so no
+    re-consent. YouTube caps the file at 2MB and wants PNG/JPEG; a 1280x720
+    (16:9) or 1080x1920 (9:16) image is the usual choice."""
+    ctype = _THUMB_TYPES.get(path.suffix.lower())
+    if not ctype:
+        raise ValueError(
+            f"thumbnail must be .png/.jpg/.jpeg, got {path.suffix!r}")
+    data = path.read_bytes()
+    if len(data) > _THUMB_MAX_BYTES:
+        raise ValueError(
+            f"thumbnail is {len(data) / 1e6:.1f}MB — YouTube's limit is 2MB; "
+            f"re-encode smaller (e.g. JPEG quality 85)")
+    req = urllib.request.Request(
+        f"{_THUMBNAIL_URL}?videoId={urllib.parse.quote(yt_id)}",
+        data=data, method="POST",
+        headers={"Authorization": f"Bearer {access_token}",
+                 "Content-Type": ctype, "Content-Length": str(len(data))})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            out = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:300]
+        if e.code == 403:
+            raise RuntimeError(
+                "thumbnails.set refused (403) — custom thumbnails require a "
+                f"VERIFIED YouTube channel. Detail: {detail}") from e
+        raise RuntimeError(f"thumbnails.set HTTP {e.code}: {detail}") from e
+    return {"youtube_video_id": yt_id, "size_bytes": len(data),
+            "content_type": ctype,
+            "thumbnail_urls": {k: v.get("url") for k, v in
+                               (out.get("items") or [{}])[0].items()}
+            if out.get("items") else {}}
+
+
+def youtube_set_thumbnail(state: State, video_id: str, thumbnail_path: str) -> dict:
+    """Set a custom thumbnail on an already-uploaded video. `video_id` is a
+    Video-tab slug (resolved to its uploaded YouTube id) or a raw YouTube id;
+    `thumbnail_path` is a local PNG/JPEG ≤2MB. Needs a verified channel."""
+    p = pathlib.Path(thumbnail_path).expanduser()
+    if not p.is_file():
+        raise FileNotFoundError(f"thumbnail not found: {thumbnail_path}")
+    at = _access_token()
+    return _set_thumbnail(at, _resolve_youtube_video_id(state, video_id), p)
 
 
 def youtube_list_playlists(state: State) -> list[dict]:
