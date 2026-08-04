@@ -216,7 +216,9 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   `thumbnail_error` and never fails the upload. **Shorts caveat:** on a 9:16
   Short a custom thumbnail only replaces the 16:9 cards (search/suggested); the
   vertical thumbnail in the Shorts feed stays a frame YouTube picked and no API
-  can set it (only Studio/mobile "choose a frame"). Verified 2026-08-04. So do
+  can set it (only Studio/mobile "choose a frame"). Verified 2026-08-04 by
+  comparing renditions on live Shorts AND against the official reference, which
+  never mentions Shorts or 9:16 — every documented rendition is 16:9. So do
   not plan thumbnail back-fills as a way to lift Shorts-feed views.
 - `/news-short` — synthesize a vertical news Short from text (no source video):
   fact-check → script → `news.edge_tts_speak` (free Korean neural TTS; Kokoro

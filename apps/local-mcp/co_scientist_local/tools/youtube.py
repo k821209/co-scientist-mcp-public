@@ -438,8 +438,11 @@ _SHORTS_THUMB_NOTE = (
     "(maxresdefault etc.) used by search/suggested/watch cards. The VERTICAL "
     "thumbnail the Shorts feed shows (oar2.jpg, 1080x1920) keeps a frame YouTube "
     "picked from the video — the API cannot set it; only Studio/mobile "
-    "'choose a frame' can. Verified 2026-08-04 on published Shorts: a Short with "
-    "a custom thumbnail and one without had indistinguishable oar2.jpg. So do "
+    "'choose a frame' can. Verified 2026-08-04 two ways: (a) on published Shorts, "
+    "one with a custom thumbnail and one without had indistinguishable oar2.jpg "
+    "while maxresdefault carried the custom image letterboxed; (b) the official "
+    "thumbnails.set reference never mentions Shorts or 9:16 at all — every "
+    "documented rendition (default/medium/high/standard/maxres) is 16:9. So do "
     "NOT prioritise back-filling thumbnails to lift Shorts-feed views."
 )
 
