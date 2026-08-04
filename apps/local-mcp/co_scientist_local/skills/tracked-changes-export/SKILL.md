@@ -112,6 +112,11 @@ and one of them is made WORSE by retrying:
 | dies mid-compare | stages stop, `Fatal exception: Signal 6` in stderr | crash | `pkill -f soffice`, retry |
 | never returns, **CPU ~0%**, process alive | stages stop at `loaded-new` | **deadlock on embedded images** | strip images and compare the stripped copies — retrying NEVER clears it |
 
+**Strip images by default when either input carries figures.** The deadlock is
+cheap to avoid and expensive to diagnose, so don't wait to hit it: if either
+docx has embedded media, compare stripped copies from the start. The text is
+what the marked-up copy is for.
+
 **The image deadlock is deterministic.** A real pair (2.58 MB / 3.54 MB, 5 and 7
 figures, ~50 KB of actual text) hung at 0% CPU on three consecutive attempts,
 each on a fresh profile, always stopping right after `loaded-new`. The same pair
@@ -119,12 +124,55 @@ with images removed completed on the first try. Retrying a 0%-CPU hang is an
 unbounded loop against a reproducible failure — it cost an hour before the stage
 log made the cause visible.
 
-To strip images, work on COPIES of both docx: delete every `w:drawing` and
-`w:pict` element (lxml, never regex), drop the `word/media/*` parts, and delete
-the relationships whose type ends in `/image` so nothing dangles. The result
-tracks the TEXT, which is what a reviewer needs: figures and tables are
-regenerated wholesale in a revision and carry no useful line-by-line diff. Say so
-in the response letter — the same sentence that already covers rebuilt tables.
+Strip on COPIES of both docx — never the originals. The result tracks the TEXT,
+which is what a reviewer needs: figures and tables are regenerated wholesale in a
+revision and carry no useful line-by-line diff. Say so in the response letter, in
+the same sentence that already covers rebuilt tables.
+
+```python
+import zipfile
+import lxml.etree as ET
+
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+R = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+
+def strip_images(src, dst):
+    """Copy `src` docx to `dst` with all images removed. Returns dst.
+
+    Deletes w:drawing / w:pict, drops word/media/*, and removes the image
+    RELATIONSHIPS too — leaving a dangling r:embed is what makes Word complain
+    about a corrupt file."""
+    with zipfile.ZipFile(src) as zin:
+        items = [(i, zin.read(i.filename)) for i in zin.infolist()]
+    out = []
+    for info, data in items:
+        name = info.filename
+        if name.startswith("word/media/"):
+            continue                                    # drop the bytes
+        if name.endswith(".xml") or name.endswith(".rels"):
+            try:
+                root = ET.fromstring(data)
+            except ET.XMLSyntaxError:
+                out.append((info, data)); continue
+            if name.endswith(".rels"):                  # drop image relationships
+                for rel in list(root):
+                    if str(rel.get("Type", "")).endswith("/image"):
+                        root.remove(rel)
+            else:                                        # drop the picture nodes
+                for tag in (W + "drawing", W + "pict"):
+                    for el in list(root.iter(tag)):
+                        if el.getparent() is not None:
+                            el.getparent().remove(el)
+            data = ET.tostring(root, xml_declaration=True,
+                               encoding="UTF-8", standalone=True)
+        out.append((info, data))
+    # [Content_Types].xml must be written first.
+    out.sort(key=lambda kv: kv[0].filename != "[Content_Types].xml")
+    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info, data in out:
+            zout.writestr(info, data)
+    return dst
+```
 
 - **Keep the extracted working tree from any successful run.** A later re-run may
   fail, and the salvaged tree lets you finish the post-processing without
@@ -191,7 +239,7 @@ Repackage with `[Content_Types].xml` written first.
 | Opens as a document | `docx.Document(f)` — report paragraph and table counts |
 | Real revision marks | count `w:ins` / `w:del` — must be non-zero |
 | Every mark attributed | no `w:ins`/`w:del` without `w:author` |
-| Images preserved | `word/media/` count matches the clean export |
+| Media accounted for | `word/media/` count matches **the input you compared** — 0 is correct on the stripped route, where the marked-up copy is text-only by design (the clean export carries the figures) |
 | No empty tables | every `w:tbl` has text or graphics |
 
 Report the insertion / deletion counts to the user. The ratio is informative:
