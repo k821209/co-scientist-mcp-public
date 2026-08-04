@@ -124,6 +124,17 @@ legend:
 and `results_in_methods` — but the judgment calls (jargon-without-gloss,
 term-before-definition, one-topic-per-paragraph) are yours: run the checklist.
 
+### 2c. Write from the reader's context, not yours
+
+You remember the whole analysis; the reader has read the paper once. At FIRST
+use, every term, symbol and threshold must carry what it means, the scale or
+baseline that makes a value interpretable, and which method/arm it belongs to
+when more than one exists ("λ" only where it is defined). A number without a
+scale is not information: "0.904 on a 0–1 scale where 1 means the same
+partition", not "0.904". This is separate from §2b: plain phrasing does not
+supply a missing premise. And when trimming for length, cut claims — never the
+clause that lets a reader check one.
+
 ### 3. Say it once (de-duplication)
 
 Each finding, definition, and background fact appears **once, in its home

@@ -75,6 +75,31 @@ Rules:
 - Keep the author's voice professional and concise; do not overclaim changes
   that weren't made.
 
+## Write for a reader who wasn't in the session
+
+A reviewer has read the manuscript once and shares NONE of your working memory,
+and is deciding whether to believe a new analysis they haven't seen. You have
+perfect recall of it, which makes context-dropping invisible from the inside —
+and asking yourself to be concise makes it worse, because the clauses carrying
+reader context are the ones that look redundant to you. **When concision and
+reader-context conflict, keep the context.** Dropped context also degrades into
+error: "genomic inflation falls from λ = 7.03 to 1.23" with no arm named implied
+a diagnostic that does not exist for the other method.
+
+**First-use audit before you deliver.** For every technical term, symbol,
+threshold and named cross-reference, grep its FIRST occurrence and confirm it
+carries (a) what it means, (b) the scale/baseline that makes the value
+interpretable, (c) whose it is when several are in play — "Reviewer 1's Major 3",
+not "Major 3"; λ attributed to the arm it exists for.
+
+- **A number without a scale is not information**: "0.904, on a 0–1 scale where
+  1 means the same partition"; "28.7% against a chromosome-matched null of
+  21.5% ± 2.8%". Give the causal step: "a permutation test cannot return a
+  p-value below one over the number of arrangements it can draw, so the floor
+  was 8.3e-4 — three orders of magnitude above the 8.9e-7 needed".
+- **When compressing, cut claims, not context.** Safe: a sentence the manuscript
+  already carries in full. Unsafe: the clause saying why a number matters.
+
 ## Step 3 — deliver
 
 Show the draft. Offer to save it — either as a new section

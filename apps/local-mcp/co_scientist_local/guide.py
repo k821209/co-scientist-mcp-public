@@ -397,6 +397,47 @@ title mismatches, errors). If non-empty:
 For single-citation spot checks: `verify_doi(doi)` returns metadata
 without writing anything.
 
+## Write from the READER's context, not yours
+
+You have spent the session inside the analysis and remember all of it. The
+reader has read the manuscript once and shares none of your working memory.
+That asymmetry is invisible from the inside — every sentence you write reads
+as complete to you — and it gets WORSE when you are asked to be concise,
+because the clauses that carry reader context are exactly the ones that look
+redundant to someone who already knows. **Concision and reader-context pull in
+opposite directions; when they conflict, keep the context.**
+
+This is not a style preference: dropped context degrades into factual error. A
+letter that reported "genomic inflation falls from λ = 7.03 to 1.23" without
+saying which arm it belonged to implied a diagnostic that does not exist for
+the other method.
+
+**First-use audit — run it before delivering any prose.** For every technical
+term, symbol, threshold, and named cross-reference, find its FIRST occurrence
+and confirm that occurrence carries:
+  (a) what it means (`K` = "the number of permutation strata", not bare `K`),
+  (b) the scale or baseline that makes a value interpretable,
+  (c) which method / arm / reviewer it belongs to when more than one is in play
+      ("Reviewer 1's Major 3", not "Major 3"; λ attributed to the PLINK arm).
+This is mechanical — grep the first index of each term — so do it, don't
+aspire to it.
+
+Two corollaries:
+- **A number without a scale is not information.** "0.904, on a 0–1 scale where
+  1 means the same partition" beats "0.904"; "28.7% against a chromosome-matched
+  null of 21.5% ± 2.8%" beats "28.7%". Give the causal step too: "a permutation
+  test cannot return a p-value below one over the number of arrangements it can
+  draw, so the floor was 8.3e-4".
+- **When compressing, cut claims, not the context that makes a claim
+  checkable.** The safe cut is a sentence the manuscript already carries in
+  full; the unsafe cut is the clause explaining why a number matters.
+
+Applies to `/response-letter` (highest risk — its readers have not seen the new
+analysis and are deciding whether to believe it), `/paper-writing`,
+`/paper-revision`. Distinct from the plain-English rule below: that one is about
+sentence difficulty, this one is about missing premises, which survive any
+amount of simplification.
+
 ## Prose for non-English audiences (todo 001)
 
 When generating prose for a non-English audience — Korean, Japanese,

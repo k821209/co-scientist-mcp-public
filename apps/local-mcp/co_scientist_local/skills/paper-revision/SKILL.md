@@ -142,3 +142,12 @@ highlights resolve correctly. See `/reconcile-reviews`.
 
 Call `mcp__co_scientist__count_open_user_comments(slug)` to confirm the
 count is zero. Report the resolution summary back to the user.
+
+## Write from the reader's context
+
+When you rewrite a passage to address a comment, the reviewer re-reading it
+shares none of this session's memory. At first use, every term/symbol/threshold
+needs its meaning, its scale or baseline, and — when several methods or reviewers
+are in play — whose it is. A number without a scale is not information, and when
+you compress, cut claims rather than the context that makes a claim checkable.
+See "Write from the READER's context" in `project_guide()`.
