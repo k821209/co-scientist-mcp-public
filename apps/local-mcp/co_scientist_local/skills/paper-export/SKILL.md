@@ -220,3 +220,10 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
   `list_exports(slug)` (newest `updated_at`, `size_bytes`) against the file at
   `output_path`; if they agree the export is done. Retrying blind costs another
   full run and can create a second artifact under a different filename.
+- **A separate document exports under ITS OWN slug.** Exporting a response
+  letter / cover letter that lives as its own paper puts the blob at
+  `papers/<that-slug>/exports/…`, so it never shows on the manuscript's Exports
+  tab. The "local artifacts need attach_export" rule doesn't cover this —
+  `export_to_path` DID create the file, just somewhere else. When the deliverable
+  belongs to a submission package assembled on another paper, follow the export
+  with `attach_export(slug=<manuscript>, local_path=…, scope="main")`.

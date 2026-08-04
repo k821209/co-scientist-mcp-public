@@ -93,7 +93,7 @@ End Sub
 Load the NEW document and merge the OLD one into it, not the reverse — that
 orientation makes additions appear as insertions.
 
-### 4. Run it, and expect flakiness
+### 4. Run it, then DIAGNOSE — do not just retry
 
 ```bash
 soffice -env:UserInstallation=file://$PROF --headless --norestore \
@@ -102,13 +102,30 @@ soffice -env:UserInstallation=file://$PROF --headless --norestore \
 
 Have the macro append a stage marker to a log file at each step — `start`,
 `loaded-new`, `compared`, `stored`, `done` — and poll THAT log, not just the
-output file. Without it, "macro never ran" and "compare hung" look identical, and
-you cannot tell which remedy applies.
+output file. All three failure modes look identical ("no output file"), so
+without the stage log plus one look at CPU you cannot tell which remedy applies —
+and one of them is made WORSE by retrying:
 
-Then poll for the output file. **This step is unreliable** — in the vcf2hash run
-it produced nothing on two of four attempts and once hung past eight minutes.
+| symptom | evidence | cause | remedy |
+|---|---|---|---|
+| exits immediately | no stage log at all | the macro was overwritten by profile init (step 3) | init first, rewrite the module, `grep -c DoCompare` |
+| dies mid-compare | stages stop, `Fatal exception: Signal 6` in stderr | crash | `pkill -f soffice`, retry |
+| never returns, **CPU ~0%**, process alive | stages stop at `loaded-new` | **deadlock on embedded images** | strip images and compare the stripped copies — retrying NEVER clears it |
 
-- `pkill -f soffice`, wait a few seconds, retry.
+**The image deadlock is deterministic.** A real pair (2.58 MB / 3.54 MB, 5 and 7
+figures, ~50 KB of actual text) hung at 0% CPU on three consecutive attempts,
+each on a fresh profile, always stopping right after `loaded-new`. The same pair
+with images removed completed on the first try. Retrying a 0%-CPU hang is an
+unbounded loop against a reproducible failure — it cost an hour before the stage
+log made the cause visible.
+
+To strip images, work on COPIES of both docx: delete every `w:drawing` and
+`w:pict` element (lxml, never regex), drop the `word/media/*` parts, and delete
+the relationships whose type ends in `/image` so nothing dangles. The result
+tracks the TEXT, which is what a reviewer needs: figures and tables are
+regenerated wholesale in a revision and carry no useful line-by-line diff. Say so
+in the response letter — the same sentence that already covers rebuilt tables.
+
 - **Keep the extracted working tree from any successful run.** A later re-run may
   fail, and the salvaged tree lets you finish the post-processing without
   comparing again.
