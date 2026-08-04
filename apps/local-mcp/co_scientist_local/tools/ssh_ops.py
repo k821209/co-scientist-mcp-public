@@ -36,6 +36,11 @@ from .runs import (
 from .servers import get_server
 
 
+# Marker echoed before a remote `ps`: its presence proves the remote shell ran, so
+# `ps` exiting 1 ("no matching process" — the normal state once a batch finishes)
+# is never mistaken for an ssh failure. See poll_remote_pids.
+_PS_SENTINEL = "__cosci_ps__"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Parsers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -511,15 +516,29 @@ def poll_remote_pids(state: State, alias: str) -> dict:
     server = get_server(state, alias)
     ssh = state.require_ssh()
     pid_list = ",".join(str(r["pid"]) for r in rows)
-    rc, out, err = ssh.run(server, f"ps -p {pid_list} -o pid= 2>/dev/null", timeout=10)
-    if rc != 0 and not out:
-        return {
+    # `ps -p` exits 1 when NONE of the listed PIDs is alive — i.e. exactly the
+    # normal "the batch finished" case. Treating that rc (or ssh's harmless
+    # "Warning: Permanently added … to the list of known hosts" on stderr) as a
+    # failure left every run marked running forever (feedback aa02e57c6f16).
+    # So: `|| true` for the rc, and a sentinel that proves the remote shell
+    # actually ran — no sentinel means a real transport/auth failure, while
+    # sentinel + no PID lines means everything is dead.
+    rc, out, err = ssh.run(
+        server,
+        f"echo {_PS_SENTINEL}; ps -p {pid_list} -o pid= 2>/dev/null || true",
+        timeout=10)
+    if _PS_SENTINEL in (out or ""):
+        ps_out = (out or "").split(_PS_SENTINEL, 1)[1]
+    elif rc == 0:
+        ps_out = out or ""            # ran fine, just no sentinel echoed
+    else:
+        return {                      # neither sentinel nor clean rc → real failure
             "alias": alias, "checked": len(rows),
             "finished": 0, "still_running": len(rows),
             "error": (err or "").strip() or f"ssh rc={rc}",
         }
     alive: set[int] = set()
-    for line in out.splitlines():
+    for line in ps_out.splitlines():
         try:
             alive.add(int(line.strip()))
         except ValueError:
@@ -639,9 +658,15 @@ def scan_untracked_jobs(
     server = get_server(state, alias)
     ssh = state.require_ssh()
     user = server["user"]
-    cmd = f"ps -u {shlex.quote(user)} -o pid=,ppid=,etime=,cmd= --no-headers 2>/dev/null"
+    # Same `ps` rc trap as poll_remote_pids: no matching process → rc=1, which is
+    # a legitimate "nothing running", not an ssh failure. Sentinel proves the
+    # remote shell ran (feedback aa02e57c6f16).
+    cmd = (f"echo {_PS_SENTINEL}; ps -u {shlex.quote(user)} "
+           f"-o pid=,ppid=,etime=,cmd= --no-headers 2>/dev/null || true")
     rc, out, err = ssh.run(server, cmd, timeout=12)
-    if rc != 0:
+    if _PS_SENTINEL in (out or ""):
+        out = (out or "").split(_PS_SENTINEL, 1)[1]
+    elif rc != 0:
         return {
             "alias": alias,
             "error": (err or "").strip() or f"ssh rc={rc}",
