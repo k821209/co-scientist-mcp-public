@@ -215,3 +215,8 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
   letter, converted table) needs an explicit
   `attach_export(slug, local_path=…, scope=…)` or it never appears on the
   dashboard.
+- **If `export_to_path` times out, check before retrying.** The export can
+  finish and lose only its reply, so a "failure" may be a success. Compare
+  `list_exports(slug)` (newest `updated_at`, `size_bytes`) against the file at
+  `output_path`; if they agree the export is done. Retrying blind costs another
+  full run and can create a second artifact under a different filename.

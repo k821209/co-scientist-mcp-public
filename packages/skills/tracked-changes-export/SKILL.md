@@ -56,6 +56,15 @@ soffice -env:UserInstallation=file://$PROF --headless --terminate_after_init
 
 ### 3. Install the compare macro
 
+**Order matters, and getting it wrong fails silently.** Initialising a fresh
+profile makes LibreOffice write its OWN `Standard/Module1.xba` containing an empty
+`Sub Main`. If you write the macro *before* step 2, init overwrites it,
+`DoCompare` no longer exists, and soffice exits instantly having done nothing — no
+output file, no error, exit code 0. That is indistinguishable from the flakiness
+below, so the documented remedy (fresh profile + retry) reproduces the bug: three
+cycles of up to 20 minutes were lost to exactly this. Always **init first, then
+write the module, then `grep -c DoCompare` the file** to confirm it survived.
+
 Write to `$PROF/user/basic/Standard/Module1.xba`, substituting absolute paths:
 
 ```xml
@@ -90,6 +99,11 @@ orientation makes additions appear as insertions.
 soffice -env:UserInstallation=file://$PROF --headless --norestore \
   "vnd.sun.star.script:Standard.Module1.DoCompare?language=Basic&location=application"
 ```
+
+Have the macro append a stage marker to a log file at each step — `start`,
+`loaded-new`, `compared`, `stored`, `done` — and poll THAT log, not just the
+output file. Without it, "macro never ran" and "compare hung" look identical, and
+you cannot tell which remedy applies.
 
 Then poll for the output file. **This step is unreliable** — in the vcf2hash run
 it produced nothing on two of four attempts and once hung past eight minutes.

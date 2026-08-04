@@ -17,6 +17,8 @@ Two auth modes, same `Backend` interface:
 """
 from __future__ import annotations
 
+import os
+
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -156,6 +158,12 @@ def _build_user_credentials(token_provider: Callable[[], str]):
     return _ProviderCredentials(token_provider)
 
 
+# Every Firestore document/collection call is bounded by this (seconds). gRPC has
+# no default deadline, so an unbounded call can hang the whole MCP tool — see the
+# note on the document methods. Override with CO_SCIENTIST_FIRESTORE_TIMEOUT.
+_FS_TIMEOUT = float(os.environ.get("CO_SCIENTIST_FIRESTORE_TIMEOUT", "60"))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # FirestoreBackend
 # ──────────────────────────────────────────────────────────────────────────────
@@ -200,36 +208,44 @@ class FirestoreBackend(Backend):
             self._bucket = storage.bucket(name=bucket_name, app=app)
 
     # --- documents -----------------------------------------------------------
+    #
+    # EVERY Firestore call passes an explicit timeout. Without one the gRPC call
+    # can block forever, and a tool that hangs after finishing its real work is
+    # worse than one that fails: an export wrote its file and uploaded its blob,
+    # then stalled on the metadata write, so the client aborted a SUCCESSFUL
+    # export and the natural response (retry) burned another 30 minutes on work
+    # already done (feedback cd408408c7bd). A bounded call raises instead, which
+    # the caller can see and report.
 
     def get_doc(self, path: str) -> dict | None:
-        snap = self._db.document(path).get()
+        snap = self._db.document(path).get(timeout=_FS_TIMEOUT)
         return snap.to_dict() if snap.exists else None
 
     def set_doc(self, path: str, data: dict) -> None:
-        self._db.document(path).set(data)
+        self._db.document(path).set(data, timeout=_FS_TIMEOUT)
 
     def set_doc_merge(self, path: str, data: dict) -> None:
-        self._db.document(path).set(data, merge=True)
+        self._db.document(path).set(data, merge=True, timeout=_FS_TIMEOUT)
 
     def update_doc(self, path: str, fields: dict) -> None:
         from google.api_core import exceptions as gax_exc
         try:
-            self._db.document(path).update(fields)
+            self._db.document(path).update(fields, timeout=_FS_TIMEOUT)
         except gax_exc.NotFound as e:
             raise NotFound(f"doc not found: {path!r}") from e
 
     def delete_doc(self, path: str) -> bool:
         ref = self._db.document(path)
-        snap = ref.get()
+        snap = ref.get(timeout=_FS_TIMEOUT)
         if not snap.exists:
             return False
-        ref.delete()
+        ref.delete(timeout=_FS_TIMEOUT)
         return True
 
     def list_collection(self, path: str) -> list[tuple[str, dict]]:
         col = self._db.collection(path)
         out: list[tuple[str, dict]] = []
-        for snap in col.stream():
+        for snap in col.stream(timeout=_FS_TIMEOUT):
             out.append((snap.id, snap.to_dict() or {}))
         out.sort(key=lambda kv: kv[0])
         return out

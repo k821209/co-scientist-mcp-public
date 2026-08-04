@@ -1457,7 +1457,14 @@ def build_mcp(state: State) -> FastMCP:
         "supplementary" = a standalone Supplementary Material file with only
         the supplementary (≥101) figures/tables; "all" = everything in one
         file. To deliver a journal package, export scope="main" and then
-        scope="supplementary" to a second path."""
+        scope="supplementary" to a second path.
+        If a call to this tool times out or is aborted, do NOT retry blind: the
+        export may have finished and only the reply been lost. Check
+        `list_exports(slug)` for an entry whose `updated_at` is after the call and
+        whose `size_bytes` matches the local file at `output_path`; if it matches,
+        the export succeeded (a blind retry costs another full run and can leave a
+        duplicate artifact under a second filename).
+        """
         return _exports.export_to_path(
             state, slug, output_path=output_path, fmt=fmt,
             csl_path=csl_path, upload_to_storage=upload_to_storage, scope=scope,
