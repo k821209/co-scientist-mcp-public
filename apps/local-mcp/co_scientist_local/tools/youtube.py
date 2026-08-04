@@ -414,6 +414,8 @@ def youtube_upload(
             if not tp.is_file():
                 raise FileNotFoundError(f"thumbnail not found: {thumbnail}")
             result["thumbnail"] = _set_thumbnail(at, yt_id, tp)
+            if is_short:
+                result["thumbnail"]["shorts_note"] = _SHORTS_THUMB_NOTE
         except Exception as e:  # noqa: BLE001 — reported, not raised
             result["thumbnail_error"] = f"{type(e).__name__}: {e}"
     if playlist:
@@ -431,12 +433,26 @@ _THUMB_MAX_BYTES = 2 * 1024 * 1024        # YouTube's limit for thumbnails.set
 _THUMB_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 
 
+_SHORTS_THUMB_NOTE = (
+    "Shorts caveat: thumbnails.set only replaces the 16:9 renditions "
+    "(maxresdefault etc.) used by search/suggested/watch cards. The VERTICAL "
+    "thumbnail the Shorts feed shows (oar2.jpg, 1080x1920) keeps a frame YouTube "
+    "picked from the video — the API cannot set it; only Studio/mobile "
+    "'choose a frame' can. Verified 2026-08-04 on published Shorts: a Short with "
+    "a custom thumbnail and one without had indistinguishable oar2.jpg. So do "
+    "NOT prioritise back-filling thumbnails to lift Shorts-feed views."
+)
+
+
 def _set_thumbnail(access_token: str, yt_id: str, path: pathlib.Path) -> dict:
     """thumbnails.set — POST the image bytes for a video we own.
 
     Same OAuth token as upload (the .../auth/youtube scope covers it), so no
     re-consent. YouTube caps the file at 2MB and wants PNG/JPEG; a 1280x720
-    (16:9) or 1080x1920 (9:16) image is the usual choice."""
+    (16:9) or 1080x1920 (9:16) image is the usual choice.
+
+    On a 9:16 SHORT this succeeds but only affects the 16:9 renditions — see
+    _SHORTS_THUMB_NOTE, surfaced to callers as `shorts_note`."""
     ctype = _THUMB_TYPES.get(path.suffix.lower())
     if not ctype:
         raise ValueError(
@@ -471,12 +487,27 @@ def _set_thumbnail(access_token: str, yt_id: str, path: pathlib.Path) -> dict:
 def youtube_set_thumbnail(state: State, video_id: str, thumbnail_path: str) -> dict:
     """Set a custom thumbnail on an already-uploaded video. `video_id` is a
     Video-tab slug (resolved to its uploaded YouTube id) or a raw YouTube id;
-    `thumbnail_path` is a local PNG/JPEG ≤2MB. Needs a verified channel."""
+    `thumbnail_path` is a local PNG/JPEG ≤2MB. Needs a verified channel.
+
+    For a 9:16 SHORT the call succeeds but changes only the 16:9 renditions; the
+    Shorts feed's vertical thumbnail is not settable via the API. The result then
+    carries `shorts_note` saying so."""
     p = pathlib.Path(thumbnail_path).expanduser()
     if not p.is_file():
         raise FileNotFoundError(f"thumbnail not found: {thumbnail_path}")
     at = _access_token()
-    return _set_thumbnail(at, _resolve_youtube_video_id(state, video_id), p)
+    out = _set_thumbnail(at, _resolve_youtube_video_id(state, video_id), p)
+    # Warn when this is a Short, so nobody plans work around a vertical
+    # thumbnail the API can't change (feedback da27e0c5f718).
+    from ..backends.base import NotFound
+    try:
+        v = _videos.get_video(state, video_id)
+    except NotFound:
+        v = None
+    if v is None or _is_short(v.get("aspect_ratio"), v.get("duration_s")):
+        out["shorts_note"] = _SHORTS_THUMB_NOTE if v is not None else (
+            "If this is a 9:16 Short: " + _SHORTS_THUMB_NOTE)
+    return out
 
 
 def youtube_list_playlists(state: State) -> list[dict]:

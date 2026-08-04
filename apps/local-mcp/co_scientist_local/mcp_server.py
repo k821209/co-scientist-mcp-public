@@ -1857,7 +1857,10 @@ def build_mcp(state: State) -> FastMCP:
         upload, creating it if the title is new — for series organization.
         `thumbnail` (local PNG/JPEG ≤2MB, e.g. 1280x720 or 1080x1920) sets a
         custom thumbnail in the same call; it needs a VERIFIED channel, and a
-        refusal is reported in `thumbnail_error` instead of failing the upload."""
+        refusal is reported in `thumbnail_error` instead of failing the upload.
+        On a 9:16 SHORT it only replaces the 16:9 renditions (search/suggested
+        cards) — the Shorts feed's vertical thumbnail is NOT settable by the API,
+        and the result says so in `thumbnail.shorts_note`."""
         return _youtube.youtube_upload(
             state, video_id, title=title, description=description, tags=tags,
             category_id=category_id, privacy=privacy, made_for_kids=made_for_kids,
@@ -1870,7 +1873,11 @@ def build_mcp(state: State) -> FastMCP:
         """Set a custom thumbnail on an already-uploaded video (thumbnails.set).
         `video_id` = a Video-tab slug (resolved to its uploaded YouTube id) or a
         raw YouTube id; `thumbnail_path` = local PNG/JPEG ≤2MB. Requires a
-        verified channel (403 otherwise). Uses the existing YouTube connection."""
+        verified channel (403 otherwise). Uses the existing YouTube connection.
+        For a 9:16 SHORT this only changes the 16:9 renditions; the Shorts feed
+        keeps a frame YouTube picked (not settable via any API) — the result
+        carries `shorts_note`, so don't plan work around lifting Shorts-feed
+        views with thumbnails."""
         return _youtube.youtube_set_thumbnail(state, video_id, thumbnail_path)
 
     @mcp.tool()
