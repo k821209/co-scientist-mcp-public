@@ -57,7 +57,11 @@ On every session start:
    build — tell the user to run the `update_hint` command (`git pull` +
    `pip install -e` in the public checkout) and restart before you rely on
    tool behavior, since a bug you're about to hit (or report) may already
-   be fixed upstream.
+   be fixed upstream. **`null` means UNKNOWN, not current** — an
+   editable/source install whose version can't be compared; then trust
+   `git_sha` and have the user check the checkout itself
+   (`git status -sb && git pull`), because `pip install --upgrade` is a
+   no-op there. Only `false` means "checked, and current".
 2. Call `mcp__co_scientist__get_project_memory()` — the project's durable
    knowledge (user preferences, decisions, gotchas). Treat it as standing
    context for the whole session. See "## Project memory" below. Also call

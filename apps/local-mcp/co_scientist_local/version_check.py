@@ -31,15 +31,50 @@ _VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 _PUB_RE = re.compile(r"^0\.1\.(\d{8})$")  # published builds: 0.1.YYYYMMDD
 
 
+def _checkout_version() -> str | None:
+    """Version stamped in the pyproject.toml ON DISK next to this package.
+
+    For an editable install this is the truthful one: `git pull` updates it,
+    while `importlib.metadata` is frozen at install time and keeps reporting
+    whatever it saw then (0.0.1 for a source install). Reading the file is what
+    makes staleness detectable for editable checkouts — see installed_version.
+    """
+    import pathlib
+    pkg_dir = pathlib.Path(__file__).resolve().parent
+    for cand in (pkg_dir.parent / "pyproject.toml",          # apps/local-mcp/
+                 pkg_dir.parent.parent / "pyproject.toml"):
+        try:
+            m = _VERSION_RE.search(cand.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        if m:
+            return m.group(1)
+    return None
+
+
 def installed_version() -> str | None:
+    """The version this process is actually RUNNING.
+
+    Prefers a published stamp found in the checkout's pyproject.toml over the
+    install metadata: an editable install reports the metadata frozen at install
+    time (0.0.1), which made `update_available` report False even when the
+    checkout was commits behind — the flag then told the user there was nothing
+    to pull (feedback 8ddaa8fe8506)."""
+    disk = _checkout_version()
+    if disk and _PUB_RE.match(disk):
+        return disk
     try:
         from importlib.metadata import PackageNotFoundError, version
         try:
-            return version("co-scientist-local")
+            meta = version("co-scientist-local")
         except PackageNotFoundError:
-            return None
+            meta = None
     except Exception:
-        return None
+        meta = None
+    # A published metadata version beats an unstamped dev pyproject.
+    if meta and _PUB_RE.match(meta):
+        return meta
+    return disk or meta
 
 
 _GIT_SHA_CACHE: str | None | bool = False   # False = not computed yet
@@ -92,11 +127,36 @@ def _date_int(v: str | None) -> int | None:
 
 
 def _compare(installed: str | None, latest: str | None) -> dict:
-    """Pure staleness decision — no network, no env. Always returns a dict."""
+    """Pure staleness decision — no network, no env. Always returns a dict.
+
+    `update_available` is True when both sides parse as published builds and
+    installed < latest; **None (unknown)** when the installed side can't be
+    read as a published build — an unstamped/editable install. Returning False
+    there was actively misleading: it said "nothing to update" while the
+    checkout was commits behind, so the user's `git pull` looked broken
+    (feedback 8ddaa8fe8506). False now means "checked, and current"."""
     inst_d = _date_int(installed)
     late_d = _date_int(latest)
-    update = inst_d is not None and late_d is not None and inst_d < late_d
-    out: dict = {
+    if inst_d is None:
+        # Can't compare — say so instead of implying "current".
+        out: dict = {
+            "installed_version": installed,
+            "latest_version": latest,
+            "update_available": None,
+        }
+        if latest:
+            out["update_hint"] = (
+                f"can't tell whether this install is current: it reports "
+                f"{installed!r}, not a published 0.1.YYYYMMDD build (typical of "
+                f"an editable/source install, where `pip install --upgrade` is a "
+                f"no-op). Latest published is {latest}. Check the checkout "
+                f"itself: `cd ~/co-scientist-mcp-public && git status -sb && "
+                f"git pull`, then restart this session. `git_sha` in whoami is "
+                f"the reliable identifier for a source install."
+            )
+        return out
+    update = late_d is not None and inst_d < late_d
+    out = {
         "installed_version": installed,
         "latest_version": latest,
         "update_available": bool(update),
