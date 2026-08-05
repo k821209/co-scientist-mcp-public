@@ -26,6 +26,8 @@ from .papers import _paper_path
 _VALID_SOURCES = {"user", "ai", "reviewer", "external"}
 _VALID_SEVERITY = {"major", "minor", "suggestion"}
 _VALID_STATUS = {"open", "accepted", "rejected", "resolved"}
+# Closed: the comment has been dealt with, one way or another.
+_TERMINAL_STATUS = ("accepted", "rejected", "resolved")
 # User triage, orthogonal to status: does the author intend to act on this
 # comment? Set from the dashboard; new comments start "pending".
 _VALID_DECISION = {"pending", "accepted", "rejected"}
@@ -216,7 +218,7 @@ def update_review(
     # fall back to the section top. The agent revised the text, so it knows the
     # new wording; make it say where. (LLMs forget the skill instruction; this
     # makes it impossible to forget silently.)
-    terminal = status in ("accepted", "rejected", "resolved")
+    terminal = status in _TERMINAL_STATUS
     reanchoring = anchor_text is not None or anchors is not None or section is not None
     if terminal and not reanchoring:
         old = existing.get("anchor_text")
@@ -239,7 +241,7 @@ def update_review(
         if status not in _VALID_STATUS:
             raise ValueError(f"invalid status: {status!r}")
         fields["status"] = status
-        if status in ("accepted", "rejected", "resolved"):
+        if status in _TERMINAL_STATUS:
             fields["resolved_at"] = now_iso()
         else:
             fields["resolved_at"] = None
@@ -264,10 +266,32 @@ def update_review(
         if cleaned:
             fields["anchors"] = cleaned
             fields["anchor_text"] = cleaned[0]  # first is the primary anchor
+
+    # Re-anchoring repoints anchor_text at the REVISED wording (it has to — the
+    # dashboard matches that field against the live manuscript to place the
+    # highlight). That used to destroy the only record of the passage the
+    # comment was actually about, so an addressed card showed the fix with
+    # nothing to compare it against. Keep the original alongside it.
+    #
+    # Scoped to comments being (or already) CLOSED, because re-anchoring an OPEN
+    # comment is the other thing this function is for: correcting an anchor that
+    # pointed at the wrong text. There the old value is a mistake, not the
+    # criticised passage, and storing it would caption the card with a quote the
+    # reviewer never wrote about.
+    #
+    # Set once only: on a second revision the already-stored value is the true
+    # original. `not existing.get(...)` also covers the empty string, which
+    # carries no more information than a missing field.
+    revising = terminal or existing.get("status") in _TERMINAL_STATUS
+    if revising and "anchor_text" in fields and not existing.get("original_anchor_text"):
+        was = existing.get("anchor_text")
+        if isinstance(was, str) and was.strip() and was != fields["anchor_text"]:
+            fields["original_anchor_text"] = was
+
     if not fields:
         return existing
     state.backend.update_doc(path, fields)
-    if status and status in ("accepted", "rejected", "resolved"):
+    if status and status in _TERMINAL_STATUS:
         log_event(
             state, slug, action="review_resolved",
             detail={"id": review_id, "status": status,

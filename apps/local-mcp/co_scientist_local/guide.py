@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-07-18a"
+GUIDE_VERSION = "2026-08-05a"
 
 
 def render_guide() -> str:
@@ -43,7 +43,10 @@ it in the same step so the highlight follows to the revised text:
 `resolve_paper_comment(slug, review_id, status="accepted", response=…,
 new_anchor_text="<verbatim phrase from the new text>")`. Without this the old
 anchor no longer matches and the dashboard can only fall back to the top of
-the section.
+the section. Re-anchoring a comment you are CLOSING also files the passage as
+it read before, so the addressed card shows the reader "was … / now …" — you
+don't need to restate the old wording in `response`, just say what changed and
+why.
 
 On every session start:
 
