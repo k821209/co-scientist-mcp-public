@@ -10,7 +10,8 @@ Provides:
 - tail_remote_log — last N lines of run log (remote or local)
 - kill_remote_job — SIGKILL recorded PID + mark run finished
 - poll_remote_pids — close phantom rows for a host
-- auto_finish_stale_runs — bulk cleanup across hosts
+- auto_finish_stale_runs — bulk cleanup across hosts (PID rows AND pid-less
+  provenance rows, each counted separately in the result)
 - scan_untracked_jobs — find detached job-like processes not in analysis_runs
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ import os
 import pathlib
 import re
 import shlex
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ..backends.base import NotFound
 from ..state import State
@@ -506,9 +507,20 @@ def _all_unfinished_runs_for_host(state: State, host: str) -> list[dict]:
     return out
 
 
-def poll_remote_pids(state: State, alias: str) -> dict:
-    """One SSH round-trip: detect dead PIDs for `alias` and auto-finish their runs."""
-    rows = _all_unfinished_runs_for_host(state, alias)
+def poll_remote_pids(state: State, alias: str, *, rows: list[dict] | None = None) -> dict:
+    """One SSH round-trip: detect dead PIDs for `alias` and auto-finish their runs.
+
+    Only rows that carry a PID are pollable — a pid-less row has no process to
+    ask about, so it is not this tool's business (auto_finish_stale_runs closes
+    those). `rows` is an internal hook letting auto_finish_stale_runs poll the
+    exact set it already collected; callers normally omit it.
+
+    Returns {alias, checked, finished, still_running} and, when the probe could
+    not be run at all, `error` + `undetermined` — the count of rows left open
+    *because liveness is unknown*, not because they are known to be alive.
+    """
+    if rows is None:
+        rows = _all_unfinished_runs_for_host(state, alias)
     rows = [r for r in rows if r.get("pid")]
     if not rows:
         return {"alias": alias, "checked": 0, "finished": 0, "still_running": 0}
@@ -532,10 +544,18 @@ def poll_remote_pids(state: State, alias: str) -> dict:
     elif rc == 0:
         ps_out = out or ""            # ran fine, just no sentinel echoed
     else:
-        return {                      # neither sentinel nor clean rc → real failure
+        # Neither sentinel nor clean rc → the remote shell never ran the probe
+        # (transport/auth failure, a forced command, or a login shell that exits
+        # for non-interactive sessions). Liveness is UNKNOWN, so the rows stay
+        # open — but say so, rather than implying the PIDs were seen alive.
+        return {
             "alias": alias, "checked": len(rows),
             "finished": 0, "still_running": len(rows),
-            "error": (err or "").strip() or f"ssh rc={rc}",
+            "undetermined": len(rows),
+            "error": (err or "").strip() or (
+                f"ssh rc={rc} with no output — the remote liveness probe never "
+                f"ran, so PID state is unknown; {len(rows)} run row(s) left open"
+            ),
         }
     alive: set[int] = set()
     for line in ps_out.splitlines():
@@ -562,13 +582,65 @@ def poll_remote_pids(state: State, alias: str) -> dict:
     }
 
 
-def auto_finish_stale_runs(state: State) -> dict:
-    """Cleanup across all hosts: local PIDs via os.kill, remote PIDs via poll."""
+def _parse_iso(value) -> datetime | None:
+    """Best-effort ISO-8601 → aware datetime. None when absent/unparseable."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def auto_finish_stale_runs(state: State, *, since_hours: float | None = None) -> dict:
+    """Cleanup across all hosts: close every unfinished run that cannot be live.
+
+    Three kinds of unfinished row exist, and all three are now handled and
+    counted separately — a cleanup tool must never report success while
+    silently excluding rows:
+
+    - local PID  → `os.kill(pid, 0)`; gone → finished (`exit_code=-2`).
+    - remote PID → one `poll_remote_pids` SSH round-trip per host. A host we
+      cannot reach keeps its rows OPEN (in `still_running`/`undetermined`, plus
+      an entry in `errors`): unreachable never means dead.
+    - **no PID at all** → a provenance row written by `record_analysis_run`
+      after a foreground command already finished. There is no process to ask
+      about and no SSH needed, so it is closed directly (`exit_code=-2`, note
+      "auto-closed: provenance row, no PID recorded") and counted in
+      `provenance_closed`. Before this, such rows were skipped and stayed
+      unfinished forever while the sweep reported 0 checked / 0 finished.
+
+    `since_hours` (default None) NARROWS the sweep to rows *started* within the
+    last N hours. Leave it unset to sweep every unfinished row regardless of
+    age — that is what cleaning up months-old rows needs. When it is set, older
+    rows are left untouched and counted in `skipped_older_than_window`, so a
+    too-narrow window can never masquerade as "nothing needed doing". A row
+    with a missing/unparseable `started_at` is always included.
+
+    Returns {checked, finished, provenance_closed, still_running, undetermined,
+    skipped_older_than_window, errors}. `checked` counts every row the sweep
+    considered (pid-less ones included); `finished` counts PID-checked rows
+    only, so rows closed in total = `finished` + `provenance_closed`;
+    `undetermined` is the subset of `still_running` left open because a host
+    could not be probed.
+    """
     finished = 0
+    provenance_closed = 0
+    still_running = 0
+    undetermined = 0
+    skipped_old = 0
     errors: list[str] = []
 
-    # Build per-host bucket
+    cutoff: datetime | None = None
+    if since_hours is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=float(since_hours))
+
+    # Build per-host buckets, keeping pid-less rows in their own bucket
     by_host: dict[str, list[dict]] = {}
+    no_pid: list[dict] = []
     for paper_slug, _ in state.backend.list_collection(state.project_path("papers")):
         for analysis_name, _ in state.backend.list_collection(
             state.project_path("papers", paper_slug, "analyses")
@@ -576,16 +648,35 @@ def auto_finish_stale_runs(state: State) -> dict:
             for r in list_analysis_runs(
                 state, paper_slug, analysis_name, unfinished_only=True,
             ):
-                if not r.get("pid"):
-                    continue
-                by_host.setdefault(r.get("host") or "local", []).append(
-                    {**r, "paper_slug": paper_slug, "analysis_name": analysis_name}
-                )
+                if cutoff is not None:
+                    started = _parse_iso(r.get("started_at") or r.get("created_at"))
+                    if started is not None and started < cutoff:
+                        skipped_old += 1
+                        continue
+                row = {**r, "paper_slug": paper_slug, "analysis_name": analysis_name}
+                if not row.get("pid"):
+                    no_pid.append(row)
+                else:
+                    by_host.setdefault(row.get("host") or "local", []).append(row)
+
+    checked = len(no_pid) + sum(len(v) for v in by_host.values())
+
+    # Pid-less provenance rows: nothing was ever running, so close them.
+    for r in no_pid:
+        try:
+            mark_run_finished(
+                state, r["paper_slug"], r["analysis_name"], r["run_key"],
+                exit_code=-2, notes="auto-closed: provenance row, no PID recorded",
+            )
+            provenance_closed += 1
+        except Exception as e:  # pragma: no cover — defensive
+            errors.append(f"{r.get('run_key')}: {e}")
 
     # Local cleanup
     for r in by_host.pop("local", []):
         try:
             os.kill(int(r["pid"]), 0)  # still alive
+            still_running += 1
         except ProcessLookupError:
             mark_run_finished(
                 state, r["paper_slug"], r["analysis_name"], r["run_key"],
@@ -593,18 +684,33 @@ def auto_finish_stale_runs(state: State) -> dict:
             )
             finished += 1
         except PermissionError:
-            pass  # exists but not ours
+            still_running += 1  # exists but not ours
+        except (TypeError, ValueError) as e:  # unusable pid value — say so
+            errors.append(f"{r.get('run_key')}: bad pid {r.get('pid')!r}: {e}")
+            still_running += 1
 
     # Remote cleanup, one SSH per host
-    for alias in list(by_host):
+    for alias, rows in by_host.items():
         try:
-            res = poll_remote_pids(state, alias)
+            res = poll_remote_pids(state, alias, rows=rows)
             finished += res.get("finished", 0)
+            still_running += res.get("still_running", 0)
+            undetermined += res.get("undetermined", 0)
             if res.get("error"):
                 errors.append(f"{alias}: {res['error']}")
         except Exception as e:  # pragma: no cover — defensive
             errors.append(f"{alias}: {e}")
-    return {"finished": finished, "errors": errors}
+            still_running += len(rows)
+            undetermined += len(rows)
+    return {
+        "checked": checked,
+        "finished": finished,
+        "provenance_closed": provenance_closed,
+        "still_running": still_running,
+        "undetermined": undetermined,
+        "skipped_older_than_window": skipped_old,
+        "errors": errors,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────

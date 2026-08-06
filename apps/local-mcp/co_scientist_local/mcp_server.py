@@ -573,11 +573,15 @@ def build_mcp(state: State) -> FastMCP:
         caption: str | None = None,
         legend: str | None = None,
         local_path: str | None = None,
+        source_analysis: str | None = None,
     ) -> dict[str, Any]:
-        """Register a figure. If local_path provided, uploads image bytes to Storage."""
+        """Register a figure. If local_path provided, uploads image bytes to Storage.
+
+        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
         return _figures.add_figure(
             state, slug, figure_number=figure_number, title=title,
             caption=caption, legend=legend, local_path=local_path,
+            source_analysis=source_analysis,
         )
 
     @mcp.tool()
@@ -589,11 +593,15 @@ def build_mcp(state: State) -> FastMCP:
         legend: str | None = None,
         local_path: str | None = None,
         status: str | None = None,
+        source_analysis: str | None = None,
     ) -> dict[str, Any]:
-        """Patch a figure; optionally replace the image bytes."""
+        """Patch a figure; optionally replace the image bytes.
+
+        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
         return _figures.update_figure(
             state, slug, figure_number, title=title, caption=caption,
             legend=legend, local_path=local_path, status=status,
+            source_analysis=source_analysis,
         )
 
     @mcp.tool()
@@ -719,10 +727,12 @@ def build_mcp(state: State) -> FastMCP:
         title: str,
         content: str,
         caption: str | None = None,
+        source_analysis: str | None = None,
     ) -> dict[str, Any]:
+        """Register a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
         return _tables.add_table(
             state, slug, table_number=table_number, title=title,
-            content=content, caption=caption,
+            content=content, caption=caption, source_analysis=source_analysis,
         )
 
     @mcp.tool()
@@ -733,10 +743,12 @@ def build_mcp(state: State) -> FastMCP:
         content: str | None = None,
         caption: str | None = None,
         status: str | None = None,
+        source_analysis: str | None = None,
     ) -> dict[str, Any]:
+        """Patch a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
         return _tables.update_table(
             state, slug, table_number, title=title, content=content,
-            caption=caption, status=status,
+            caption=caption, status=status, source_analysis=source_analysis,
         )
 
     @mcp.tool()
@@ -1134,6 +1146,13 @@ def build_mcp(state: State) -> FastMCP:
         log_path: str | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
+        """Insert a run record (provenance for a command you ran yourself).
+
+        The row starts UNFINISHED. If the command has already finished, follow
+        with `mark_run_finished(...)` — a row with no `pid` has no process for
+        `poll_remote_pids` to check, so nothing else closes it until
+        `auto_finish_stale_runs` sweeps it as a provenance row.
+        """
         return _runs.record_analysis_run(
             state, slug, analysis, command=command, host=host,
             env_name=env_name, pid=pid, log_path=log_path, notes=notes,
@@ -1423,13 +1442,35 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def poll_remote_pids(alias: str) -> dict[str, Any]:
-        """One SSH round-trip: close phantom rows for `alias`."""
+        """One SSH round-trip: close phantom rows for `alias`.
+
+        Only rows that recorded a PID are pollable. If the probe itself could
+        not run (host off-network, forced command), the rows are LEFT OPEN and
+        reported as `undetermined` + `error` — unknown is never "dead".
+        """
         return _ssh_ops.poll_remote_pids(state, alias)
 
     @mcp.tool()
-    def auto_finish_stale_runs() -> dict[str, Any]:
-        """Bulk cleanup across all hosts (local + remote)."""
-        return _ssh_ops.auto_finish_stale_runs(state)
+    def auto_finish_stale_runs(since_hours: float | None = None) -> dict[str, Any]:
+        """Bulk cleanup across all hosts (local + remote): close every
+        unfinished run that cannot still be live.
+
+        Handles and counts three kinds of row separately, returning
+        {checked, finished, provenance_closed, still_running, undetermined,
+        skipped_older_than_window, errors}:
+          - a local/remote PID that is gone → `finished`
+          - a row with NO pid — provenance written by `record_analysis_run`
+            after a foreground command — → `provenance_closed`. It has no
+            process to check, so nothing else will ever close it.
+          - a host that cannot be probed keeps its rows open (`still_running`,
+            with the unknown subset in `undetermined`, plus `errors`).
+
+        Leave `since_hours` UNSET (default) to sweep every unfinished row
+        regardless of age — that is what cleaning up months-old rows needs. If
+        set, it narrows the sweep to rows started within the last N hours and
+        reports the older rows it skipped in `skipped_older_than_window`.
+        """
+        return _ssh_ops.auto_finish_stale_runs(state, since_hours=since_hours)
 
     @mcp.tool()
     def scan_untracked_jobs(alias: str, min_etime_seconds: int = 60) -> dict[str, Any]:

@@ -30,6 +30,10 @@ first so a clean current `.docx` exists.
    unwrapped `<w:ins>` produced a `mismatched tag` document. LibreOffice still
    opened it, so "it opens" proves nothing.
 3. **Validate before shipping.** See the checklist at the end.
+4. **Never pick the baseline yourself — ask, and wait for an answer.** Every
+   validation check in this skill is blind to which OLD file you chose, so a wrong
+   baseline ships a file that passes all seven checks and diffs against a document
+   the reviewers never saw. See step 1; this is a gate, not advice.
 
 ## Flow
 
@@ -41,8 +45,27 @@ first so a clean current `.docx` exists.
   `.docx`, say so and stop — there is nothing to compare against.
 - **NEW** — the current clean export from `/paper-export`.
 
-Confirm the pairing with the user before running. Comparing against the wrong
-baseline produces a plausible but wrong marked-up file.
+**STOP and confirm the pairing with the user before running — this is a gate.**
+Name both files and wait for an answer; do not proceed on your own inference.
+Nothing downstream can catch a wrong choice: the marked-up file will be
+structurally perfect and diffed against a document nobody has read.
+
+**The newest archived export is often the WRONG answer.** A revision package
+prepared and then superseded before it was ever submitted is the classic trap, and
+it sorts to the top by date and looks more authoritative than the file that was
+actually sent. This happened: a marked-up copy was built against an n=69 revision
+packaged locally on Jul 28 but never submitted (the cohort had grown to n=285),
+so the diff was against a document that existed nowhere outside the repo. Asking
+cost one question, and the answer was the OLDER file.
+
+Directory mtimes are not evidence of what the journal received. Prefer what the
+user tells you, then `paper.submission` (`manuscript_id`, `status`).
+
+Sanity signal worth surfacing, not an error: the intended pair should share a
+title and author block. If your comparison inserts the entire author/affiliation
+front matter as one huge insertion in the first paragraph, the two files use
+different front-matter formats — which often means they are from different eras.
+Say so and re-confirm.
 
 ### 2. Prepare an isolated LibreOffice profile
 
@@ -64,6 +87,8 @@ output file, no error, exit code 0. That is indistinguishable from the flakiness
 below, so the documented remedy (fresh profile + retry) reproduces the bug: three
 cycles of up to 20 minutes were lost to exactly this. Always **init first, then
 write the module, then `grep -c DoCompare` the file** to confirm it survived.
+Run that same `grep` again at DIAGNOSIS time (step 4): an empty stage log has two
+possible causes and this is the check that separates them.
 
 Write to `$PROF/user/basic/Standard/Module1.xba`, substituting absolute paths:
 
@@ -106,28 +131,128 @@ output file. All three failure modes look identical ("no output file"), so
 without the stage log plus one look at CPU you cannot tell which remedy applies —
 and one of them is made WORSE by retrying:
 
+Two of the modes below stop at the SAME stage (`loaded-new`). What separates them
+is whether the process still **exists** — check that before anything else, because
+one of them cannot be fixed by retrying and the other is fixed by nothing else:
+
 | symptom | evidence | cause | remedy |
 |---|---|---|---|
-| exits immediately | no stage log at all | the macro was overwritten by profile init (step 3) | init first, rewrite the module, `grep -c DoCompare` |
-| dies mid-compare | stages stop, `Fatal exception: Signal 6` in stderr | crash | `pkill -f soffice`, retry |
-| never returns, **CPU ~0%**, process alive | stages stop at `loaded-new` | **deadlock on embedded images** | strip images and compare the stripped copies — retrying NEVER clears it |
+| exits immediately | no stage log at all | macro overwritten by profile init (step 3) — **or the process was killed before it wrote `start`**; the two are byte-identical from outside | `grep -c DoCompare` the EXISTING `Module1.xba` **first** — see below |
+| never returns, **process ALIVE**, sustained 0% CPU, stderr quiet | stages stop at `loaded-new` | **stale `.~lock.<input>#` beside an input document** | delete the lock files (below) — retrying NEVER clears it |
+| never returns, **process GONE** | stages stop at `loaded-new`, `Abort trap: 6` / `Fatal exception: Signal 6` in stderr | crash in LibreOffice's headless child-window path | retry — succeeds within 2 attempts. Fires on roughly HALF of runs, so budget for it |
 
-**Strip images by default when either input carries figures.** The deadlock is
-cheap to avoid and expensive to diagnose, so don't wait to hit it: if either
-docx has embedded media, compare stripped copies from the start. The text is
-what the marked-up copy is for.
+`ps -p <pid>` (or `pgrep -f soffice`) once, at the moment you notice no output, is
+the whole diagnosis. Reading only "no output file + 0% CPU" makes a crash and a
+lock-hang look like one phenomenon — that mistake produced two wrong reports and
+a since-retracted claim about images (below).
 
-**The image deadlock is deterministic.** A real pair (2.58 MB / 3.54 MB, 5 and 7
-figures, ~50 KB of actual text) hung at 0% CPU on three consecutive attempts,
-each on a fresh profile, always stopping right after `loaded-new`. The same pair
-with images removed completed on the first try. Retrying a 0%-CPU hang is an
-unbounded loop against a reproducible failure — it cost an hour before the stage
-log made the cause visible.
+The crash stack is worth recognising; it is LibreOffice trying to open the Manage
+Changes panel under `--headless`:
 
-Strip on COPIES of both docx — never the originals. The result tracks the TEXT,
-which is what a reviewer needs: figures and tables are regenerated wholesale in a
-revision and carry no useful line-by-line diff. Say so in the response letter, in
-the same sentence that already covers rebuilt tables.
+```
+SalAbort → Application::Abort → Desktop::Exception
+  → SfxWorkWindow::ShowChildWindow_Impl → SwView::Execute
+  → SfxDispatcher::Execute → DispatchHelper::executeDispatch
+```
+
+**An empty stage log does not prove the macro is missing.** `Mark("start")` is the
+first statement in `DoCompare`, but process startup, profile load and Basic
+resolution all happen before it — a kill inside that one-to-two-second window
+leaves zero markers, which looks exactly like the macro never existing. So
+discriminate before you act:
+
+```bash
+grep -c DoCompare "$PROF/user/basic/Standard/Module1.xba"   # 1 = macro intact
+```
+
+If it returns 1, **do not rebuild the profile** — the macro was never lost and
+something killed the run. Rebuilding on this evidence has already cost one
+session a full profile reconstruction on a profile that was fine (and the rebuilt
+profile then failed where the original succeeded).
+
+**Never put `pkill` inside a retry loop.** `soffice` detaches and returns
+immediately, so the loop reaches `pkill` while the compare it just launched is
+still starting — the kill lands in the pre-`start` window, the stage log comes
+back empty, and the next iteration does it again. A loop shaped like this cannot
+succeed, and it manufactures the "macro missing" signature every time:
+
+```bash
+for i in 1 2 3; do                 # ✗ DO NOT
+  soffice … DoCompare
+  [ -f OUT ] && break
+  pkill -f soffice; sleep 5        # kills the run this loop just started
+done
+```
+
+**Retrying is right — the ordering is what was wrong.** Because the crash fires on
+about half of runs, plan for 2–3 attempts. Clean at the TOP of each iteration,
+never after launching, and read the stage log between attempts:
+
+```bash
+for i in 1 2 3; do
+  pkill -9 -f soffice; sleep 5                  # clean FIRST…
+  find "$(dirname "$NEW")" "$(dirname "$OLD")" -maxdepth 1 -name '.~lock.*#' -delete
+  rm -f "$OUT" "$STAGELOG"                      # …and prove the output is absent
+  soffice … DoCompare
+  # poll $STAGELOG until `done`, or until the process is gone / stalls at loaded-new
+  [ -s "$OUT" ] && break
+  cat "$STAGELOG"; pgrep -f soffice             # which mode was it? (table above)
+done
+```
+
+**When a pair hangs, re-run a pair you know worked.** If the known-good pair hangs
+too, the fault is environmental (a lock, a leftover process) and not the documents
+— stop investigating the documents. This one step would have prevented both wrong
+reports behind the retraction above: the control pair from the previous day hung
+as well, which ruled out the documents immediately.
+
+**zsh footgun: never write `rm -f .~lock.*#`.** With no match, zsh's `nomatch`
+aborts the WHOLE command line, so anything sharing that line silently does not
+run. In one session that left the previous attempt's output file in place, and the
+next poll read it as a fresh success — caught only because the byte size matched
+the earlier run. Use `find … -delete` (above), and confirm `$OUT` is gone before
+launching rather than assuming the cleanup fired.
+
+**Before any launch or relaunch, clear the process table AND every lock.** This is
+the precondition that actually matters, and the input-side lock is the one people
+miss — `pkill` does not remove it and neither does profile cleanup:
+
+```bash
+pkill -9 -f soffice; sleep 5
+ps -eo comm | grep -ci soffice                   # must be 0 before launching
+rm -f "$PROF/.lock" "$PROF/user/.lock"
+# THE ONE THAT MATTERS — LibreOffice writes this next to the document itself:
+find "$(dirname "$NEW")" "$(dirname "$OLD")" -maxdepth 1 -name '.~lock.*#' -delete
+ls -l "$OUT" 2>/dev/null && echo "STALE OUTPUT — delete it or you will read it as success"
+```
+
+**Why the input-side lock is the whole ballgame.** Every killed `soffice` leaves a
+`.~lock.<filename>#` next to the file it had open, and a stale one deadlocks the
+next compare of that file: alive, 0% CPU, silent. So **the second run of any pair
+inherits the first run's lock** — which is precisely the shape of an investigation
+where you time out and retry. The failure appears to become deterministic exactly
+because you are retrying.
+
+Better than remembering to clean: **copy both inputs to fresh names for each
+attempt.** A new filename cannot have a stale lock, so the failure mode becomes
+structurally impossible instead of something to police.
+
+> **Retracted: "embedded images deadlock the compare."** Earlier versions of this
+> skill said figure-bearing documents deadlock deterministically and told you to
+> strip images by default. That was wrong, and the mechanism above is why the
+> evidence looked so strong: stripped copies were always written to NEW filenames,
+> so they never carried a lock, while the originals were retried under their own
+> names and inherited one every time. Images were perfectly confounded with
+> "fresh filename". A later retest of the same pair that had "hung 4/4" — after
+> clearing `.~lock` files — crashed once and then succeeded in 38 s with all 7
+> figures intact, and the revision-mark counts came out identical to the stripped
+> build (`w:ins` 522 / `w:del` 240 either way). Stripping cost the figures and
+> bought nothing. Recorded here so the hypothesis is not rediscovered.
+
+**Keep the figures.** Compare the real documents; the marked-up copy a reviewer
+reads should have its figures in place. `strip_images()` below is a FALLBACK, not
+the default — reach for it only if a pair still fails after locks are cleared and
+2–3 attempts, and if you do use it, strip COPIES, never the originals.
 
 ```python
 import zipfile
@@ -239,7 +364,7 @@ Repackage with `[Content_Types].xml` written first.
 | Opens as a document | `docx.Document(f)` — report paragraph and table counts |
 | Real revision marks | count `w:ins` / `w:del` — must be non-zero |
 | Every mark attributed | no `w:ins`/`w:del` without `w:author` |
-| Media accounted for | `word/media/` count matches **the input you compared** — 0 is correct on the stripped route, where the marked-up copy is text-only by design (the clean export carries the figures) |
+| Media accounted for | `word/media/` count matches **the input you compared** — normally every figure, since you compare the real documents. 0 is only correct if you took the `strip_images()` fallback, which must then be stated in the response letter |
 | No empty tables | every `w:tbl` has text or graphics |
 
 Report the insertion / deletion counts to the user. The ratio is informative:

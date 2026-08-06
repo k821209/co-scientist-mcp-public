@@ -56,6 +56,7 @@ def add_figure(
     style_applied: str | None = None,
     aspect_ratio: str | None = None,
     quality: str | None = None,
+    source_analysis: str | None = None,
 ) -> dict:
     """Register a figure. If `local_path` is provided, upload the file bytes.
 
@@ -105,6 +106,11 @@ def add_figure(
         "quality": quality if quality is not None
         else (existing.get("quality") if existing else None),
         "rerender_pending": False,
+        # Provenance link for the export-time staleness check (see
+        # exports.prepare_export). Preserved on overwrite so a re-upload that
+        # omits it doesn't silently drop the link.
+        "source_analysis": source_analysis if source_analysis is not None
+        else (existing.get("source_analysis") if existing else None),
         "created_at": existing.get("created_at", now) if existing else now,
         "updated_at": now,
     }
@@ -122,8 +128,12 @@ def update_figure(
     legend: str | None = None,
     local_path: str | None = None,
     status: str | None = None,
+    source_analysis: str | None = None,
 ) -> dict:
-    """Patch a figure's metadata; optionally replace the image bytes."""
+    """Patch a figure's metadata; optionally replace the image bytes.
+
+    `source_analysis` links the figure to the analysis that generates it, which
+    lets `prepare_export` warn when that analysis has re-run since."""
     _ensure_paper(state, slug)
     path = _figure_path(state, slug, figure_number)
     existing = state.backend.get_doc(path)
@@ -135,6 +145,7 @@ def update_figure(
     if caption is not None: fields["caption"] = caption
     if legend is not None: fields["legend"] = legend
     if status is not None: fields["status"] = status
+    if source_analysis is not None: fields["source_analysis"] = source_analysis
 
     if local_path:
         p = pathlib.Path(local_path)

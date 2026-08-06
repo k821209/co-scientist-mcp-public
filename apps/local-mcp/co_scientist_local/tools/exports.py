@@ -404,6 +404,62 @@ def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
     return f"@article{{{key},\n{body}\n}}\n"
 
 
+def _latest_analysis_output_at(state: State, slug: str, analysis: str) -> str | None:
+    """Most recent moment `analysis` produced output: the newest `finished_at`,
+    or `started_at` for a run still going (a run in flight is already newer than
+    any artifact predating it). None if the analysis has no runs, or does not
+    exist — an artifact naming an analysis that was never registered is a
+    mislabelled link, not a staleness signal, so it is reported separately."""
+    from . import runs as _runs
+    # create_analysis() slugifies, so an analysis registered as "qtl_overlap" is
+    # stored under "qtl-overlap". Try the link verbatim, then slugified: without
+    # this, a plausible-looking link resolves to nothing and the warning silently
+    # never fires — the same silent-no-op class of bug this check exists to catch.
+    from ..util import slugify
+    rows = None
+    for candidate in (analysis, slugify(analysis)):
+        try:
+            rows = _runs.list_analysis_runs(state, slug, candidate)
+            break
+        except NotFound:
+            continue
+    if rows is None:
+        return None
+    stamps = [r.get("finished_at") or r.get("started_at") for r in rows]
+    stamps = [s for s in stamps if s]
+    return max(stamps) if stamps else None
+
+
+def _stale_artifact_warnings(
+    state: State, slug: str, figures: list[dict], tables: list[dict],
+) -> list[str]:
+    """Warn for every figure/table whose `source_analysis` has produced output
+    since the artifact was last updated. Artifacts with no link are silent —
+    the link is optional, so absence means "unknown", never "fresh"."""
+    out: list[str] = []
+    for kind, label_key, items in (
+        ("Figure", "figure_number", figures),
+        ("Table", "table_number", tables),
+    ):
+        for a in items:
+            analysis = a.get("source_analysis")
+            if not analysis:
+                continue
+            latest = _latest_analysis_output_at(state, slug, analysis)
+            updated = a.get("updated_at") or a.get("created_at")
+            if not latest or not updated:
+                continue
+            # ISO-8601 UTC strings from util.now_iso() — lexicographic order is
+            # chronological order, so no parsing is needed.
+            if updated < latest:
+                out.append(
+                    f"{kind} {a.get(label_key)} (updated {updated}) is older than "
+                    f"its linked analysis '{analysis}' (last output {latest}) — "
+                    f"regenerate it before exporting, or confirm it is unaffected"
+                )
+    return out
+
+
 def prepare_export(state: State, slug: str) -> dict:
     """Collect everything needed to export `slug` to a finished document.
 
@@ -506,6 +562,20 @@ def prepare_export(state: State, slug: str) -> dict:
             + " but no such registered figure exists (register with add_figure, "
             "or fix the reference)"
         )
+
+    # Provenance staleness — an artifact left behind by a rerun analysis.
+    #
+    # This is the one failure class no structural check can see: the xlsx/PNG is
+    # perfectly well-formed, so it validates, and the manuscript prose has been
+    # updated to the new numbers while the artifact still holds the old ones. It
+    # shipped once as a supplementary table reporting 28.7% against a manuscript
+    # (and figure legend) that said 33.3%. Only a timestamp comparison against
+    # provenance catches it — deliberately NOT a content diff, because the
+    # DB-embedded preview can be narrower than the source file (the column that
+    # changed was absent from the preview, so any preview-based check would have
+    # passed too).
+    warnings.extend(_stale_artifact_warnings(state, slug, figs + supp_figs,
+                                             tbls + supp_tbls))
 
     # Legend QA — over-long or Results-duplicating figure/table legends. One
     # summary line per flagged item feeds the pre-flight warnings; the full

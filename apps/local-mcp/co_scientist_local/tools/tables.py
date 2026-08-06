@@ -34,7 +34,11 @@ def add_table(
     content: str,
     caption: str | None = None,
     status: str = "pending",
+    source_analysis: str | None = None,
 ) -> dict:
+    """Create a table. `source_analysis` names the analysis whose outputs this
+    table is built from; setting it lets `prepare_export` warn when the analysis
+    has re-run since the table was last updated (see exports.prepare_export)."""
     _ensure_paper(state, slug)
     path = _table_path(state, slug, table_number)
     if state.backend.get_doc(path) is not None:
@@ -50,6 +54,7 @@ def add_table(
         "content": content,
         "caption": caption,
         "status": status,
+        "source_analysis": source_analysis,
         "created_at": now,
         "updated_at": now,
     }
@@ -66,7 +71,10 @@ def update_table(
     content: str | None = None,
     caption: str | None = None,
     status: str | None = None,
+    source_analysis: str | None = None,
 ) -> dict:
+    """Update a table. `source_analysis` links it to the analysis that generates
+    it, which is what lets `prepare_export` catch a table left behind by a rerun."""
     _ensure_paper(state, slug)
     path = _table_path(state, slug, table_number)
     existing = state.backend.get_doc(path)
@@ -77,6 +85,7 @@ def update_table(
     if content is not None: fields["content"] = content
     if caption is not None: fields["caption"] = caption
     if status is not None: fields["status"] = status
+    if source_analysis is not None: fields["source_analysis"] = source_analysis
     state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
 

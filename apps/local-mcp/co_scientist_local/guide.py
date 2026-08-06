@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-05a"
+GUIDE_VERSION = "2026-08-06a"
 
 
 def render_guide() -> str:
@@ -143,6 +143,15 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   A quick `zcat | …`, a figure script, a one-off `gm_compare` — all count.
 - **Figure/table generation IS an analysis** — record the command that made
   each `figure_N.png` / table CSV, not just the "big" jobs.
+- **Link the artifact back to its analysis**: pass `source_analysis="<analysis
+  name>"` to `add_figure` / `update_figure` / `add_table` / `update_table`. With
+  the link, `prepare_export` warns when that analysis has produced output since
+  the artifact was last updated — the one check that catches an artifact left
+  behind by a RERUN. This has shipped wrong once: a QTL analysis was re-run,
+  the prose and legend moved to the new number, the supplementary table kept
+  the old one (28.7% vs 33.3%), and every structural check passed because the
+  file was perfectly well-formed. Without the link that export is silent, so
+  set it whenever you register a generated figure or table.
 - Reconcile periodically: `list_analysis_runs` shows what's recorded;
   `scan_untracked_jobs` finds detached job-like processes with no record.
   If the user asks "which server did we run on / where's the record" and you
@@ -478,6 +487,12 @@ launching session likely died) instead of spinning forever. `poll_remote_pids`
 refreshes the heartbeat for still-alive PIDs (and finishes dead ones); for a
 long job you're actively watching, call `heartbeat_run(slug, analysis, run_key)`
 periodically, and `mark_run_finished` when it's done.
+
+A row you wrote with `record_analysis_run` and no `pid` (provenance for a
+foreground command) has nothing to poll — close it with `mark_run_finished`
+right away. `auto_finish_stale_runs()` also closes such rows now, counting them
+as `provenance_closed`; call it with no arguments to sweep every open row
+regardless of age (`since_hours` only narrows the sweep).
 
 ## Image generation
 
