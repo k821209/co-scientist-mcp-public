@@ -404,9 +404,32 @@ def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
     return f"@article{{{key},\n{body}\n}}\n"
 
 
+def _run_output_at(run: dict) -> str | None:
+    """When this run plausibly produced output.
+
+    Deliberately NOT just `finished_at`: that field is stamped by BOOKKEEPING as
+    well as by a real finish. `auto_finish_stale_runs` closing a months-old row
+    writes `finished_at = now` with `exit_code = -2` ("confirmed not running,
+    outcome unrecorded"), so reading it would make every analysis look like it
+    produced output the moment someone tidied the Running Jobs panel — and every
+    artifact older than that cleanup falsely stale. Measured once: closing 28
+    long-dead rows moved one analysis's apparent last output five days forward,
+    which would have flagged four untouched figures.
+
+    For such a row the honest upper bound is the last PROOF OF LIFE:
+    `last_heartbeat` is only ever bumped while a run is seen alive, so it marks
+    when output could still have been appearing; `started_at` when there is
+    nothing better.
+    """
+    if run.get("exit_code") == -2:
+        stamps = [s for s in (run.get("started_at"), run.get("last_heartbeat")) if s]
+        return max(stamps) if stamps else None
+    return run.get("finished_at") or run.get("started_at")
+
+
 def _latest_analysis_output_at(state: State, slug: str, analysis: str) -> str | None:
-    """Most recent moment `analysis` produced output: the newest `finished_at`,
-    or `started_at` for a run still going (a run in flight is already newer than
+    """Most recent moment `analysis` produced output (see `_run_output_at` — a
+    run still in flight counts from `started_at`, since it is already newer than
     any artifact predating it). None if the analysis has no runs, or does not
     exist — an artifact naming an analysis that was never registered is a
     mislabelled link, not a staleness signal, so it is reported separately."""
@@ -425,8 +448,7 @@ def _latest_analysis_output_at(state: State, slug: str, analysis: str) -> str | 
             continue
     if rows is None:
         return None
-    stamps = [r.get("finished_at") or r.get("started_at") for r in rows]
-    stamps = [s for s in stamps if s]
+    stamps = [s for s in (_run_output_at(r) for r in rows) if s]
     return max(stamps) if stamps else None
 
 
@@ -446,16 +468,23 @@ def _stale_artifact_warnings(
             if not analysis:
                 continue
             latest = _latest_analysis_output_at(state, slug, analysis)
-            updated = a.get("updated_at") or a.get("created_at")
+            # content_updated_at, NOT updated_at: the row's mtime also moves for
+            # a caption/legend fix and for the call that adds the link itself, so
+            # comparing against it let a metadata edit certify stale data as
+            # fresh. Falls back only for rows written before the field existed
+            # and never touched since.
+            updated = (a.get("content_updated_at") or a.get("updated_at")
+                       or a.get("created_at"))
             if not latest or not updated:
                 continue
             # ISO-8601 UTC strings from util.now_iso() — lexicographic order is
             # chronological order, so no parsing is needed.
             if updated < latest:
                 out.append(
-                    f"{kind} {a.get(label_key)} (updated {updated}) is older than "
-                    f"its linked analysis '{analysis}' (last output {latest}) — "
-                    f"regenerate it before exporting, or confirm it is unaffected"
+                    f"{kind} {a.get(label_key)} (content last changed {updated}) "
+                    f"is older than its linked analysis '{analysis}' (last output "
+                    f"{latest}) — regenerate it before exporting, or confirm it "
+                    f"is unaffected"
                 )
     return out
 

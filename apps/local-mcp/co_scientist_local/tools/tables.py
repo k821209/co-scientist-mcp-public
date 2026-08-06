@@ -57,6 +57,11 @@ def add_table(
         "source_analysis": source_analysis,
         "created_at": now,
         "updated_at": now,
+        # When the DATA last changed, as opposed to any field on the row. The
+        # staleness check in prepare_export compares against this, because
+        # `updated_at` moves for a caption fix or for adding the provenance link
+        # itself — which would mark a stale artifact fresh. See update_table.
+        "content_updated_at": now,
     }
     state.backend.set_doc(path, doc)
     return doc
@@ -80,12 +85,28 @@ def update_table(
     existing = state.backend.get_doc(path)
     if existing is None:
         raise NotFound(f"table {table_number} not found for {slug!r}")
-    fields: dict = {"updated_at": now_iso()}
+    now = now_iso()
+    fields: dict = {"updated_at": now}
     if title is not None: fields["title"] = title
     if content is not None: fields["content"] = content
     if caption is not None: fields["caption"] = caption
     if status is not None: fields["status"] = status
     if source_analysis is not None: fields["source_analysis"] = source_analysis
+
+    # Keep "when the data changed" separate from "when the row changed".
+    #
+    # Rows created before this field existed have no content_updated_at, so seed
+    # it from the CURRENT updated_at *before* overwriting that — otherwise the
+    # very call that adds the provenance link (a metadata-only edit) would assert
+    # the artifact is fresh and permanently mask the staleness it was added to
+    # detect. Retro-linking existing artifacts is the normal path, not an edge
+    # case, so this seeding is what makes the check usable at all.
+    if not existing.get("content_updated_at"):
+        fields["content_updated_at"] = (
+            existing.get("updated_at") or existing.get("created_at") or now
+        )
+    if content is not None:          # the data itself was replaced
+        fields["content_updated_at"] = now
     state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
 

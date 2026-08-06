@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-06a"
+GUIDE_VERSION = "2026-08-06b"
 
 
 def render_guide() -> str:
@@ -151,7 +151,12 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   the prose and legend moved to the new number, the supplementary table kept
   the old one (28.7% vs 33.3%), and every structural check passed because the
   file was perfectly well-formed. Without the link that export is silent, so
-  set it whenever you register a generated figure or table.
+  set it whenever you register a generated figure or table. Adding the link to an
+  artifact that already exists is safe and does NOT mark it current — the check
+  reads when the DATA last changed, so only replacing the content (new `content`,
+  or new bytes via `local_path`) clears a warning. Editing a caption or legend
+  deliberately will not; if a warning persists, regenerate the artifact or say
+  why it is unaffected.
 - Reconcile periodically: `list_analysis_runs` shows what's recorded;
   `scan_untracked_jobs` finds detached job-like processes with no record.
   If the user asks "which server did we run on / where's the record" and you

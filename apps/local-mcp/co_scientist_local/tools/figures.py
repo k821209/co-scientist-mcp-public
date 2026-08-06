@@ -113,6 +113,13 @@ def add_figure(
         else (existing.get("source_analysis") if existing else None),
         "created_at": existing.get("created_at", now) if existing else now,
         "updated_at": now,
+        # When the IMAGE last changed, as opposed to any field on the row. The
+        # staleness check compares against this, because `updated_at` also moves
+        # for a legend fix or for adding the provenance link — either of which
+        # would otherwise mark a stale PNG fresh. On an overwrite that ships no
+        # new bytes, the previous value is kept.
+        "content_updated_at": now if (local_path or not existing)
+        else (existing.get("content_updated_at") or existing.get("updated_at")),
     }
     state.backend.set_doc(path, doc)
     return doc
@@ -140,12 +147,23 @@ def update_figure(
     if existing is None:
         raise NotFound(f"figure {figure_number} not found for {slug!r}")
 
-    fields: dict = {"updated_at": now_iso()}
+    now = now_iso()
+    fields: dict = {"updated_at": now}
     if title is not None: fields["title"] = title
     if caption is not None: fields["caption"] = caption
     if legend is not None: fields["legend"] = legend
     if status is not None: fields["status"] = status
     if source_analysis is not None: fields["source_analysis"] = source_analysis
+
+    # Rows created before content_updated_at existed have none, so seed it from
+    # the CURRENT updated_at before that gets overwritten. Without this, the very
+    # call that adds the provenance link — a metadata-only edit — would assert the
+    # figure is current and permanently mask the staleness the link was added to
+    # find. Retro-linking existing figures is the normal path, not an edge case.
+    if not existing.get("content_updated_at"):
+        fields["content_updated_at"] = (
+            existing.get("updated_at") or existing.get("created_at") or now
+        )
 
     if local_path:
         p = pathlib.Path(local_path)
@@ -159,6 +177,7 @@ def update_figure(
             state.backend.delete_blob(old_blob)
         state.backend.put_blob(new_blob, p.read_bytes())
         fields["blob_path"] = new_blob
+        fields["content_updated_at"] = now      # new bytes = new content
 
     state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
