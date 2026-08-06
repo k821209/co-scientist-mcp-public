@@ -7,12 +7,17 @@ surfaces a 'you're out of date — update' nudge at session start.
 
 How the comparison works:
   - The public package is stamped 0.1.YYYYMMDD on every publish
-    (scripts/publish-public.sh); the private dev tree stays at 0.0.1.
-  - We fetch the latest pyproject.toml from the public GitHub mirror and
-    compare the YYYYMMDD integers.
-  - update_available is True ONLY when both versions parse as published
-    0.1.YYYYMMDD builds and installed < latest. A dev install (0.0.1) or any
-    network/parse failure yields False, so we never nag on a false signal.
+    (scripts/publish-public.sh); the private dev tree stays at 0.0.1. A SECOND
+    build on the same day gets a PEP 440 post-release suffix — 0.1.YYYYMMDD.post1,
+    .post2, … — because a date alone made a same-day rebuild invisible: whoami
+    reported "checked, and current" to a checkout that was commits behind, which
+    is the exact false reassurance this module exists to prevent.
+  - We fetch the latest pyproject.toml from the public GitHub mirror and compare
+    (date, post) — as a TUPLE, not as strings: lexicographically ".post10" sorts
+    before ".post9".
+  - update_available is True ONLY when both versions parse as published builds
+    and installed < latest. A dev install (0.0.1) or any network/parse failure
+    yields False/None, so we never nag on a false signal.
 
 Everything here is best-effort and never raises. Set the env var
 CO_SCIENTIST_SKIP_VERSION_CHECK=1 to skip the network probe (used by tests).
@@ -28,7 +33,8 @@ _PYPROJECT_URL = (
     "main/apps/local-mcp/pyproject.toml"
 )
 _VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
-_PUB_RE = re.compile(r"^0\.1\.(\d{8})$")  # published builds: 0.1.YYYYMMDD
+# Published builds: 0.1.YYYYMMDD, plus .postN for the Nth rebuild that same day.
+_PUB_RE = re.compile(r"^0\.1\.(\d{8})(?:\.post(\d+))?$")
 
 
 def _checkout_version() -> str | None:
@@ -119,11 +125,18 @@ def fetch_latest_version(timeout: float = 2.0) -> str | None:
     return m.group(1) if m else None
 
 
-def _date_int(v: str | None) -> int | None:
+def _version_key(v: str | None) -> tuple[int, int] | None:
+    """(YYYYMMDD, post) for a published build, else None.
+
+    A tuple, not an int: two builds published on the same day differ only in the
+    post-release number, and comparing dates alone reported them as equal.
+    """
     if not v:
         return None
     m = _PUB_RE.match(v.strip())
-    return int(m.group(1)) if m else None
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2) or 0))
 
 
 def _compare(installed: str | None, latest: str | None) -> dict:
@@ -135,8 +148,8 @@ def _compare(installed: str | None, latest: str | None) -> dict:
     there was actively misleading: it said "nothing to update" while the
     checkout was commits behind, so the user's `git pull` looked broken
     (feedback 8ddaa8fe8506). False now means "checked, and current"."""
-    inst_d = _date_int(installed)
-    late_d = _date_int(latest)
+    inst_d = _version_key(installed)
+    late_d = _version_key(latest)
     if inst_d is None:
         # Can't compare — say so instead of implying "current".
         out: dict = {
@@ -147,7 +160,8 @@ def _compare(installed: str | None, latest: str | None) -> dict:
         if latest:
             out["update_hint"] = (
                 f"can't tell whether this install is current: it reports "
-                f"{installed!r}, not a published 0.1.YYYYMMDD build (typical of "
+                f"{installed!r}, not a published 0.1.YYYYMMDD[.postN] build "
+                f"(typical of "
                 f"an editable/source install, where `pip install --upgrade` is a "
                 f"no-op). Latest published is {latest}. Check the checkout "
                 f"itself: `cd ~/co-scientist-mcp-public && git status -sb && "
