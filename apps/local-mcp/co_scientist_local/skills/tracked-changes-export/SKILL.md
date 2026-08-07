@@ -58,8 +58,14 @@ packaged locally on Jul 28 but never submitted (the cohort had grown to n=285),
 so the diff was against a document that existed nowhere outside the repo. Asking
 cost one question, and the answer was the OLDER file.
 
-Directory mtimes are not evidence of what the journal received. Prefer what the
-user tells you, then `paper.submission` (`manuscript_id`, `status`).
+Directory mtimes are not evidence of what the journal received. **Check
+`get_project_memory()` for the `Submitted baseline for <slug>:` line first** — by
+project convention the submitted snapshot is kept in Materials and that pointer
+is recorded once per submission, so you usually do not have to ask. If it is
+missing, `list_materials()` and read `user_note` (never agent-written, so it is
+the user's own record), confirm with the user, and then record it — see "The
+SUBMITTED BASELINE pointer" in `project_guide()`. `paper.submission`
+(`manuscript_id`, `status`) corroborates but does not identify the file.
 
 Sanity signal worth surfacing, not an error: the intended pair should share a
 title and author block. If your comparison inserts the entire author/affiliation

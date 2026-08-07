@@ -114,28 +114,34 @@ fold it into a reviewer run.
 
 ### Getting the original submission
 
-There is **no manuscript version history** in this system — verified: nothing in
+There is no manuscript version history in this system — nothing in
 `tools/sections.py`, `tools/papers.py` or `tools/exports.py` stores a
 point-in-time manuscript, and `get_manuscript(slug)` returns only the current
-assembled blob. So:
+assembled blob. **By project convention the submitted snapshot lives in
+Materials, and the pointer to it lives in project memory.**
 
-1. `list_exports(slug)` — the submitted `.docx`/`.pdf` is normally there.
-2. `get_paper_state(slug)` → `paper.submission` (`manuscript_id`,
-   `submitted_at`) to corroborate which one.
-3. `list_materials()` — the submitted PDF is often uploaded here.
+1. `get_project_memory()` — look for the `Submitted baseline for <slug>:`
+   line. It is recorded once per submission precisely so you don't re-derive it.
+2. If it isn't there: `list_materials()` and read `user_note` first — the user is
+   the authority on what was submitted, and that field is never agent-written.
+   Then **ask the user to confirm and wait**, and record the answer per
+   "The SUBMITTED BASELINE pointer" in `project_guide()` so the next run is free.
 
-**Ask the user which file was submitted and wait for an answer.** The newest
-export is often wrong (a superseded revision package sorts to the top by date;
-see `/tracked-changes-export` step 1 for the case where this shipped). Every
-check in this skill is blind to a wrong baseline: the run completes, the findings
-look plausible, and they are measured against a document nobody read. If no
-snapshot of the submitted manuscript exists, **say so and stop** — with the
-current manuscript as the baseline this skill cannot detect a single
-`frame_error`, which is its whole reason to exist.
+Never infer it from filenames or dates. The newest export is often wrong — a
+superseded revision package sorts to the top and looks the most authoritative;
+see `/tracked-changes-export` step 1 for the case where that shipped. Every check
+in this skill is blind to a wrong baseline: the run completes, the findings look
+plausible, and they are measured against a document nobody read.
+
+If no snapshot exists, **say so and stop.** Ask the user to upload it. Do NOT
+substitute the current manuscript: with that as the baseline this skill cannot
+detect a single `frame_error`, which is its whole reason to exist — and it would
+report clean while doing so.
 
 `list_materials()` is **project-wide, not per-paper**, and its docstring names
 "prior drafts" as expected content. Do not hand the agent the material list.
-Select specific `material_id`s yourself and pass only those files.
+Resolve the `material_id` yourself, `get_material` it to a path, and pass only
+that file.
 
 ## Making the isolation real
 
@@ -262,13 +268,13 @@ introduces a new `missing_premise`, and the second run is cheap.
 Real capabilities this skill needs and the system does not have. Stated so they
 are not rediscovered:
 
-- **No manuscript version history.** The single biggest gap. There is no tool
-  returning the manuscript as submitted — no `list_journal_versions`, nothing
+- **No manuscript version history**, by decision rather than omission. There is
+  no tool returning the manuscript as submitted — no `list_journal_versions` or
   equivalent (verified across all ~200 tools in
-  `apps/local-mcp/co_scientist_local/mcp_server.py`). The baseline is whatever
-  file the author points at, which is why the confirmation step above is a gate.
-  A snapshot written at `set_paper_submission(status='submitted')` would close
-  this and make the check reliable.
+  `apps/local-mcp/co_scientist_local/mcp_server.py`). The author keeps the
+  snapshot in Materials instead, with the pointer in project memory (see above),
+  which avoids a schema change; the cost is that the baseline is a convention
+  rather than a guarantee, so the confirm-once step stays a gate.
 - **Reviewer reports are not scoped as bundles.** `list_reviews(slug,
   source='reviewer')` returns every reviewer's points together; the per-reviewer
   split is done by filtering `reviewer_name` + `round` in the caller. Nothing

@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-07a"
+GUIDE_VERSION = "2026-08-07b"
 
 
 def render_guide() -> str:
@@ -340,6 +340,39 @@ WHAT belongs here: the user's writing preferences, decisions taken and
 why, approaches tried and rejected, domain gotchas, target-journal
 history — knowledge NOT recoverable from the papers / sections /
 reviews / figures themselves.
+
+### The SUBMITTED BASELINE pointer (record this — it is not derivable)
+
+Nothing in the structured data records **which file the journal actually
+received**. The user keeps that snapshot in **Materials**; the pointer to
+it belongs HERE, because memory is read at every session start while a
+material note is only seen by whoever lists materials.
+
+This matters because the failure is silent: a marked-up copy built against
+the wrong baseline passes every validation check and diffs against a
+document nobody read. It shipped once, against an n=69 package that was
+prepared and then superseded before it was ever submitted — and the newest
+archived export is the classic trap, because it sorts first and looks the
+most authoritative.
+
+So, ONCE per submission, when you learn which file it was:
+
+1. `list_materials()` — find the candidates. Read `user_note` first: the
+   user is the authority on what was submitted, and their note is never
+   written by an agent.
+2. **Ask the user to confirm, and wait.** One question. Do not infer from
+   filenames or dates.
+3. Stamp both:
+   - `update_material(material_id, ai_note="SUBMITTED BASELINE — <slug>,
+     <journal>, submitted <YYYY-MM-DD>. The OLD document for
+     /tracked-changes-export; the manuscript the reviewers hold for
+     /reviewer-frame-check.")`
+   - `append_project_memory("Submitted baseline for <slug>: material
+     <material_id> (<filename>), <journal>, <YYYY-MM-DD>.")`
+
+Then no later session has to guess. If no such material exists, say so and
+ask the user to upload it rather than substituting the current manuscript —
+that substitution silently defeats both skills.
 
 WHAT does NOT belong here — each of these has a structured home; put it
 there, never in memory:
