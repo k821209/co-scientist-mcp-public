@@ -152,6 +152,7 @@ Do not hand-write its prompt.**
 ```
 Task(subagent_type="reviewer-frame-check",
      prompt="""You are Reviewer 2 of Plant Methods.
+     profile: response_letter
 
      Submitted manuscript you reviewed:  /abs/path/submitted.docx
      Your own report as you sent it:      /abs/path/reviewer2.md
@@ -159,8 +160,33 @@ Task(subagent_type="reviewer-frame-check",
      """)
 ```
 
-Your entire contribution is **file paths and the seat name**. That is the one thing
-you cannot get wrong by knowing too much.
+Your entire contribution is **file paths, the seat name, and the profile**. That is
+the one thing you cannot get wrong by knowing too much.
+
+### Always name the profile
+
+`response_letter` | `cover_letter` | `manuscript`. It is not a formality — the same
+finding is a real defect in one document and correct behaviour in another, and the
+two directions are opposites:
+
+| | recipient's job | so a pointer elsewhere is |
+|---|---|---|
+| `manuscript` | evaluate the science | **the defect** — self-containment required |
+| `response_letter` | decide whether each point was met | **fine** — the letter says what was done and points |
+| `cover_letter` | decide whether to send it back out | fine, and tighter still |
+
+Get this wrong and the check inverts. Measured on a real revision: run without a
+profile, 17 of 38 findings were "missing premise" against a response letter, and at
+face value they were instructions to write the paper a second time — acting on all
+of them would have grown the letter past 5,000 words, while acting on the ones that
+DID apply shortened it from 3,600 to 2,580.
+
+Infer the default from the section key — `response_letter` / `cover_letter` (see
+`tools/doc_profile.py`, which `lint_manuscript` uses for the same classification) —
+and state it explicitly anyway. Under `response_letter` the agent also runs a
+**compliance-drift** check: does the letter claim something was ADDED that already
+stood in the submitted version? That reports as `frame_error`, and it is the most
+damaging error a letter can make.
 
 The definition carries the role, the reporting rule, the three kinds, the output
 shape, and `tools: Read` — no Bash, no Grep, no Glob, no MCP. That last part is
@@ -215,9 +241,16 @@ Two honest limits, worth stating to the user rather than papering over:
 
 The definition fixes the shape, so you can parse it: `--- FINDINGS ---` (each with
 `kind` / `span` / `supplied` / `why`), then `--- PASSED ---`,
-`--- WANTED_BUT_DID_NOT_OPEN ---`, and `--- BUNDLE_NOTE ---`.
+`--- WANTED_BUT_DID_NOT_OPEN ---`, `--- SUPPRESSED_BY_PROFILE ---`, and
+`--- BUNDLE_NOTE ---`.
 
-Read the last two. `wanted_but_did_not_open` turns the agent's own temptation into
+`suppressed_by_profile` is what the profile withheld. Read it: if it is large and
+the document is a letter, that is the profile working as intended; if it contains
+something that looks like a real defect, the profile is wrong for this document and
+you should re-run with a different one. Never treat an empty findings list as clean
+without checking that this list is not hiding the answer.
+
+Read the other two as well. `wanted_but_did_not_open` turns the agent's own temptation into
 a signal — it is the clearest map of where the letter leans on context it never
 supplies. `bundle_note` is the agent telling you that what you handed it was wrong:
 in the first live run it correctly flagged, unprompted, that the report file

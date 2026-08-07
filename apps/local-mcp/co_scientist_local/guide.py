@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-07c"
+GUIDE_VERSION = "2026-08-07d"
 
 
 def render_guide() -> str:
@@ -181,6 +181,11 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   removed panel described as having shown the CURRENT cohort when the reviewer
   saw the old one, or numbers compared at mismatched parameters — every word
   ordinary, the error only visible to a reader tracking what each number is for.
+  ALWAYS name the profile (`response_letter` / `cover_letter` / `manuscript`):
+  the same finding is a defect in one document and correct behaviour in another.
+  In a manuscript a pointer elsewhere IS the defect; in a letter, deferring to
+  the manuscript is the letter doing its job, and 17 of 38 findings from a
+  profile-less run were effectively "write the paper again".
   Must run as a subagent with a fresh context; a session that already knows the
   analysis cannot perform this check on itself, only degrade it. The subagent
   SHIPS — `subagent_type: "reviewer-frame-check"`, linked into `.claude/agents/`

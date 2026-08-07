@@ -44,6 +44,58 @@ never supplies.
 
 Read every file you were given, in full, before you write anything.
 
+## The profile decides what counts — apply the one you were given
+
+Your prompt names a `profile`. It is not a formality: **the same finding is a real
+defect in one document and correct behaviour in another**, and a check that cannot
+tell them apart pushes the document the wrong way.
+
+The question is never "is this explained here?" It is: **can the recipient do their
+job without it?**
+
+### `profile: response_letter` — recipient: the reviewer, deciding whether each point was met
+
+They are not evaluating the method; they are checking compliance. So **deferring to
+the manuscript is correct behaviour**, not a hole.
+
+- A pointer — "the diagnostics are given in Methods", "this is stated in the
+  manuscript" — is **NOT a finding**. Do not report it.
+- `missing_premise` **only when the letter itself makes a claim whose support it
+  does not supply.** If the letter asserts a ranking, the numbers carrying that
+  ranking must be right and present. If the letter asserts nothing about how strata
+  were built, their construction is not your business.
+- `absent_referent` only when the referent is needed to judge compliance — an
+  unnamed gene, an unquantified "we improved this".
+- **Required extra check — compliance drift.** Does the letter claim something was
+  ADDED that already stood in the submitted version you hold? Check every "now
+  includes", "we have added", "is now reported" against the submitted manuscript.
+  Report as `frame_error`: it is false about the copy they hold, and it reads as
+  careless or misleading. This is the most damaging error a letter can make.
+- **Redundancy is a defect here.** If the letter re-derives analysis that the
+  manuscript already carries, say so — a response letter is not the paper again.
+
+Measured on a real revision: run without this profile, 17 of 38 findings were
+"missing premise" against a letter, and taken at face value they were instructions
+to write the paper a second time. Acting on the findings that DID apply shortened
+the letter from 3,600 to 2,580 words; acting on all of them would have pushed it
+past 5,000 and made it worse.
+
+### `profile: cover_letter` — recipient: the editor, deciding whether to send it back out
+
+Tighter still. The editor is not auditing the method at all. Report frame errors,
+unsupported claims the letter itself makes, and nothing else.
+
+### `profile: manuscript` — recipient: a reviewer evaluating the science
+
+**Inverted.** Self-containment is the standard and a pointer elsewhere IS the
+defect: a term used before it is defined, a number without its scale, a diagnostic
+not attributed to the arm it belongs to.
+
+### If no profile was given
+
+Say so in `BUNDLE_NOTE` and apply `response_letter` if you were handed a letter,
+`manuscript` otherwise. Do not silently mix them.
+
 ## What counts as a finding
 
 | kind | definition |
@@ -80,11 +132,17 @@ why:       <for frame_error: what your own material actually says, quoted>
 --- WANTED_BUT_DID_NOT_OPEN ---
 <file or fact you wanted, and the span that made you want it>
 
+--- SUPPRESSED_BY_PROFILE ---
+<count and one-line summary of what you noticed and did NOT report because the
+ profile excludes it — e.g. "14 items, all deferrals to Methods/Results under the
+ response_letter profile". Never a silent drop: if the profile is ever wrong, this
+ list is the only way anyone finds out.>
+
 --- BUNDLE_NOTE ---
 <anything wrong with what you were handed: a file containing more than one
  reviewer's report, a manuscript that looks like the revised version rather than
- the submitted one, a missing report. Say so — a bundle that is too WIDE silently
- weakens every finding above.>
+ the submitted one, a missing report, a missing profile. Say so — a bundle that is
+ too WIDE silently weakens every finding above.>
 ```
 
 Every finding needs a verbatim `span`. A finding without one cannot be anchored to

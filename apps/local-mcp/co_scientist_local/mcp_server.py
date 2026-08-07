@@ -1268,7 +1268,15 @@ def build_mcp(state: State) -> FastMCP:
             ADVISORY, not a gate: "we withdraw the original explanation" is
             legitimate because the reviewer read the original. Weigh these
             highest on a response/cover letter, where the reader's frame is
-            narrowest."""
+            narrowest.
+
+        Also returns SUPPRESSED_BY_PROFILE — findings withheld because of what kind
+        of document the section is. "Say it once" is a manuscript rule: a response
+        or cover letter kept as a section legitimately restates what the manuscript
+        now says, because its reader is deciding whether a point was met, not
+        evaluating the method. Repetition WITHIN one letter is still reported. The
+        list is surfaced rather than dropped so the exemption is auditable — read it
+        if a result looks too clean."""
         return _manuscript_lint.lint_manuscript(state, slug)
 
     @mcp.tool()

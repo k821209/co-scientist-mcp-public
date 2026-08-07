@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 
+from . import doc_profile as _doc_profile
 from . import papers as _papers
 from .figures import list_figures as _list_figures
 from .tables import list_tables as _list_tables
@@ -311,6 +312,7 @@ def lint_manuscript(state, slug: str) -> dict:
 
     # ── 1. duplication (near-duplicate sentences, any two sections/positions) ──
     duplication: list[dict] = []
+    suppressed: list[dict] = []
     seen_pairs: set = set()
     for i in range(len(sents)):
         ki, ti, si, tsi = sents[i]
@@ -322,6 +324,26 @@ def lint_manuscript(state, slug: str) -> dict:
                 if pair_key in seen_pairs:
                     continue
                 seen_pairs.add(pair_key)
+                # "Say it once" is a MANUSCRIPT rule. A response/cover letter
+                # restating what the manuscript now says is doing its job — the
+                # recipient is deciding whether a point was met, so the letter
+                # tells them and points. Flagging it pushes the document the wrong
+                # way. Recorded rather than dropped, so the exemption is auditable
+                # if it is ever wrong.
+                #
+                # Scoped to DIFFERENT sections: repetition ACROSS documents that
+                # involves correspondence is expected (a cover letter and a
+                # response letter also legitimately overlap — different readers),
+                # but a letter repeating itself is plain redundancy, and a letter
+                # that pads is a defect in its own right.
+                if ki != kj and (_doc_profile.is_correspondence(ki)
+                                 or _doc_profile.is_correspondence(kj)):
+                    suppressed.append({
+                        "kind": "duplicate_sentence", "sections": sorted({ti, tj}),
+                        "why": ("correspondence restating the manuscript is expected "
+                                "— 'say it once' applies to the manuscript body"),
+                    })
+                    continue
                 duplication.append({
                     "kind": "duplicate_sentence",
                     "cross_section": ki != kj,
@@ -467,6 +489,10 @@ def lint_manuscript(state, slug: str) -> dict:
         # withdraw the original explanation" is fine — the reviewer read the
         # original). Advisory, never a gate.
         "insider_context": insider,
+        # Findings a document-kind profile deliberately withheld. Surfaced rather
+        # than dropped: a silent exemption makes the lint unauditable, and this
+        # list is exactly what you would want to see if a profile were wrong.
+        "suppressed_by_profile": suppressed[:_MAX_PER_KIND],
         "summary": {
             "total": total,
             "by_kind": {
@@ -475,6 +501,7 @@ def lint_manuscript(state, slug: str) -> dict:
                 "style": len(style),
                 "insider_context": len(insider),
             },
+            "suppressed_by_profile": len(suppressed),
             "clean": total == 0,
         },
     }
