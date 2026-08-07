@@ -66,7 +66,10 @@ def install_skills(
     """
     project_dir = pathlib.Path(project_dir).resolve()
     source = source or find_skills_source()
-    if source is None:
+    # Also covers an explicitly-passed path that does not exist or holds no
+    # skills: iterating it would raise FileNotFoundError rather than returning
+    # the documented error dict.
+    if source is None or not _has_any_skill(pathlib.Path(source)):
         return {"installed": [], "skipped": [], "source": None,
                 "error": "no skills source found"}
 

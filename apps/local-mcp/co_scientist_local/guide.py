@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-07b"
+GUIDE_VERSION = "2026-08-07c"
 
 
 def render_guide() -> str:
@@ -182,7 +182,12 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   saw the old one, or numbers compared at mismatched parameters — every word
   ordinary, the error only visible to a reader tracking what each number is for.
   Must run as a subagent with a fresh context; a session that already knows the
-  analysis cannot perform this check on itself, only degrade it.
+  analysis cannot perform this check on itself, only degrade it. The subagent
+  SHIPS — `subagent_type: "reviewer-frame-check"`, linked into `.claude/agents/`
+  on MCP startup, declared `tools: Read` so it cannot list or grep its way into
+  the analysis outputs. Pass it file paths and the seat name, nothing else; do
+  not hand-write its prompt, since the caller is by construction the agent that
+  knows every contaminating fact.
 - `/journal-requirements` — capture a target journal's submission spec
   for a paper type (Article / Short Communication / Letter / Review …):
   the agent reads the journal's live author guidelines and stores word

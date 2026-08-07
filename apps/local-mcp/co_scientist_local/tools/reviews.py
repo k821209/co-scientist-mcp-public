@@ -145,10 +145,19 @@ def list_reviews(
     status: str | None = None,
     source: str | None = None,
     decision: str | None = None,
+    reviewer_name: str | None = None,
+    round: int | None = None,
 ) -> list[dict]:
-    """List reviews for a paper, optionally filtered by status, source, and/or
-    the user's triage `decision` ("pending" | "accepted" | "rejected"; comments
-    with no stored decision count as "pending").
+    """List reviews for a paper, optionally filtered by status, source, the
+    user's triage `decision` ("pending" | "accepted" | "rejected"; comments with
+    no stored decision count as "pending"), and/or the reviewer seat.
+
+    `reviewer_name` + `round` isolate ONE reviewer's material. That matters for
+    /reviewer-frame-check, which must run per reviewer: a passage that is legible
+    given Reviewer 1's detailed report can be a missing premise for Reviewer 2,
+    and that whole class of finding disappears from a merged run. Filtering here
+    means the split is a tool operation rather than something each caller
+    re-implements by hand.
 
     Sorted by created_at descending (most recent first).
     """
@@ -175,6 +184,10 @@ def list_reviews(
         reviews = [r for r in reviews if r.get("source") == source]
     if decision is not None:
         reviews = [r for r in reviews if (r.get("decision") or "pending") == decision]
+    if reviewer_name is not None:
+        reviews = [r for r in reviews if r.get("reviewer_name") == reviewer_name]
+    if round is not None:
+        reviews = [r for r in reviews if r.get("round") == round]
     reviews.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return reviews
 

@@ -174,6 +174,9 @@ def main() -> None:
     if argv and argv[0] == "install-skills":
         from .skills_install import cli as _install_skills_cli
         sys.exit(_install_skills_cli(argv[1:]))
+    if argv and argv[0] == "install-agents":
+        from .agents_install import cli as _install_agents_cli
+        sys.exit(_install_agents_cli(argv[1:]))
 
     if os.environ.get("CO_SCIENTIST_USE_MEMORY") == "1":
         state = _build_dev_state()
@@ -210,10 +213,12 @@ def main() -> None:
         )
         sys.exit(2)
 
-    # Link bundled skills into this project's .claude/skills/ (best-effort;
+    # Link bundled skills + subagents into this project's .claude/ (best-effort;
     # cwd is the project dir). Takes effect on the next Claude Code launch.
     from .skills_install import install_skills_quietly
     install_skills_quietly()
+    from .agents_install import install_agents_quietly
+    install_agents_quietly()
 
     # Reap local jobs that died while no session was running, then start a
     # background reaper so kills/crashes reflect on the dashboard automatically.

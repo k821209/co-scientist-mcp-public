@@ -431,13 +431,20 @@ def build_mcp(state: State) -> FastMCP:
         status: str | None = None,
         source: str | None = None,
         decision: str | None = None,
+        reviewer_name: str | None = None,
+        round: int | None = None,
     ) -> list[dict[str, Any]]:
         """List reviews for a paper, optionally filtered by status, source, and/
         or the user's triage `decision` ('pending'|'accepted'|'rejected'). The
         author triages comments in the dashboard; `decision='accepted'` is the
-        set they've approved you to act on (no decision == 'pending')."""
+        set they've approved you to act on (no decision == 'pending').
+
+        `reviewer_name` + `round` isolate ONE reviewer's material — required when
+        assembling a per-seat bundle for /reviewer-frame-check, since a merged
+        run cannot surface a premise that only one reviewer is missing."""
         return _reviews.list_reviews(
-            state, slug, status=status, source=source, decision=decision)
+            state, slug, status=status, source=source, decision=decision,
+            reviewer_name=reviewer_name, round=round)
 
     @mcp.tool()
     def update_review(

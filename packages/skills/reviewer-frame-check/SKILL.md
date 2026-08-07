@@ -143,6 +143,38 @@ report clean while doing so.
 Resolve the `material_id` yourself, `get_material` it to a path, and pass only
 that file.
 
+## Calling the agent
+
+The reviewing agent SHIPS as a definition — `subagent_type: "reviewer-frame-check"`
+— installed into `.claude/agents/` on MCP startup alongside the skills. **Use it.
+Do not hand-write its prompt.**
+
+```
+Task(subagent_type="reviewer-frame-check",
+     prompt="""You are Reviewer 2 of Plant Methods.
+
+     Submitted manuscript you reviewed:  /abs/path/submitted.docx
+     Your own report as you sent it:      /abs/path/reviewer2.md
+     The authors' response letter:        /abs/path/response_letter.md
+     """)
+```
+
+Your entire contribution is **file paths and the seat name**. That is the one thing
+you cannot get wrong by knowing too much.
+
+The definition carries the role, the reporting rule, the three kinds, the output
+shape, and `tools: Read` — no Bash, no Grep, no Glob, no MCP. That last part is
+most of the isolation: an agent that cannot list a directory cannot wander into
+`analysis/`, so "do not open files you were not given" is a capability boundary
+rather than a request you have to remember to include.
+
+**A letter-only bundle silently drops the best third of the check.** Handing over
+just the letter is the tempting minimum and it cannot detect a single
+`frame_error` — with no copy of the manuscript the reviewer received there is
+nothing to check "the submitted version showed X" against. Measured: in the first
+live run, 12 of 38 findings were `frame_error`, and every one of them needed the
+submitted manuscript.
+
 ## Making the isolation real
 
 The reviewing agent will usually be spawned from a session that already knows
@@ -155,20 +187,8 @@ sentence still parses. If the current session has read the analysis, it cannot
 run this check on itself — it will supply case 3 silently, which is exactly what
 already happened.
 
-**So: spawn a subagent with a restricted prompt.** A fresh context is the
-mechanism; the prompt is the contract.
-
-Put in the prompt:
-
-- The verbatim reporting rule from above.
-- The role: "You are Reviewer 2 of <journal>. You read this manuscript once,
-  months ago. You have your own report in front of you and nothing else."
-- **File paths, not contents**, for the bundle — let the agent read them with its
-  own file tools. Paths keep the boundary auditable; pasted text does not.
-- The three kinds and the output shape (below).
-- An explicit refusal clause: "If you find yourself wanting a file that is not
-  in this list, do not open it. Report the sentence that made you want it as a
-  finding."
+**So: spawn the shipped subagent.** A fresh context is the mechanism; the
+definition is the contract, which is why it ships rather than being retyped.
 
 Do NOT put in the prompt:
 
@@ -191,14 +211,18 @@ Two honest limits, worth stating to the user rather than papering over:
   is right, the run is worth trusting; if it includes `analysis/` or a session
   log, it isn't.
 
-### Output shape (require exactly this)
+### What comes back
 
-```
-kind:      frame_error | missing_premise | absent_referent
-span:      "<verbatim quote from the letter, 5–20 words>"
-supplied:  <what you had to infer, guess, or look up — one sentence>
-why:       <what the reviewer's own material actually says, for frame_error>
-```
+The definition fixes the shape, so you can parse it: `--- FINDINGS ---` (each with
+`kind` / `span` / `supplied` / `why`), then `--- PASSED ---`,
+`--- WANTED_BUT_DID_NOT_OPEN ---`, and `--- BUNDLE_NOTE ---`.
+
+Read the last two. `wanted_but_did_not_open` turns the agent's own temptation into
+a signal — it is the clearest map of where the letter leans on context it never
+supplies. `bundle_note` is the agent telling you that what you handed it was wrong:
+in the first live run it correctly flagged, unprompted, that the report file
+contained BOTH reviewers' reports, which violates the per-seat rule and silently
+weakens every finding. A bundle that is too WIDE does not fail loudly.
 
 Reject any finding without a verbatim `span`; it cannot be anchored, and an
 unanchored finding leaves the triage flow.
@@ -219,13 +243,23 @@ mcp__co_scientist__add_section(slug, key='response_letter',
 `sort_order` is required (`tools/sections.py:91`). Note the letter then exports
 with the paper — check that against the journal package the author wants.
 
-One row per finding:
+### The mapping is mechanical — do not improvise it
+
+| finding field | `add_review` argument |
+|---|---|
+| `kind` | `severity`: `frame_error` → `major`, everything else → `minor` |
+| `kind` | prefix of `comment`: `"[frame_error] …"` — there is no label field, so the kind rides in the text (`severity` has only three values) |
+| `span` | `anchor_text`, **verbatim** |
+| `supplied` (+ `why`) | the body of `comment` |
+| — | `source="ai"`, `reviewer_name="Frame Check (<seat>)"` |
+| located section | `section` and `manuscript_ref="section:<key>"` |
 
 ```
 mcp__co_scientist__add_review(
   slug,
   comment="[frame_error] Reviewer 2 saw the 69-accession panel, not 285. "
-          "Supplied from outside: that the removed panel matched the current cohort.",
+          "Supplied from outside: that the removed panel matched the current cohort. "
+          "Same defect at: 'six figures rather than seven' (submitted has five).",
   source="ai",
   reviewer_name="Frame Check (Reviewer 2)",
   section="response_letter",
@@ -235,15 +269,40 @@ mcp__co_scientist__add_review(
 )
 ```
 
+**Locate the section yourself.** The agent reports a span, not where it lives —
+it was handed a file, not your section keys. Find the span in the section bodies
+and set `section` + `manuscript_ref` from that. **Drop any finding whose span you
+cannot locate**: `add_review` accepts an anchor it cannot resolve without
+complaining (only `update_review`/`resolve_paper_comment` validate), so an
+unlocatable span becomes a comment that never highlights and quietly leaves the
+triage flow.
+
+**One row per DEFECT, not per finding.** The agent reports each instance, and
+several instances are routinely one defect in different places — a numbering
+scheme repeated across three supplementary tables, or a cohort change that voids
+Table 1, the Abstract and the Conclusions alike. Anchor the row to the clearest
+instance and name the siblings in the comment body. Measured: the first live run
+returned 38 findings that consolidated to 18 defects, and 38 rows is more triage
+surface than the findings deserve.
+
 - `source='ai'` is correct and deliberate: these are internal findings and must
   never reach a response letter (`source='reviewer'` is the journal's real
   points; see `/response-letter`).
 - `reviewer_name` carries which run produced it — `Frame Check (Reviewer 2)`,
-  `Frame Check (Editor)`. This is the only place the per-reviewer split survives.
-- One row per finding even at 30 findings — the dashboard is built around
-  per-passage anchoring.
+  `Frame Check (Editor)`. This is the only place the per-seat split survives.
 - Use `anchor_prefix` / `anchor_suffix` when the span repeats.
 - Then confirm: `list_reviews(slug, source='ai', status='open')`.
+
+### Assembling a per-seat bundle
+
+`list_reviews(slug, source='reviewer', reviewer_name='Reviewer 2', round=2)`
+returns one seat's material. Use those filters rather than slicing the merged list
+by hand — the whole per-seat rule exists because a premise only one reviewer is
+missing cannot appear in a merged run.
+
+Note this only scopes what YOU pass along. If the reviewer's report lives in one
+uploaded file containing every reviewer, the split is not real: extract that seat's
+section to its own file first, or expect the agent's `bundle_note` to tell you so.
 
 ## Where it fits
 
@@ -263,6 +322,25 @@ author says ship it, ship it. Do not gate `export_to_path` on this skill.
 Re-run after the letter is edited: a rewrite that fixes one span routinely
 introduces a new `missing_premise`, and the second run is cheap.
 
+## Calibrating it (do this once per paper, not per run)
+
+A run that returns findings proves it is sensitive; it does not prove it
+discriminates. The first live run returned 38 findings on a letter that had been
+through four rounds of author correction plus two greps for exactly this class —
+encouraging, and not yet evidence that it says *nothing* when there is nothing to
+say.
+
+So, once, before you trust it as a gate on a given paper: run it against a
+**pre-correction** version of the letter and confirm it recovers the defects the
+author already caught by hand. If it misses those, the bundle is wrong (almost
+always: no submitted manuscript, so the `frame_error` third is dead) rather than
+the check being weak.
+
+This cannot be a unit test. The check is a language model reading prose, so there
+is nothing deterministic to assert; the calibration is a procedure, and the honest
+version is to record its outcome in project memory next to the submitted-baseline
+pointer.
+
 ## Gaps
 
 Real capabilities this skill needs and the system does not have. Stated so they
@@ -275,10 +353,12 @@ are not rediscovered:
   snapshot in Materials instead, with the pointer in project memory (see above),
   which avoids a schema change; the cost is that the baseline is a convention
   rather than a guarantee, so the confirm-once step stays a gate.
-- **Reviewer reports are not scoped as bundles.** `list_reviews(slug,
-  source='reviewer')` returns every reviewer's points together; the per-reviewer
-  split is done by filtering `reviewer_name` + `round` in the caller. Nothing
-  enforces that one run saw only one reviewer's material.
+- **Per-seat scoping is available but not enforced.** `list_reviews` now takes
+  `reviewer_name` and `round`, so isolating one seat's registered points is a tool
+  call rather than hand-slicing. What nothing can enforce is the FILE side: if the
+  decision letter was uploaded as one document containing every reviewer, passing
+  it wholesale merges the seats no matter what the filters say. The agent's
+  `bundle_note` is the only backstop, and it is a report after the fact.
 - **No decision-letter or cover-letter object.** The decision letter exists only
   as whatever the author pasted or uploaded to `list_materials()`, and the cover
   letter only as a section or a local file. The editor run therefore depends on
