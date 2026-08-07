@@ -135,6 +135,48 @@ partition", not "0.904". This is separate from §2b: plain phrasing does not
 supply a missing premise. And when trimming for length, cut claims — never the
 clause that lets a reader check one.
 
+### 2d. Never write from inside the authoring session
+
+§2c is about premises the reader lacks. This is the opposite failure: writing
+about work the reader has **no frame for at all**. A manuscript can fail both at
+once, and one did.
+
+For a revision the reader's frame is exactly **(what they received) → (what they
+are receiving now)**. Anything whose frame is our working session is noise, and
+worse, it reads as retracting something that never existed for them. Three shapes,
+all of which shipped and were caught by the author, not by any check:
+
+| don't write | why |
+|---|---|
+| "An earlier draft of this revision reported only 174 of them… we have dropped that collapse." | The reviewers saw the SUBMISSION. The intermediate existed only between you and the author. |
+| "We considered reducing that list to one lead gene per megabase and decided against it." | A road not taken. If it was rejected there is nothing to report — this was the *fix* for the row above, and it is the same failure in a new costume. |
+| "more than we expected", "on reflection", "we judged", "for readers who want the reduced view" | Narrates the authoring process, or hands the reader a choice you should have made. |
+
+This is not merely unhelpful. Framed from inside the session, a removed panel was
+described as having shown "the 285 accessions" — the panel the reviewers actually
+saw was the 69-accession one. Insider framing produces factual errors about the
+reader's own experience.
+
+`lint_manuscript` flags this lexically as **`insider_context`**. Treat it as
+advisory: not every hit is guilty ("we withdraw the original explanation" is fine,
+because the reviewer read the original explanation). Weigh it highest on a
+response letter or cover letter, where the reader's frame is narrowest and you
+have the most session history to leak.
+
+### 2e. Cite display items parenthetically
+
+A figure or table is cited in parentheses, never woven into the sentence as a noun
+phrase. `lint_manuscript` flags the prose form as `prose_cross_reference`.
+
+| bad | good |
+|---|---|
+| "The resulting projection is Figure 4A." | "…using metric multidimensional scaling (MDS; Figure 4A)." |
+| "Table 2 places these figures beside an LD-based route…" | "An LD-based route was timed on the same node (Table 2)." |
+| "…records are provided in STable 1." | "…records are listed in the supplementary material (STable 1)." |
+
+Multi-item parentheticals are fine and expected: `(Table 1, Figure 7B)`,
+`(Figures 3A, 4, Table 1; SFigure 2)`.
+
 ### 3. Say it once (de-duplication)
 
 Each finding, definition, and background fact appears **once, in its home
@@ -153,10 +195,13 @@ mcp__co_scientist__lint_manuscript(slug)
 ```
 
 It deterministically flags **duplication** (same sentence across sections),
-**section leakage** (results/stats in Methods, procedure in Results), and
-**style** (LLM-tell + writerly/forward-reference phrases, run-on sentences,
-`vague_comparative` bare "larger/higher", `overused_word` repeated rhetorical
-words). Treat it like the deck
+**section leakage** (results/stats in Methods, procedure in Results, plus
+`measurement_in_methods` — a measured size/time/memory/fold reported in Methods —
+and `result_only_in_methods`, a number that appears in Methods and in a
+figure/table but never in Results), **style** (LLM-tell + writerly/forward-reference
+phrases, run-on sentences, `vague_comparative` bare "larger/higher",
+`overused_word` repeated rhetorical words, `prose_cross_reference` — see below),
+and **insider_context** (§2d). Treat it like the deck
 layout lint: **a section isn't done until its warnings are resolved.** Fix
 the offending sentences (each warning quotes the sentence + its section),
 re-run until `summary.clean == true`, then report the clean result to the

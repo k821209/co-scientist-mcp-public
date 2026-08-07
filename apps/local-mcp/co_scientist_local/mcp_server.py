@@ -1239,13 +1239,29 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def lint_manuscript(slug: str) -> dict[str, Any]:
         """Deterministic manuscript QA over a paper's sections — the prose
-        analogue of the deck layout lint. Flags the three writing failures
-        reviewers hit: content DUPLICATION (same sentence restated across
-        sections), SECTION LEAKAGE (results/statistics inside Methods, or
-        procedure detail inside Results), and non-academic STYLE (LLM-tell
-        phrases, run-on sentences). Returns grouped warnings + a summary;
-        `summary.clean == True` means zero issues. Run it before marking
-        sections complete and resolve every warning (hard done-gate)."""
+        analogue of the deck layout lint. Returns grouped warnings + a summary;
+        `summary.clean == True` means zero issues. Run it before marking sections
+        complete and resolve every warning (hard done-gate).
+
+        Groups:
+          - DUPLICATION — the same sentence restated across sections.
+          - SECTION LEAKAGE — results/statistics in Methods
+            (`results_in_methods`), procedure detail in Results
+            (`methods_in_results`), a MEASURED magnitude in Methods
+            (`measurement_in_methods` — sizes/times/memory/fold, the shape a
+            methods-paper benchmark takes), and `result_only_in_methods`: a
+            number that appears in Methods and in a figure/table but NEVER in
+            Results, which is a result sitting in the wrong section.
+          - STYLE — LLM-tell phrases, run-on sentences, bare comparatives,
+            em-dashes, and `prose_cross_reference` (a display item woven in as a
+            noun phrase — "The projection is Figure 4A" — instead of cited
+            parenthetically, "… (Figure 4A)").
+          - INSIDER_CONTEXT — prose framed from inside the authoring session:
+            drafts the reader never saw, options we rejected, process narration.
+            ADVISORY, not a gate: "we withdraw the original explanation" is
+            legitimate because the reviewer read the original. Weigh these
+            highest on a response/cover letter, where the reader's frame is
+            narrowest."""
         return _manuscript_lint.lint_manuscript(state, slug)
 
     @mcp.tool()

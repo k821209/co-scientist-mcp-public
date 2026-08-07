@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-06b"
+GUIDE_VERSION = "2026-08-07a"
 
 
 def render_guide() -> str:
@@ -174,6 +174,15 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   comments (with `reviewer_name` + `round`), triaged like any comment
   (accept→revise, reject→rebuttal in `response`), then compiled into the
   letter. Internal `/paper-review` (`source='ai'`) is never included.
+- `/reviewer-frame-check` — read a finished response/cover letter with ONLY what
+  the recipient holds (their own report + the manuscript they actually saw) and
+  report what the text required from outside that bundle. Run it before a letter
+  is final. It catches what `lint_manuscript`'s `insider_context` cannot: a
+  removed panel described as having shown the CURRENT cohort when the reviewer
+  saw the old one, or numbers compared at mismatched parameters — every word
+  ordinary, the error only visible to a reader tracking what each number is for.
+  Must run as a subagent with a fresh context; a session that already knows the
+  analysis cannot perform this check on itself, only degrade it.
 - `/journal-requirements` — capture a target journal's submission spec
   for a paper type (Article / Short Communication / Letter / Review …):
   the agent reads the journal's live author guidelines and stores word

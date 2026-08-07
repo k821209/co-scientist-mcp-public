@@ -100,6 +100,26 @@ not "Major 3"; λ attributed to the arm it exists for.
 - **When compressing, cut claims, not context.** Safe: a sentence the manuscript
   already carries in full. Unsafe: the clause saying why a number matters.
 
+## Step 2b — check the letter from the reviewer's side (`/reviewer-frame-check`)
+
+The audit above is you checking your own writing, and it has a ceiling: you cannot
+notice context you never knew was missing. Four consecutive rounds of author
+corrections on one letter all traced to that, and two of them were invisible to
+any self-check and to `lint_manuscript` — a removed panel described as having
+shown the CURRENT cohort when the reviewer saw the earlier one, and diagnostics
+quoted at a different parameter value than the candidate set came from. Every word
+ordinary; wrong only to a reader tracking what each number is for.
+
+Run `/reviewer-frame-check` before the letter is final: it reads the letter with
+ONLY that reviewer's own report plus the manuscript they actually received, and
+reports what it had to supply from outside. One run per reviewer, a separate run
+with the editor's frame for the cover letter. Findings arrive as `source='ai'`
+comments in the normal triage flow — advisory, never blocking.
+
+It must run as a **subagent with a fresh context**. This session knows the
+analysis, so it cannot perform the check on itself; asking yourself to pretend
+otherwise is the failure mode, not the check.
+
 ## Step 3 — deliver
 
 Show the draft. Offer to save it — either as a new section

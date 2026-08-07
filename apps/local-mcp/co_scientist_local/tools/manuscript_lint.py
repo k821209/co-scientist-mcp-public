@@ -15,6 +15,8 @@ from __future__ import annotations
 import re
 
 from . import papers as _papers
+from .figures import list_figures as _list_figures
+from .tables import list_tables as _list_tables
 
 # ── tunables ─────────────────────────────────────────────────────────────────
 _DUP_JACCARD = 0.62        # sentence-pair similarity at/above this → duplication
@@ -22,17 +24,149 @@ _DUP_MIN_TOKENS = 6        # ignore very short sentences (boilerplate)
 _LONG_SENTENCE_WORDS = 45  # a single sentence longer than this → run-on flag
 _MAX_PER_KIND = 40         # cap noise
 
-# Result signals that do NOT belong in Methods.
-_RESULT_CUES = re.compile(
+# Result signals that do NOT belong in Methods — split by confidence, because a
+# bare reporting verb is ALSO an ordinary adjective. Reported from a real Methods
+# section: "…appears in the null as well as in the observed value" was flagged as
+# a finding on the strength of "observed". False positives here are expensive —
+# they train the reader to dismiss the rule.
+_RESULT_CUES_STRONG = re.compile(
     r"""(\bp\s*[<>=]\s*0?\.\d+ | \bp[-\s]?values?\b
-       | \bsignificant(?:ly)? | 유의(?:하|미|성|한)
-       | \b(?:we\s+)?(?:found|observed|showed|demonstrated|revealed|
+       | \bsignificant(?:ly)?\b | 유의(?:하|미|성|한)
+       | \bwe\s+(?:found|observed|showed|demonstrated|revealed|
              identified|detected|confirmed)\b
        | 나타났 | 확인(?:하였|되었|됐) | 관찰되 | 유의하게
        | \b(?:increased|decreased|higher|lower|greater|reduced|elevated|
              improved)\b[^.]{0,40}?(?:\d|%|배|fold))""",
     re.I | re.X,
 )
+# The same verbs without "we" — a finding when used as a verb ("observed a shift"),
+# procedure prose when used as a modifier ("the observed value", "these identified
+# genes"). The determiner in front is the discriminator.
+_WEAK_REPORT_VERB = re.compile(
+    r"""\b(?:found|observed|showed|demonstrated|revealed|identified|detected|
+             confirmed)\b""",
+    re.I | re.X,
+)
+_ADJECTIVAL_LEAD = re.compile(
+    r"\b(?:the|a|an|these|those|this|that|our|its|their|any|each|both|all)\s+$", re.I)
+
+
+def _result_cue(sent: str) -> "re.Match | None":
+    """A reported finding in `sent`, or None. See _RESULT_CUES_STRONG."""
+    m = _RESULT_CUES_STRONG.search(sent)
+    if m:
+        return m
+    for m in _WEAK_REPORT_VERB.finditer(sent):
+        if not _ADJECTIVAL_LEAD.search(sent[:m.start()]):
+            return m
+    return None
+
+
+# A MEASURED MAGNITUDE reported in Methods — the shape a methods-paper benchmark
+# takes, and the biggest blind spot the cue list had: it looked for statistical
+# language, so an entire Methods paragraph of sizes, times and memory ("per-sample
+# wall-clock time was 52.1 ± 8.5 s, peak resident memory was approximately
+# 3.0 GB, end-to-end runtime was approximately 88 minutes") passed clean while
+# appearing NOWHERE in Results.
+#
+# The discriminator is the verb: a past-tense report OF A MAGNITUDE ("was 52.1 s",
+# "averaging 5.5 MB") versus a past-tense ACTION that happens to carry a duration
+# ("were incubated for 30 s", "were shuffled up to 10,000 times"). Hence only
+# hedge words may sit between the verb and the number — an action participle there
+# means it is a procedure.
+#
+# Units are matched CASE-SENSITIVELY (via a scoped (?i:…) on the verb only): "kb"
+# and "Mb" are genomic coordinates and legitimately parameterise Methods, while
+# "KB"/"MB" are storage sizes.
+_MEASURED_MAGNITUDE = re.compile(
+    r"(?i:\b(?:was|were|averaged?|averaging|took|taking|required|requiring|"
+    r"reached|reaching|peaked\s+at|totall?ed|totall?ing|measured|measuring)\b)"
+    r"(?:\s+(?i:approximately|about|roughly|around|nearly|only|just|up\s+to|"
+    r"on\s+average))?"
+    r"\s*~?\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:±|\+/-)\s*\d[\d.]*)?[\s-]*"
+    r"(?:[KMGT]i?B|bytes?|s|sec|secs|second|seconds|min|mins|minute|minutes|"
+    r"h|hr|hrs|hour|hours|ms|fold|×)\b"
+)
+# "…on a 64-core, 256 GB node" is a machine SPEC, not an outcome. The giveaway is
+# a hardware noun immediately after the unit.
+_SPEC_TAIL = re.compile(
+    r"^\W{0,3}(?:nodes?|machines?|servers?|workstations?|clusters?|hosts?|CPUs?|"
+    r"GPUs?|cores?|processors?|threads?|instances?)\b", re.I)
+
+
+def _measured_magnitude(sent: str) -> "re.Match | None":
+    for m in _MEASURED_MAGNITUDE.finditer(sent):
+        if not _SPEC_TAIL.match(sent[m.end():m.end() + 24]):
+            return m
+    return None
+
+
+# Numeric literals worth cross-checking between sections and display items:
+# 2+ digits, or any decimal. Single digits are everywhere and carry no signal.
+_SIGNIFICANT_NUMBER = re.compile(r"\d[\d,]*\.\d+|\d[\d,]{1,}")
+
+
+def _numbers(text: str) -> set:
+    """Normalised numeric literals in `text` (commas dropped so 6,255 == 6255)."""
+    return {m.group(0).replace(",", "") for m in _SIGNIFICANT_NUMBER.finditer(text or "")}
+
+
+# Figure/Table cited as a noun phrase instead of parenthetically. The author's
+# convention: "…using metric MDS (Figure 4A)", never "The resulting projection is
+# Figure 4A."
+_DISPLAY_REF = re.compile(r"\b(?:S?Figures?|S?Tables?)\s+\d+[A-D]?\b")
+
+
+def _outside_parentheses(sent: str, start: int) -> bool:
+    """True when the character at `start` is not inside a (...) group.
+
+    Scans OUTWARD for the enclosing delimiter rather than looking at adjacent
+    characters: the multi-item parentheticals the harness already writes —
+    "(Figures 3A, 4, Table 1; SFigure 2)", "(STable 6, Figure 6)" — put a comma or
+    semicolon between the "(" and the match. Checking the two neighbouring
+    characters produced 6 false positives out of 11 hits on a real manuscript.
+    """
+    depth = 0
+    for ch in sent[:start]:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+    return depth == 0
+
+
+# Prose whose frame is the AUTHORING SESSION rather than the work. For a revision
+# the reader's frame is exactly (what they received) → (what they are receiving
+# now); a draft they never saw, or an option we rejected, is noise, and reads as
+# retracting something that never existed for them. Caught three times by hand on
+# one revision, in the manuscript, the response letter and the cover letter — and
+# it produced a factual error too (a removed panel described as having shown the
+# 285 accessions, when the panel the reviewers saw was the 69-accession one).
+_INSIDER_CONTEXT = [
+    # Draft history — the reader saw the submitted version, not our drafts.
+    (r"an earlier (?:draft|version)", "draft history — the reader never saw it"),
+    (r"a previous (?:draft|version)", "draft history — the reader never saw it"),
+    (r"in our first attempt", "draft history — the reader never saw it"),
+    (r"\bwe initially\b", "draft history — state the current claim, not its history"),
+    (r"\boriginally,? we\b", "draft history — state the current claim, not its history"),
+    (r"\bwe had written\b", "draft history — the reader never saw it"),
+    # Roads not taken — if we didn't do it, there is nothing to report.
+    (r"\bwe considered\b", "road not taken — if it was rejected, don't raise it"),
+    (r"\bwe decided against\b", "road not taken — if it was rejected, don't raise it"),
+    (r"\bwe (?:chose|opted) not to\b", "road not taken — don't raise it"),
+    (r"\bwe opted against\b", "road not taken — don't raise it"),
+    # Authoring-process narration — the process is not the finding.
+    (r"\bon reflection\b", "narrates the authoring process, not the work"),
+    (r"\bwe (?:judged|felt|realised|realized)\b",
+     "narrates the authoring process — state the claim and its basis"),
+    (r"more than we (?:expected|anticipated)",
+     "narrates the authoring process, not the work"),
+    # Reader-management asides — write one document for one reader.
+    (r"for readers who\b", "reader-management aside — decide, don't offer options"),
+    (r"readers who (?:want|prefer)\b", "reader-management aside — decide"),
+    (r"a reader who prefers\b", "reader-management aside — decide"),
+]
+_INSIDER_CONTEXT = [(re.compile(p, re.I), why) for p, why in _INSIDER_CONTEXT]
 # Procedure signals that (in force) do NOT belong in Results.
 _METHOD_CUES = re.compile(
     r"""(\b(?:was|were)\s+(?:performed|conducted|carried\s+out|prepared|
@@ -203,17 +337,58 @@ def lint_manuscript(state, slug: str) -> dict:
     # ── 2. section leakage ────────────────────────────────────────────────────
     leakage: list[dict] = []
     for key, title, sent, _t in sents:
-        if key in _METHODS_KEYS and _RESULT_CUES.search(sent):
+        if key in _METHODS_KEYS and _result_cue(sent):
             leakage.append({
                 "kind": "results_in_methods", "section": title, "sentence": sent[:220],
                 "note": ("a finding/statistic in Methods — Methods states what you "
                          "DID (past tense, procedures); move results to Results"),
+            })
+        elif key in _METHODS_KEYS and (mm := _measured_magnitude(sent)):
+            leakage.append({
+                "kind": "measurement_in_methods", "section": title,
+                "match": mm.group(0)[:80], "sentence": sent[:220],
+                "note": ("a MEASURED magnitude in Methods (size/time/memory/fold) — "
+                         "Methods describes the benchmark, Results reports what it "
+                         "measured; move the number and cite the table"),
             })
         elif key in _RESULTS_KEYS and _METHOD_CUES.search(sent):
             leakage.append({
                 "kind": "methods_in_results", "section": title, "sentence": sent[:220],
                 "note": ("procedure detail in Results — Results states what you "
                          "FOUND; move the how-to to Methods"),
+            })
+
+    # ── 2b. a number that lives in Methods and in a display item, but not in
+    #        Results. No NLP: if the value is important enough to tabulate and it
+    #        is stated in Methods while Results never mentions it, the result is
+    #        simply in the wrong section. This is what actually happened —
+    #        52.1 ± 8.5 s and 88 minutes sat in Methods and in Table 2, with zero
+    #        occurrences in Results, and the benchmark answered a reviewer's major
+    #        point. ────────────────────────────────────────────────────────────
+    methods_text = " ".join(s for k, _t, s, _x in sents if k in _METHODS_KEYS)
+    results_text = " ".join(s for k, _t, s, _x in sents if k in _RESULTS_KEYS)
+    if methods_text and results_text:
+        display_text_parts: list[str] = []
+        try:
+            for fig in _list_figures(state, slug, supplementary=None):
+                display_text_parts += [str(fig.get("caption") or ""),
+                                       str(fig.get("legend") or "")]
+            for tbl in _list_tables(state, slug, supplementary=None):
+                display_text_parts += [str(tbl.get("caption") or ""),
+                                       str(tbl.get("legend") or ""),
+                                       str(tbl.get("content") or "")]
+        except Exception:      # display items are optional context, never fatal
+            display_text_parts = []
+        display_nums = _numbers(" ".join(display_text_parts))
+        orphaned = sorted((_numbers(methods_text) & display_nums)
+                          - _numbers(results_text))
+        for num in orphaned[:10]:
+            leakage.append({
+                "kind": "result_only_in_methods", "value": num,
+                "note": (f"{num} appears in Methods and in a figure/table, but "
+                         f"never in Results — a measured value important enough to "
+                         f"tabulate belongs in Results; Methods should describe how "
+                         f"it was obtained"),
             })
 
     # ── 3. style tells + run-on sentences ─────────────────────────────────────
@@ -236,6 +411,16 @@ def lint_manuscript(state, slug: str) -> dict:
                           "note": "ambiguous comparative — state exactly what varies "
                                   "(more isoforms? longer CDS? higher score?)",
                           "sentence": sent[:180]})
+        for m in _DISPLAY_REF.finditer(sent):
+            if _outside_parentheses(sent, m.start()):
+                style.append({
+                    "kind": "prose_cross_reference", "section": title,
+                    "match": m.group(0), "sentence": sent[:180],
+                    "note": ("cite a display item parenthetically — "
+                             f"'… ({m.group(0)})', not woven into the sentence as a "
+                             "noun phrase ('The resulting projection is "
+                             f"{m.group(0)}')"),
+                })
         for m in _EM_DASH.finditer(sent):
             style.append({"kind": "em_dash", "section": title, "match": m.group(0),
                           "note": "em-dash reads as informal to many reviewers — "
@@ -256,21 +441,39 @@ def lint_manuscript(state, slug: str) -> dict:
                           "note": f"'{word}' used {cnt}x — vary or cut repeated "
                                   "rhetorical words"})
 
+    # ── 4. insider context — prose framed from inside the authoring session ───
+    insider: list[dict] = []
+    for _key, title, sent, _t in sents:
+        for rx, why in _INSIDER_CONTEXT:
+            m = rx.search(sent)
+            if m:
+                insider.append({
+                    "kind": "insider_context", "section": title,
+                    "match": m.group(0), "note": why, "sentence": sent[:180],
+                })
+
     duplication = duplication[:_MAX_PER_KIND]
     leakage = leakage[:_MAX_PER_KIND]
     style = style[:_MAX_PER_KIND]
-    total = len(duplication) + len(leakage) + len(style)
+    insider = insider[:_MAX_PER_KIND]
+    total = len(duplication) + len(leakage) + len(style) + len(insider)
     return {
         "slug": slug,
         "duplication": duplication,
         "section_leakage": leakage,
         "style": style,
+        # Reader-frame problems, reported separately from `style` because they are
+        # judgement calls the author must make: not every hit is guilty ("we
+        # withdraw the original explanation" is fine — the reviewer read the
+        # original). Advisory, never a gate.
+        "insider_context": insider,
         "summary": {
             "total": total,
             "by_kind": {
                 "duplication": len(duplication),
                 "section_leakage": len(leakage),
                 "style": len(style),
+                "insider_context": len(insider),
             },
             "clean": total == 0,
         },

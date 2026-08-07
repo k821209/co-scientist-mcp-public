@@ -151,3 +151,15 @@ needs its meaning, its scale or baseline, and — when several methods or review
 are in play — whose it is. A number without a scale is not information, and when
 you compress, cut claims rather than the context that makes a claim checkable.
 See "Write from the READER's context" in `project_guide()`.
+
+Two checks exist for the two ways this fails, and they catch different things:
+
+- `lint_manuscript` → **`insider_context`**, lexical. Flags drafts the reader never
+  saw, options you rejected, and process narration ("we considered", "an earlier
+  draft", "on reflection"). Advisory: "we withdraw the original explanation" is
+  legitimate, because the reviewer read the original.
+- `/reviewer-frame-check` → a **reader**, not a regex. Run it on a response or
+  cover letter before it is final, as a subagent with a fresh context. It is the
+  only thing that catches a passage whose words are all ordinary but which
+  misdescribes what the reviewer themselves saw — the highest-value finding kind,
+  and a factual bug rather than a readability one.
