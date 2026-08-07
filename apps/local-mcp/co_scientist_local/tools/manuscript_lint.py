@@ -136,6 +136,75 @@ def _outside_parentheses(sent: str, start: int) -> bool:
     return depth == 0
 
 
+# A line that is mostly one italic span. By the /response-letter convention a
+# reviewer's verbatim point is written in italics ("**1.** *<reviewer point>*")
+# while our reply is a blockquote — and `_strip_markdown` already drops blockquote
+# lines, so the ONLY prose being style-checked in a response letter was the
+# reviewer's own words. `run_on` fired on a 55-word quoted comment we are not
+# allowed to edit. Threshold rather than any-italics: a letter may italicise a
+# gene name inside its own sentence, and that sentence should still be checked.
+_ITALIC_SPAN = re.compile(r"(?<!\*)\*([^*\n]{4,})\*(?!\*)")
+_QUOTED_SHARE = 0.6
+
+
+def _is_quoted_source(line: str) -> bool:
+    """True when `line` is predominantly an italic quotation — someone else's
+    sentence, reproduced as evidence, and not ours to fix."""
+    stripped = line.strip()
+    if len(stripped) < 12:
+        return False
+    inside = sum(len(m.group(1)) for m in _ITALIC_SPAN.finditer(stripped))
+    return inside / len(stripped) >= _QUOTED_SHARE
+
+
+# "Major 3" with nobody's name on it. In a response letter whose OWN sections are
+# also headed "Major 1-4", a bare number reads as a self-reference and the reviewer
+# cannot tell we are pointing back at them. Correspondence only.
+_REVIEWER_REF = re.compile(r"\b(?:Major|Minor|Comment|Point)\s+\d+\b")
+_ATTRIBUTED = re.compile(r"reviewer(?:'s|s')?\s*\d*\s*$", re.I)
+
+
+def _unattributed_reviewer_ref(sent: str) -> "re.Match | None":
+    for m in _REVIEWER_REF.finditer(sent):
+        lead = sent[max(0, m.start() - 30):m.start()]
+        if not _ATTRIBUTED.search(lead):
+            return m
+    return None
+
+
+# Writing about the STATISTIC instead of the object it measures. Four corrections
+# in one session traced to this single habit, three of them on one sentence: "the
+# chance adjustment is not biased against fragmented genes, in that their typical
+# adjusted value is no lower than other genes'" — precise, and nearly unreadable.
+# The accepted version made the biological object the subject: "Fragmentation does
+# not lower the score a gene typically gets. It lowers the highest score a gene can
+# get." Estimator-property language is correct in METHODS, where the estimator IS
+# the subject, so this fires everywhere else.
+_ESTIMATOR_VOICE = [
+    (r"\bis (?:not )?biased\b", "estimator property — make the biological object the subject"),
+    (r"\bunbiased\b", "estimator property — say what it does to the object"),
+    (r"\bin expectation\b", "estimator property — state the effect on the object"),
+    (r"\bpenali[sz]ed on average\b", "estimator property — say what happens to the gene/sample"),
+    (r"\b(?:adjusted|corrected) value is no (?:lower|higher)\b",
+     "estimator property — state it as an event ('X does not lower Y')"),
+    (r"\bdoes not receive an inflated\b", "estimator property — name the object and the effect"),
+    (r"\btypical (?:adjusted|corrected) value\b", "estimator property — restate as an event"),
+]
+_ESTIMATOR_VOICE = [(re.compile(p, re.I), why) for p, why in _ESTIMATOR_VOICE]
+
+# The OTHER failure mode, and the reason the two ship together: correcting
+# estimator-voice overshoots into conversation ("the number that decides this",
+# "does not tell you that"), which was rejected in the same session. Plain is not
+# colloquial; both axes have to hold.
+_COLLOQUIAL = [
+    (r"\byou(?:r|rs)?\b", "second person — academic register is impersonal"),
+    (r"\btells? you\b", "conversational — state the relation"),
+    (r"\bdecides this\b", "vague verb standing in for a technical relation"),
+    (r"\bsays so\b", "conversational — name what is claimed"),
+]
+_COLLOQUIAL = [(re.compile(p, re.I), why) for p, why in _COLLOQUIAL]
+
+
 # Prose whose frame is the AUTHORING SESSION rather than the work. For a revision
 # the reader's frame is exactly (what they received) → (what they are receiving
 # now); a draft they never saw, or an option we rejected, is noise, and reads as
@@ -248,9 +317,14 @@ _METHODS_KEYS = {"methods", "materials", "materials_and_methods", "methods_and_m
 _RESULTS_KEYS = {"results"}
 
 
-def _strip_markdown(body: str) -> str:
+def _strip_markdown(body: str, *, drop_quotes: bool = False) -> str:
     """Drop code fences, tables, headings, images/links, HTML, citation tokens —
-    keep only prose so sentence checks don't trip on structure."""
+    keep only prose so sentence checks don't trip on structure.
+
+    `drop_quotes` additionally removes lines that are predominantly an italic
+    quotation. Used for correspondence, where by convention those lines are the
+    REVIEWER's verbatim words: they are evidence, not our prose, and we do not get
+    to edit them, so no check should fire on them."""
     text = body or ""
     text = re.sub(r"```.*?```", " ", text, flags=re.S)      # code fences
     text = re.sub(r"`[^`]*`", " ", text)                      # inline code
@@ -259,6 +333,8 @@ def _strip_markdown(body: str) -> str:
         s = line.strip()
         if not s or s.startswith("#") or s.startswith("|") or s.startswith(">"):
             continue                                          # heading / table / quote
+        if drop_quotes and _is_quoted_source(s):
+            continue                                          # someone else's sentence
         if re.match(r"^[-*+]\s|^\d+\.\s", s):                 # list marker → keep text
             s = re.sub(r"^[-*+]\s|^\d+\.\s", "", s)
         out_lines.append(s)
@@ -299,13 +375,27 @@ def lint_manuscript(state, slug: str) -> dict:
     """
     bundle = _papers.get_paper_state(state, slug)
     sections = bundle["sections"]
+    paper = bundle.get("paper") or {}
+
+    # Which sections are correspondence. The section KEY is checked first, but a
+    # letter is often its own paper, and then its keys are structural rather than
+    # type-declaring — a real response letter came back with `opening`,
+    # `reviewer1_major`, `reviewer2`, a cover letter with `letter`. Key matching
+    # alone therefore classified every one of them as manuscript and the profile
+    # never engaged on the documents it exists for, so the paper decides when the
+    # key does not. See doc_profile.resolve_kind.
+    corr_by_key = {
+        sec.get("key", ""): _doc_profile.is_correspondence(sec.get("key", ""), paper)
+        for sec in sections
+    }
 
     # Flatten to (section_key, section_title, sentence, token_set) once.
     sents: list[tuple[str, str, str, set]] = []
     for sec in sections:
         key = sec.get("key", "")
         title = sec.get("title", key)
-        for sent in _sentences(_strip_markdown(sec.get("body", ""))):
+        body = _strip_markdown(sec.get("body", ""), drop_quotes=corr_by_key.get(key, False))
+        for sent in _sentences(body):
             toks = _tokens(sent)
             if len(toks) >= _DUP_MIN_TOKENS:
                 sents.append((key, title, sent, set(toks)))
@@ -336,8 +426,8 @@ def lint_manuscript(state, slug: str) -> dict:
                 # response letter also legitimately overlap — different readers),
                 # but a letter repeating itself is plain redundancy, and a letter
                 # that pads is a defect in its own right.
-                if ki != kj and (_doc_profile.is_correspondence(ki)
-                                 or _doc_profile.is_correspondence(kj)):
+                if ki != kj and (corr_by_key.get(ki, False)
+                                 or corr_by_key.get(kj, False)):
                     suppressed.append({
                         "kind": "duplicate_sentence", "sections": sorted({ti, tj}),
                         "why": ("correspondence restating the manuscript is expected "
@@ -434,15 +524,55 @@ def lint_manuscript(state, slug: str) -> dict:
                                   "(more isoforms? longer CDS? higher score?)",
                           "sentence": sent[:180]})
         for m in _DISPLAY_REF.finditer(sent):
-            if _outside_parentheses(sent, m.start()):
-                style.append({
+            if not _outside_parentheses(sent, m.start()):
+                continue
+            # Parenthetical citation is a MANUSCRIPT convention: there a display
+            # item is evidence for a claim. In a letter reporting what changed the
+            # figures ARE the subject ("The submitted Figure 5 becomes the new
+            # Figure 4"), and rewriting those sentences would destroy the
+            # paragraph. 17 such findings landed on one real response letter.
+            if corr_by_key.get(key, False):
+                suppressed.append({
                     "kind": "prose_cross_reference", "section": title,
-                    "match": m.group(0), "sentence": sent[:180],
-                    "note": ("cite a display item parenthetically — "
-                             f"'… ({m.group(0)})', not woven into the sentence as a "
-                             "noun phrase ('The resulting projection is "
-                             f"{m.group(0)}')"),
+                    "match": m.group(0),
+                    "why": ("correspondence may make a display item the subject — "
+                            "parenthetical citation is a manuscript convention"),
                 })
+                continue
+            style.append({
+                "kind": "prose_cross_reference", "section": title,
+                "match": m.group(0), "sentence": sent[:180],
+                "note": ("cite a display item parenthetically — "
+                         f"'… ({m.group(0)})', not woven into the sentence as a "
+                         "noun phrase ('The resulting projection is "
+                         f"{m.group(0)}')"),
+            })
+        # Estimator voice: correct in Methods (the estimator IS the subject there),
+        # a readability failure anywhere else.
+        if key not in _METHODS_KEYS:
+            for rx, why in _ESTIMATOR_VOICE:
+                m = rx.search(sent)
+                if m:
+                    style.append({"kind": "estimator_voice", "section": title,
+                                  "match": m.group(0), "note": why,
+                                  "sentence": sent[:180]})
+        # Shipped WITH estimator_voice on purpose: fixing one by hand overshoots
+        # into the other, and both were rejected in the same session.
+        for rx, why in _COLLOQUIAL:
+            m = rx.search(sent)
+            if m:
+                style.append({"kind": "colloquial_register", "section": title,
+                              "match": m.group(0), "note": why,
+                              "sentence": sent[:180]})
+        if corr_by_key.get(key, False) and (m := _unattributed_reviewer_ref(sent)):
+            style.append({
+                "kind": "unattributed_reviewer_reference", "section": title,
+                "match": m.group(0), "sentence": sent[:180],
+                "note": (f"'{m.group(0)}' with nobody's name on it — this letter's own "
+                         f"sections are numbered the same way, so write \"the "
+                         f"reviewer's {m.group(0)}\" / \"Reviewer 1's "
+                         f"{m.group(0)}\""),
+            })
         for m in _EM_DASH.finditer(sent):
             style.append({"kind": "em_dash", "section": title, "match": m.group(0),
                           "note": "em-dash reads as informal to many reviewers — "

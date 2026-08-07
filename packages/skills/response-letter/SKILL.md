@@ -100,6 +100,44 @@ not "Major 3"; λ attributed to the arm it exists for.
 - **When compressing, cut claims, not context.** Safe: a sentence the manuscript
   already carries in full. Unsafe: the clause saying why a number matters.
 
+## Writing the letter: three rules from repeated corrections
+
+**A declined request needs its REASON, in the same breath.** A bare
+"MDSearch was not benchmarked." headlines what we did not do; deleting it hides
+non-compliance and re-creates the very `frame_error` the frame check catches. The
+resolution is neither — it is the reason:
+
+> "We benchmarked the LD-based haplotyping route **because it is the direct
+> alternative to what vcf2hash does**: it produces gene-level haplotypes from the
+> same input. MDSearch and PLINK LD pruning select markers rather than build
+> haplotypes, so we cite them in the Discussion as complementary tools instead of
+> running a head-to-head experiment against either."
+
+Stated bare it is an omission; stated with the reason it is a scoping decision.
+That satisfies both constraints at once — lead with what was done, and never bury
+what was not.
+
+**Attribute the reviewer's numbering.** Never a bare "Major 3": this letter's own
+sections are numbered the same way, so the reviewer cannot tell you are pointing
+back at them. Write "the reviewer's Major 3" / "Reviewer 1's Major 3".
+`lint_manuscript` flags this as `unattributed_reviewer_reference` under the
+correspondence profile.
+
+**Before you delete OR restate a qualification, read the manuscript passage.**
+Re-deriving a caveat from memory inverts it. Real case, same clauses reordered:
+
+| | |
+|---|---|
+| manuscript | "…so this describes the candidate set rather than testing it independently; **what it adds is that the 15 act together**, which per-gene significance does not by itself imply." |
+| letter | "…so this describes the set rather than testing it independently, **but** per-gene significance does not by itself imply that the 15 act together." |
+
+The manuscript reports a gain; the letter apologises for a shortfall. A letter that
+apologises for a result the paper claims is a real inconsistency for a reviewer to
+find. Expect contradiction as often as duplication.
+
+And: **new results live in the manuscript.** The letter says what changed and
+where; it does not re-derive the finding.
+
 ## Step 2b — check the letter from the reviewer's side (`/reviewer-frame-check`)
 
 The audit above is you checking your own writing, and it has a ceiling: you cannot

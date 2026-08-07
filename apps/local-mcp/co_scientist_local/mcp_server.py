@@ -1260,9 +1260,16 @@ def build_mcp(state: State) -> FastMCP:
             number that appears in Methods and in a figure/table but NEVER in
             Results, which is a result sitting in the wrong section.
           - STYLE — LLM-tell phrases, run-on sentences, bare comparatives,
-            em-dashes, and `prose_cross_reference` (a display item woven in as a
+            em-dashes, `prose_cross_reference` (a display item woven in as a
             noun phrase — "The projection is Figure 4A" — instead of cited
-            parenthetically, "… (Figure 4A)").
+            parenthetically, "… (Figure 4A)"), `estimator_voice` (writing about
+            the statistic instead of the object it measures — "the adjustment is
+            not biased against fragmented genes" rather than "fragmentation
+            lowers the highest score a gene can get"; allowed in Methods, where
+            the estimator IS the subject), `colloquial_register` (the failure you
+            land in by fixing the previous one by hand — second person, "tells
+            you", vague verbs), and `unattributed_reviewer_reference` (a bare
+            "Major 3" in a letter whose own sections are numbered the same way).
           - INSIDER_CONTEXT — prose framed from inside the authoring session:
             drafts the reader never saw, options we rejected, process narration.
             ADVISORY, not a gate: "we withdraw the original explanation" is

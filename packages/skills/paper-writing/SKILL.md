@@ -163,6 +163,53 @@ because the reviewer read the original explanation). Weigh it highest on a
 response letter or cover letter, where the reader's frame is narrowest and you
 have the most session history to leak.
 
+### 2d-bis. Make the OBJECT the subject, not the statistic
+
+The single largest source of "말이 어렵다" corrections. Four in one session traced
+to this habit, three of them on the same sentence:
+
+| | |
+|---|---|
+| ✗ | "so a fragmented gene is tested with fewer accessions behind each category rather than penalised on average" |
+| ✗ | "The chance adjustment is not biased against fragmented genes, in that their typical adjusted value is no lower than other genes'" |
+| ✓ | "**Fragmentation does not lower the score a gene typically gets. It lowers the highest score a gene can get.**" |
+
+Both rejects have an *estimator* as the grammatical subject and a *property of an
+estimator* as the predicate ("is not biased against", "in expectation", "typical
+adjusted value is no lower"). That register is precise and nearly unreadable, and
+it is the default a model reaches for when describing a correction. Estimator
+language belongs in **Methods**, where the estimator genuinely is the subject.
+Everywhere else, the biological object acts: *Fragmentation lowers X.*
+
+**State statistics as events.** "the top 5% reach 0.046 or above", not "the 95th
+percentile is 0.046". And give magnitudes, not only ratios — "halves" without both
+numbers leaves the reader no scale.
+
+**Plain is not conversational.** Fixing the sentence above overshot into "the
+number that **decides this**" / "does not **tell you** that", which was rejected
+too. Two independent axes, and a sentence can pass one and fail the other:
+
+- *concrete subject* — can the reader picture what is doing the acting?
+- *declarative register* — no second person, no vague verb standing in for a
+  technical relation, no tag clauses
+
+`lint_manuscript` flags both sides: `estimator_voice` (outside Methods) and
+`colloquial_register`. They ship together on purpose — correcting one by hand is
+how you land in the other.
+
+### 2d-ter. Scope a claim to the case it came from
+
+A heading read *"the two tests are not equally demanding of 285 accessions"* and
+our own text contradicted it three sentences later: another locus IS detected in
+the same 285. The claim came from one case and was written as a general one.
+
+- The claim sentence **names its case**: "*Detecting E2* asks more of 285
+  accessions in one test than in the other."
+- Say the link is specific: "the shortfall is specific to E2 rather than general".
+- If there is a genuine generalisation, give it its own sentence — and check it
+  actually covers the counterexample ("the cohort a gene-level test needs scales
+  with that gene's allele-type count" covers both loci; the original did not).
+
 ### 2e. Cite display items parenthetically
 
 A figure or table is cited in parentheses, never woven into the sentence as a noun

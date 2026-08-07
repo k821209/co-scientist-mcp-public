@@ -60,7 +60,40 @@ def section_kind(key: str | None) -> str:
     return _KEY_KINDS.get(str(key).strip().lower().replace("-", "_"), MANUSCRIPT)
 
 
-def is_correspondence(key: str | None) -> bool:
-    """True for a response/cover letter section — a document whose recipient is
-    deciding compliance, not evaluating method, so pointing elsewhere is correct."""
-    return section_kind(key) != MANUSCRIPT
+def paper_kind(paper: dict | None) -> str:
+    """Classify a whole PAPER — needed because correspondence is often kept as its
+    own paper rather than as a section of the manuscript.
+
+    Section keys then carry structure, not type: a real response letter came back
+    with `opening`, `reviewer1_major`, `reviewer1_minor`, `reviewer2`, and a cover
+    letter with `letter`. None of those declare a kind, so key matching alone
+    classified every one of them as MANUSCRIPT and the profile never engaged on the
+    documents it was written for.
+
+    `doc_type` is necessary but not sufficient: it only distinguishes "paper" from
+    "report", and a report may be a letter or an internal write-up. So gate on
+    `report` and then read the slug/title, which the skills do set descriptively
+    ("vcf2hash-response-letter", "Cover Letter: …"). Anything else stays
+    MANUSCRIPT — an ordinary report should keep the stricter standard.
+    """
+    if not paper or str(paper.get("doc_type") or "") != "report":
+        return MANUSCRIPT
+    hay = f"{paper.get('slug', '')} {paper.get('title', '')}".lower()
+    if "cover" in hay and "letter" in hay:
+        return COVER_LETTER
+    if "response" in hay or "rebuttal" in hay or "reply" in hay:
+        return RESPONSE_LETTER
+    return MANUSCRIPT
+
+
+def resolve_kind(key: str | None, paper: dict | None = None) -> str:
+    """The kind that applies to one section. A key that DECLARES a type wins; when
+    it is merely structural, the paper decides."""
+    by_key = section_kind(key)
+    return by_key if by_key != MANUSCRIPT else paper_kind(paper)
+
+
+def is_correspondence(key: str | None, paper: dict | None = None) -> bool:
+    """True for a response/cover letter — a document whose recipient is deciding
+    compliance, not evaluating method, so pointing elsewhere is correct."""
+    return resolve_kind(key, paper) != MANUSCRIPT

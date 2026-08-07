@@ -606,6 +606,31 @@ def prepare_export(state: State, slug: str) -> dict:
     warnings.extend(_stale_artifact_warnings(state, slug, figs + supp_figs,
                                              tbls + supp_tbls))
 
+    # A registered supplementary item with NO caption. Cheap and certain: two
+    # supplementary tables shipped cited-but-uncaptioned in one session, so the
+    # reviewer's copy carried an attachment that nothing described.
+    #
+    # The richer check the field asked for — opening the workbook and diffing the
+    # caption's own claims (sheet count, row count, value ranges) against the file
+    # — is NOT attempted: it needs spreadsheet access, and a caption whose numbers
+    # are merely stale is the `result_only_in_methods`/staleness class above.
+    for tbl in supp_tbls:
+        if not str(tbl.get("caption") or "").strip():
+            n = tbl.get("table_number")
+            label = (f"STable {n - _tables.SUPPLEMENTARY_NUMBER_OFFSET}"
+                     if isinstance(n, int) else f"table {n}")
+            warnings.append(
+                f"{label} is registered but has no caption — a cited supplementary "
+                f"table with nothing describing it reaches the reviewer as an "
+                f"unexplained attachment"
+            )
+    for fig in supp_figs:
+        if not str(fig.get("caption") or "").strip():
+            n = fig.get("figure_number")
+            label = (f"SFigure {n - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
+                     if isinstance(n, int) else f"figure {n}")
+            warnings.append(f"{label} is registered but has no caption")
+
     # Legend QA — over-long or Results-duplicating figure/table legends. One
     # summary line per flagged item feeds the pre-flight warnings; the full
     # detail is available from lint_legends(slug).

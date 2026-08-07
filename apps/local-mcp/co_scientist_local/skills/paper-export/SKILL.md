@@ -20,6 +20,29 @@ No re-implementation of the export pipeline in the skill — the MCP
 tools encapsulate the whole flow. The skill's job is to ASK what
 format/path, surface warnings, and call the right tool.
 
+
+## Re-running an analysis invalidates its prose — all of it
+
+Nothing downstream of a rerun updates itself, and the failures are FACTUAL, not
+merely stale. Three shipped-ready cases in one session:
+
+- **A legend described a panel that no longer exists.** A figure was restructured
+  by editing its plotting script; the legend still listed four panels with `(C)` =
+  MDS, and the figure had three with `(C)` = the heatmap. A reviewer would have
+  looked for a panel that is not there and found panel C under the wrong letter.
+  This is a STRUCTURAL mismatch, not a wrong number — no numeric check sees it.
+- **A supplementary caption was a whole cohort out of date**: "top 200 novel
+  candidates … Two-sheet workbook … AMI range 0.349–0.738 … five of six", against
+  a file with 3 sheets, 477 rows, AMI 0.011–0.108, four of six. Every claim wrong.
+- **Two supplementary tables had no caption at all**, while being cited in the
+  manuscript. `prepare_export` now warns for this one.
+
+So after any rerun or figure restructure, diff each of these against the
+regenerated artifact — the legend, the supplementary caption, and the table
+description. `prepare_export` catches the classes it can see (a linked analysis
+newer than the artifact, an uncaptioned supplementary item); the panel-letter and
+in-file claims are yours to check.
+
 ## Flow
 
 ### 1. Resolve the target paper
