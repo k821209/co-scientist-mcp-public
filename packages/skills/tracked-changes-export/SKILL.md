@@ -359,6 +359,54 @@ for tbl in list(root.iter(W + "tbl")):
         tbl.getparent().remove(tbl)
 ```
 
+## Stamp the author — every mark says "Unknown Author" until you do
+
+`.uno:CompareDocuments` writes `w:author` from the LibreOffice profile's user
+name, and the isolated profile this skill mandates has **none**. So the isolation
+that keeps the user's settings untouched is exactly what produces the defect: it
+fires on EVERY run, not intermittently. One resubmission shipped 848 marks all
+attributed to `Unknown Author`, in Word's review pane and Google Docs' suggestion
+list alike, and passed every check below.
+
+Do it in the same `lxml` pass as the table work, before repackaging. Post-processing
+beats configuring the profile: the config surface can fail silently and leaves you
+with nothing to verify, while this is deterministic and the check below proves it
+took effect.
+
+```python
+def set_author(root, author: str) -> int:
+    """Rewrite every w:author in this part. Covers w:ins / w:del AND the
+    *PrChange elements (rPrChange, pPrChange, tblPrChange…), which carry their
+    own author attribute and are easy to miss."""
+    n = 0
+    for el in root.iter():
+        if el.get(W + "author") not in (None, author):
+            el.set(W + "author", author)
+            n += 1
+    return n
+```
+
+Run it over **every part that can carry revisions** — `word/document.xml` plus any
+`word/header*.xml` / `word/footer*.xml`. A header change otherwise keeps the
+placeholder while the body looks fixed, and the check would then catch you.
+
+The name comes from the PAPER, never a hardcoded string:
+
+```python
+authors = paper.get("authors") or []
+author = next((a["name"] for a in authors if a.get("corresponding")),
+              authors[0]["name"] if authors else "Authors")
+```
+
+Corresponding author first, then the first author, then the literal `"Authors"`.
+What must never appear is `Unknown Author` — that is the failure, not a fallback.
+
+**The `date` attribute is the compare-run time, and that is correct.** Every mark
+carries the moment the diff was generated, not when the edit was made; a
+two-document compare cannot know the latter. Do not try to "fix" it — a reviewer
+seeing 848 changes at one timestamp is seeing the truth about how the file was
+built.
+
 Repackage with `[Content_Types].xml` written first.
 
 ### 6. Validate — all of these, every time
@@ -369,13 +417,22 @@ Repackage with `[Content_Types].xml` written first.
 | Zip intact | `zipfile.ZipFile(f).testzip() is None` |
 | Opens as a document | `docx.Document(f)` — report paragraph and table counts |
 | Real revision marks | count `w:ins` / `w:del` — must be non-zero |
-| Every mark attributed | no `w:ins`/`w:del` without `w:author` |
+| Every mark attributed **to a real name** | `Counter(e.get(W+"author") for e in ins + dele)` — **print the set**, and FAIL when it is empty, contains `None`, or contains any of `Unknown Author` / `Unknown` / `Author` / `""`. A marked-up copy normally has exactly one author |
 | Media accounted for | `word/media/` count matches **the input you compared** — normally every figure, since you compare the real documents. 0 is only correct if you took the `strip_images()` fallback, which must then be stated in the response letter |
 | No empty tables | every `w:tbl` has text or graphics |
 
-Report the insertion / deletion counts to the user. The ratio is informative:
-insertions far exceeding deletions means the revision mostly *added* material,
-which is worth stating in the response letter.
+Report the insertion / deletion counts to the user **and the author set** —
+`authors: {'Yang Jae Kang': 848}`. Printing the value is as important as failing on
+it: `5 all authored: OK` is a line an operator skims past, and that is precisely how
+848 marks attributed to `Unknown Author` shipped through a checklist that "passed".
+
+The general shape, worth carrying to every check you write here: **a validation that
+asks "is the field populated" cannot see a populated-but-useless field**, and a
+placeholder emitted by a tool is exactly the case that satisfies presence while
+failing intent. Test the value, and show it.
+
+The ratio is informative too: insertions far exceeding deletions means the revision
+mostly *added* material, which is worth stating in the response letter.
 
 ### 7. Upload
 
