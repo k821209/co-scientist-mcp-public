@@ -10,11 +10,17 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-07e"
+GUIDE_VERSION = "2026-08-08a"
 
 
-def render_guide() -> str:
-    """The canonical session-start guide, rendered as markdown."""
+def render_guide(include_video: bool = True) -> str:
+    """The canonical session-start guide, rendered as markdown.
+
+    `include_video=False` drops the video/YouTube skill bullets — used when the
+    video tool family is not registered (features.video_enabled), so the guide
+    never documents tools the session cannot call. ~2k chars of guide per
+    session on machines that never touch video."""
+    video_block = _VIDEO_GUIDE if include_video else ""
     return f"""# co-scientist MCP — session guide (v{GUIDE_VERSION})
 
 ## How this project works
@@ -226,53 +232,7 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   generate → critique) around `generate_image` for schematics
   (pathway, network, workflow, comparison, architecture, tree).
   Real data plots go through `/analysis-run` instead.
-- `/video-harness` — for VIDEO projects: raw recording → publish-ready via
-  the `vh` toolkit. One-shot `vh run <input> --preset <screencast|
-  talkinghead|shorts|shorts_boxed|slides> [--lang ko]` (clean → reframe →
-  transcribe → caption); chapters + title cards are a library step
-  (Claude-authored `Chapter(start,title)`). Register output with
-  `add_video`. With `VH_RENDER_HOST` set, transcription AND encoding
-  auto-offload to a remote GPU; unset → everything local. Render host is user
-  config only — never hardcode an address.
-- `/video-revision` — address open Video-tab timecode comments
-  (`list_video_comments` → re-run only the stage each needs →
-  `resolve_video_comment`). The video analogue of `/paper-revision`.
-- `/video-dub` — dub a video into another language (default English) with free
-  Kokoro TTS on the render host: Claude translates each segment →
-  `vh.steps.dub` (tts_segments → assemble_dub → mux_audio) + translated captions
-  burned via `compose_summary(caption_words=…)` → `add_video` "(EN)" variant.
-  Prereq: kokoro in the render host's VH_RENDER_PYTHON env.
-- `/video-publish` — publish a Video-tab item to YouTube (`youtube_connect`
-  device-flow OAuth → `youtube_upload` from the local mp4 → URL saved on the
-  video). Long-form or #Shorts. **Default privacy unlisted; public only on
-  explicit user confirmation** (outward-facing). Idempotent (re-run updates
-  metadata). Needs the user's YOUTUBE_CLIENT_ID/SECRET. Playlists (same OAuth,
-  no re-consent): `youtube_create_playlist`, `youtube_add_to_playlist`,
-  `youtube_list_playlists`, or pass `playlist=` to `youtube_upload` to file the
-  video into a series playlist on publish (created if the title is new).
-  Thumbnails: pass `thumbnail=` (local PNG/JPEG ≤2MB — 1280x720 for 16:9,
-  1080x1920 for a Short) to `youtube_upload`, or `youtube_set_thumbnail` later.
-  Custom thumbnails require a VERIFIED channel; a refusal is reported in
-  `thumbnail_error` and never fails the upload. **Shorts caveat:** on a 9:16
-  Short a custom thumbnail only replaces the 16:9 cards (search/suggested); the
-  vertical thumbnail in the Shorts feed stays a frame YouTube picked and no API
-  can set it (only Studio/mobile "choose a frame"). Verified 2026-08-04 by
-  comparing renditions on live Shorts AND against the official reference, which
-  never mentions Shorts or 9:16 — every documented rendition is 16:9. So do
-  not plan thumbnail back-fills as a way to lift Shorts-feed views.
-- `/news-short` — synthesize a vertical news Short from text (no source video):
-  fact-check → script → `news.edge_tts_speak` (free Korean neural TTS; Kokoro
-  has no Korean) → `news.align_to_script(transcribe(...), script)` for accurate
-  captions → `news.montage` Ken-Burns image band → burned captions → `add_video`
-  (9:16) → `/video-publish`. Guardrails: source + publish date on screen, AI
-  images disclosed. Prereq: `pip install edge-tts`.
-- `/science-short [topic]` — a science explainer Short with DOI-verified
-  references: research (2-source) → fact-check vs primary paper → reference
-  management in co-scientist (`search_works` → `verify_doi` →
-  `add_reference_by_doi(cited_in=[short_id])`, never hand-typed) → self-drawn
-  graphics + `news.build_short` → reference card + description auto-built from
-  `list_references(slug, cited_in=short_id)` via `vh.refs_card`.
-- `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
+{video_block}- `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
   full presentation pipeline: deck concept + slides + render
   (`render_deck`) + PPTX export (`export_deck_to_pptx`).
   **Iteration discipline:** while editing slides, preview with
@@ -608,4 +568,55 @@ Before you regenerate or overwrite any existing figure:
 A figure with `rerender_pending=true` means the user edited the prompt
 in the dashboard and is asking for a re-render: render it from the
 stored `prompt` (overwrite clears the flag automatically).
+"""
+
+
+# The video/YouTube skill bullets — spliced into render_guide() only when the
+# video tool family is registered on this machine.
+_VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → publish-ready via
+  the `vh` toolkit. One-shot `vh run <input> --preset <screencast|
+  talkinghead|shorts|shorts_boxed|slides> [--lang ko]` (clean → reframe →
+  transcribe → caption); chapters + title cards are a library step
+  (Claude-authored `Chapter(start,title)`). Register output with
+  `add_video`. With `VH_RENDER_HOST` set, transcription AND encoding
+  auto-offload to a remote GPU; unset → everything local. Render host is user
+  config only — never hardcode an address.
+- `/video-revision` — address open Video-tab timecode comments
+  (`list_video_comments` → re-run only the stage each needs →
+  `resolve_video_comment`). The video analogue of `/paper-revision`.
+- `/video-dub` — dub a video into another language (default English) with free
+  Kokoro TTS on the render host: Claude translates each segment →
+  `vh.steps.dub` (tts_segments → assemble_dub → mux_audio) + translated captions
+  burned via `compose_summary(caption_words=…)` → `add_video` "(EN)" variant.
+  Prereq: kokoro in the render host's VH_RENDER_PYTHON env.
+- `/video-publish` — publish a Video-tab item to YouTube (`youtube_connect`
+  device-flow OAuth → `youtube_upload` from the local mp4 → URL saved on the
+  video). Long-form or #Shorts. **Default privacy unlisted; public only on
+  explicit user confirmation** (outward-facing). Idempotent (re-run updates
+  metadata). Needs the user's YOUTUBE_CLIENT_ID/SECRET. Playlists (same OAuth,
+  no re-consent): `youtube_create_playlist`, `youtube_add_to_playlist`,
+  `youtube_list_playlists`, or pass `playlist=` to `youtube_upload` to file the
+  video into a series playlist on publish (created if the title is new).
+  Thumbnails: pass `thumbnail=` (local PNG/JPEG ≤2MB — 1280x720 for 16:9,
+  1080x1920 for a Short) to `youtube_upload`, or `youtube_set_thumbnail` later.
+  Custom thumbnails require a VERIFIED channel; a refusal is reported in
+  `thumbnail_error` and never fails the upload. **Shorts caveat:** on a 9:16
+  Short a custom thumbnail only replaces the 16:9 cards (search/suggested); the
+  vertical thumbnail in the Shorts feed stays a frame YouTube picked and no API
+  can set it (only Studio/mobile "choose a frame"). Verified 2026-08-04 by
+  comparing renditions on live Shorts AND against the official reference, which
+  never mentions Shorts or 9:16 — every documented rendition is 16:9. So do
+  not plan thumbnail back-fills as a way to lift Shorts-feed views.
+- `/news-short` — synthesize a vertical news Short from text (no source video):
+  fact-check → script → `news.edge_tts_speak` (free Korean neural TTS; Kokoro
+  has no Korean) → `news.align_to_script(transcribe(...), script)` for accurate
+  captions → `news.montage` Ken-Burns image band → burned captions → `add_video`
+  (9:16) → `/video-publish`. Guardrails: source + publish date on screen, AI
+  images disclosed. Prereq: `pip install edge-tts`.
+- `/science-short [topic]` — a science explainer Short with DOI-verified
+  references: research (2-source) → fact-check vs primary paper → reference
+  management in co-scientist (`search_works` → `verify_doi` →
+  `add_reference_by_doi(cited_in=[short_id])`, never hand-typed) → self-drawn
+  graphics + `news.build_short` → reference card + description auto-built from
+  `list_references(slug, cited_in=short_id)` via `vh.refs_card`.
 """

@@ -5,6 +5,13 @@ description: Produce a fact-checked science Short with real DOI-verified referen
 
 # /science-short
 
+> **Video tools missing?** The video/YouTube tool family registers only on
+> machines that do video work (a YouTube token exists, or
+> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__co_scientist__add_video`
+> / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
+> session — needed once per fresh machine; after `youtube_connect` the token file
+> auto-enables it.
+
 **Triggers:** "make a science Short about …," "explain this study as a Short,"
 "science explainer with references." Builds on `/news-short` (text → vertical
 Short) but adds a **rigorous reference pipeline**: every on-screen and

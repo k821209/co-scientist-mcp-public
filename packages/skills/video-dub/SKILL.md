@@ -5,6 +5,13 @@ description: Dub a video into another language (default English) with free open-
 
 # /video-dub
 
+> **Video tools missing?** The video/YouTube tool family registers only on
+> machines that do video work (a YouTube token exists, or
+> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__co_scientist__add_video`
+> / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
+> session — needed once per fresh machine; after `youtube_connect` the token file
+> auto-enables it.
+
 **Triggers:** "make an English version," "dub this into English/Japanese/…,"
 "port this Korean video to English." Sits on top of `/video-harness`; the
 video counterpart of translating a paper for a different audience.

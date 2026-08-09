@@ -43,6 +43,7 @@ from .tools import todos as _todos
 from .tools import verification as _verification
 from .tools import videos as _videos
 from .tools import youtube as _youtube
+from . import features as _features
 
 
 def build_mcp(state: State) -> FastMCP:
@@ -103,7 +104,7 @@ def build_mcp(state: State) -> FastMCP:
         Lives in the installed `co_scientist_local` package so updates flow
         via `pip install --upgrade` — no need to re-download CLAUDE.md.
         """
-        return render_guide()
+        return render_guide(include_video=_features.video_enabled())
 
     # ─── project memory ──────────────────────────────────────────────────────
     @mcp.tool()
@@ -1245,45 +1246,25 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def lint_manuscript(slug: str) -> dict[str, Any]:
-        """Deterministic manuscript QA over a paper's sections — the prose
-        analogue of the deck layout lint. Returns grouped warnings + a summary;
-        `summary.clean == True` means zero issues. Run it before marking sections
-        complete and resolve every warning (hard done-gate).
+        """Deterministic manuscript QA over a paper's sections. Returns grouped
+        warnings + a summary; `summary.clean == True` means zero issues. Run
+        before marking sections complete and resolve every warning (hard
+        done-gate).
 
-        Groups:
-          - DUPLICATION — the same sentence restated across sections.
-          - SECTION LEAKAGE — results/statistics in Methods
-            (`results_in_methods`), procedure detail in Results
-            (`methods_in_results`), a MEASURED magnitude in Methods
-            (`measurement_in_methods` — sizes/times/memory/fold, the shape a
-            methods-paper benchmark takes), and `result_only_in_methods`: a
-            number that appears in Methods and in a figure/table but NEVER in
-            Results, which is a result sitting in the wrong section.
-          - STYLE — LLM-tell phrases, run-on sentences, bare comparatives,
-            em-dashes, `prose_cross_reference` (a display item woven in as a
-            noun phrase — "The projection is Figure 4A" — instead of cited
-            parenthetically, "… (Figure 4A)"), `estimator_voice` (writing about
-            the statistic instead of the object it measures — "the adjustment is
-            not biased against fragmented genes" rather than "fragmentation
-            lowers the highest score a gene can get"; allowed in Methods, where
-            the estimator IS the subject), `colloquial_register` (the failure you
-            land in by fixing the previous one by hand — second person, "tells
-            you", vague verbs), and `unattributed_reviewer_reference` (a bare
-            "Major 3" in a letter whose own sections are numbered the same way).
-          - INSIDER_CONTEXT — prose framed from inside the authoring session:
-            drafts the reader never saw, options we rejected, process narration.
-            ADVISORY, not a gate: "we withdraw the original explanation" is
-            legitimate because the reviewer read the original. Weigh these
-            highest on a response/cover letter, where the reader's frame is
-            narrowest.
+        Groups: DUPLICATION (same sentence restated across sections),
+        SECTION_LEAKAGE (results/measurements in Methods, procedure in Results,
+        a number in Methods+display item but never Results), STYLE (LLM tells,
+        run-ons, bare comparatives, em-dashes, prose-form display refs,
+        estimator voice, colloquial register, bare reviewer numbering), and
+        INSIDER_CONTEXT (prose framed from inside the authoring session —
+        ADVISORY, weigh highest on letters). Every rule, with the evidence
+        behind it and per-rule guidance, is documented in /paper-writing
+        ("Writing craft") — read that when a warning is unclear.
 
-        Also returns SUPPRESSED_BY_PROFILE — findings withheld because of what kind
-        of document the section is. "Say it once" is a manuscript rule: a response
-        or cover letter kept as a section legitimately restates what the manuscript
-        now says, because its reader is deciding whether a point was met, not
-        evaluating the method. Repetition WITHIN one letter is still reported. The
-        list is surfaced rather than dropped so the exemption is auditable — read it
-        if a result looks too clean."""
+        Document-kind aware: a response/cover letter (own paper or section) is
+        held to correspondence standards, and exemptions are returned in
+        SUPPRESSED_BY_PROFILE rather than dropped — read it before treating a
+        clean result as clean."""
         return _manuscript_lint.lint_manuscript(state, slug)
 
     @mcp.tool()
@@ -1849,158 +1830,12 @@ def build_mcp(state: State) -> FastMCP:
         {count, order}."""
         return _decks.reorder_deck(state, slug, deck_id, order)
 
-    # ─── videos (project-level deliverables + timecode comments) ──────────────
-    @mcp.tool()
-    def add_video(
-        title: str, video_id: str | None = None, local_path: str | None = None,
-        aspect_ratio: str = "16:9", fps: float | None = None,
-        duration_s: float | None = None, description: str | None = None,
-        srt_local_path: str | None = None, ass_local_path: str | None = None,
-        overwrite: bool = False,
-    ) -> dict[str, Any]:
-        """Register a project video deliverable. Upload the mp4 via `local_path`
-        (+ optional .srt/.ass sidecars); `aspect_ratio` is "16:9" or "9:16".
-        Shown in the dashboard's Video tab (admin). Returns the video doc."""
-        return _videos.add_video(
-            state, title=title, video_id=video_id, local_path=local_path,
-            aspect_ratio=aspect_ratio, fps=fps, duration_s=duration_s,
-            description=description, srt_local_path=srt_local_path,
-            ass_local_path=ass_local_path, overwrite=overwrite,
-        )
-
-    @mcp.tool()
-    def list_videos() -> list[dict[str, Any]]:
-        """List the project's video deliverables (newest first)."""
-        return _videos.list_videos(state)
-
-    @mcp.tool()
-    def delete_video(video_id: str) -> dict[str, Any]:
-        """Delete a video (and its comments). Returns {deleted}."""
-        return {"deleted": _videos.delete_video(state, video_id)}
-
-    @mcp.tool()
-    def list_video_comments(
-        video_id: str | None = None, status: str | None = "open",
-    ) -> list[dict[str, Any]]:
-        """Timecode comments (open by default), sorted by (video, t_seconds).
-        `video_id=None` spans all videos — the agent's re-cut/re-caption to-do
-        list. Each carries `t_seconds` (and `frame` when known)."""
-        return _videos.list_video_comments(state, video_id, status=status)
-
-    @mcp.tool()
-    def resolve_video_comment(
-        video_id: str, comment_id: str, status: str = "resolved",
-        response: str | None = None,
-    ) -> dict[str, Any]:
-        """Mark a timecode comment resolved/rejected (or open to reopen) after
-        acting on it; optionally record what changed in `response`."""
-        return _videos.resolve_video_comment(
-            state, video_id, comment_id, status=status, response=response,
-        )
-
-    @mcp.tool()
-    def count_open_video_comments() -> int:
-        """Count open, human-authored timecode comments across the project."""
-        return _videos.count_open_video_comments(state)
-
-    # ─── YouTube publishing (MCP-local upload; opt-in per-user OAuth) ──────────
-    @mcp.tool()
-    def youtube_connect(
-        client_id: str | None = None, client_secret: str | None = None,
-    ) -> dict[str, Any]:
-        """STEP 1 — start YouTube OAuth (device flow). Returns {verification_url,
-        user_code} immediately (non-blocking): tell the user to open the URL and
-        enter the code, then call youtube_complete_connect(). Needs a YouTube
-        Data API OAuth client via YOUTUBE_CLIENT_ID/SECRET env or the args."""
-        return _youtube.youtube_connect(state, client_id=client_id, client_secret=client_secret)
-
-    @mcp.tool()
-    def youtube_complete_connect() -> dict[str, Any]:
-        """STEP 2 — finish the connection after the user authorized in the
-        browser. Polls briefly, stores the refresh token, returns {connected}.
-        If not authorized yet, returns {pending: true} — call again."""
-        return _youtube.youtube_complete_connect(state)
-
-    @mcp.tool()
-    def youtube_disconnect() -> dict[str, Any]:
-        """Forget this machine's stored YouTube credentials."""
-        return _youtube.youtube_disconnect(state)
-
-    @mcp.tool()
-    def youtube_upload(
-        video_id: str, title: str | None = None, description: str = "",
-        tags: list[str] | None = None, category_id: str = "22",
-        privacy: str = "unlisted", made_for_kids: bool = False,
-        publish_at: str | None = None, language: str | None = "ko",
-        local_path: str | None = None, force: bool = False,
-        playlist: str | None = None, thumbnail: str | None = None,
-    ) -> dict[str, Any]:
-        """Upload a Video-tab item to YouTube (or update metadata if already
-        uploaded). Defaults to privacy='unlisted' — set 'public' ONLY after the
-        user explicitly confirms; publishing is outward-facing. 9:16 ≤3min gets
-        a #Shorts tag. Saves the YouTube id/URL on the Video doc (idempotent).
-        `playlist` (id or exact title) files the video into that playlist after
-        upload, creating it if the title is new — for series organization.
-        `thumbnail` (local PNG/JPEG ≤2MB, e.g. 1280x720 or 1080x1920) sets a
-        custom thumbnail in the same call; it needs a VERIFIED channel, and a
-        refusal is reported in `thumbnail_error` instead of failing the upload.
-        On a 9:16 SHORT it only replaces the 16:9 renditions (search/suggested
-        cards) — the Shorts feed's vertical thumbnail is NOT settable by the API,
-        and the result says so in `thumbnail.shorts_note`."""
-        return _youtube.youtube_upload(
-            state, video_id, title=title, description=description, tags=tags,
-            category_id=category_id, privacy=privacy, made_for_kids=made_for_kids,
-            publish_at=publish_at, language=language, local_path=local_path,
-            force=force, playlist=playlist, thumbnail=thumbnail,
-        )
-
-    @mcp.tool()
-    def youtube_set_thumbnail(video_id: str, thumbnail_path: str) -> dict[str, Any]:
-        """Set a custom thumbnail on an already-uploaded video (thumbnails.set).
-        `video_id` = a Video-tab slug (resolved to its uploaded YouTube id) or a
-        raw YouTube id; `thumbnail_path` = local PNG/JPEG ≤2MB. Requires a
-        verified channel (403 otherwise). Uses the existing YouTube connection.
-        For a 9:16 SHORT this only changes the 16:9 renditions; the Shorts feed
-        keeps a frame YouTube picked (not settable via any API) — the result
-        carries `shorts_note`, so don't plan work around lifting Shorts-feed
-        views with thumbnails."""
-        return _youtube.youtube_set_thumbnail(state, video_id, thumbnail_path)
-
-    @mcp.tool()
-    def youtube_list_playlists() -> list[dict[str, Any]]:
-        """List the connected channel's YouTube playlists — [{playlist_id, title,
-        privacy, item_count, url}]. Uses the existing connection (no re-consent)."""
-        return _youtube.youtube_list_playlists(state)
-
-    @mcp.tool()
-    def youtube_create_playlist(title: str, description: str = "",
-                                privacy: str = "public") -> dict[str, Any]:
-        """Create a YouTube playlist. Returns {playlist_id, title, privacy, url}.
-        `privacy` is public|unlisted|private."""
-        return _youtube.youtube_create_playlist(
-            state, title, description=description, privacy=privacy)
-
-    @mcp.tool()
-    def youtube_add_to_playlist(playlist_id_or_title: str, video_id: str) -> dict[str, Any]:
-        """Add a video to a playlist. `playlist_id_or_title` = a playlist id or an
-        exact title; `video_id` = a Video-tab slug (resolved to its uploaded
-        YouTube id) or a raw YouTube id."""
-        return _youtube.youtube_add_to_playlist(state, playlist_id_or_title, video_id)
-
-    @mcp.tool()
-    def youtube_status(video_id: str) -> dict[str, Any]:
-        """Return a Video item's stored YouTube publish state (id/URL/privacy)
-        and whether this machine is connected."""
-        return _youtube.youtube_status(state, video_id)
-
-    @mcp.tool()
-    def youtube_check() -> dict[str, Any]:
-        """Pre-flight the YouTube connection (no video_id): refresh the token and
-        call channels.list?mine=true. Catches a revoked token (invalid_grant) or
-        a channel-less account BEFORE a render/upload. Returns {connected,
-        has_channel, channel_title, channel_id, uploads_ok} or a clear error.
-        Run this before /video-publish."""
-        return _youtube.youtube_check(state)
+    # ─── videos + YouTube — registered ONLY on machines that do video work ────
+    # (env CO_SCIENTIST_ENABLE_VIDEO overrides; else the YouTube token file on
+    # this machine is the signal). Every registered tool costs every session
+    # context whether used or not, and this family is admin-only in practice.
+    if _features.video_enabled():
+        _register_video_tools(mcp, state)
 
     @mcp.tool()
     def list_deck_comments(
@@ -2200,3 +2035,162 @@ def build_mcp(state: State) -> FastMCP:
         return {"deleted": _feedback.delete_feedback(state, feedback_id)}
 
     return mcp
+
+
+def _register_video_tools(mcp: FastMCP, state: State) -> None:
+    """The video/YouTube tool family. See features.video_enabled for why this
+    is conditional — registration cost is paid by every session, and this
+    family only matters on machines that actually produce video."""
+    # ─── videos (project-level deliverables + timecode comments) ──────────────
+    @mcp.tool()
+    def add_video(
+        title: str, video_id: str | None = None, local_path: str | None = None,
+        aspect_ratio: str = "16:9", fps: float | None = None,
+        duration_s: float | None = None, description: str | None = None,
+        srt_local_path: str | None = None, ass_local_path: str | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Register a project video deliverable. Upload the mp4 via `local_path`
+        (+ optional .srt/.ass sidecars); `aspect_ratio` is "16:9" or "9:16".
+        Shown in the dashboard's Video tab (admin). Returns the video doc."""
+        return _videos.add_video(
+            state, title=title, video_id=video_id, local_path=local_path,
+            aspect_ratio=aspect_ratio, fps=fps, duration_s=duration_s,
+            description=description, srt_local_path=srt_local_path,
+            ass_local_path=ass_local_path, overwrite=overwrite,
+        )
+
+    @mcp.tool()
+    def list_videos() -> list[dict[str, Any]]:
+        """List the project's video deliverables (newest first)."""
+        return _videos.list_videos(state)
+
+    @mcp.tool()
+    def delete_video(video_id: str) -> dict[str, Any]:
+        """Delete a video (and its comments). Returns {deleted}."""
+        return {"deleted": _videos.delete_video(state, video_id)}
+
+    @mcp.tool()
+    def list_video_comments(
+        video_id: str | None = None, status: str | None = "open",
+    ) -> list[dict[str, Any]]:
+        """Timecode comments (open by default), sorted by (video, t_seconds).
+        `video_id=None` spans all videos — the agent's re-cut/re-caption to-do
+        list. Each carries `t_seconds` (and `frame` when known)."""
+        return _videos.list_video_comments(state, video_id, status=status)
+
+    @mcp.tool()
+    def resolve_video_comment(
+        video_id: str, comment_id: str, status: str = "resolved",
+        response: str | None = None,
+    ) -> dict[str, Any]:
+        """Mark a timecode comment resolved/rejected (or open to reopen) after
+        acting on it; optionally record what changed in `response`."""
+        return _videos.resolve_video_comment(
+            state, video_id, comment_id, status=status, response=response,
+        )
+
+    @mcp.tool()
+    def count_open_video_comments() -> int:
+        """Count open, human-authored timecode comments across the project."""
+        return _videos.count_open_video_comments(state)
+
+    # ─── YouTube publishing (MCP-local upload; opt-in per-user OAuth) ──────────
+    @mcp.tool()
+    def youtube_connect(
+        client_id: str | None = None, client_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """STEP 1 — start YouTube OAuth (device flow). Returns {verification_url,
+        user_code} immediately (non-blocking): tell the user to open the URL and
+        enter the code, then call youtube_complete_connect(). Needs a YouTube
+        Data API OAuth client via YOUTUBE_CLIENT_ID/SECRET env or the args."""
+        return _youtube.youtube_connect(state, client_id=client_id, client_secret=client_secret)
+
+    @mcp.tool()
+    def youtube_complete_connect() -> dict[str, Any]:
+        """STEP 2 — finish the connection after the user authorized in the
+        browser. Polls briefly, stores the refresh token, returns {connected}.
+        If not authorized yet, returns {pending: true} — call again."""
+        return _youtube.youtube_complete_connect(state)
+
+    @mcp.tool()
+    def youtube_disconnect() -> dict[str, Any]:
+        """Forget this machine's stored YouTube credentials."""
+        return _youtube.youtube_disconnect(state)
+
+    @mcp.tool()
+    def youtube_upload(
+        video_id: str, title: str | None = None, description: str = "",
+        tags: list[str] | None = None, category_id: str = "22",
+        privacy: str = "unlisted", made_for_kids: bool = False,
+        publish_at: str | None = None, language: str | None = "ko",
+        local_path: str | None = None, force: bool = False,
+        playlist: str | None = None, thumbnail: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload a Video-tab item to YouTube (or update metadata if already
+        uploaded). Defaults to privacy='unlisted' — set 'public' ONLY after the
+        user explicitly confirms; publishing is outward-facing. 9:16 ≤3min gets
+        a #Shorts tag. Saves the YouTube id/URL on the Video doc (idempotent).
+        `playlist` (id or exact title) files the video into that playlist after
+        upload, creating it if the title is new — for series organization.
+        `thumbnail` (local PNG/JPEG ≤2MB, e.g. 1280x720 or 1080x1920) sets a
+        custom thumbnail in the same call; it needs a VERIFIED channel, and a
+        refusal is reported in `thumbnail_error` instead of failing the upload.
+        On a 9:16 SHORT it only replaces the 16:9 renditions (search/suggested
+        cards) — the Shorts feed's vertical thumbnail is NOT settable by the API,
+        and the result says so in `thumbnail.shorts_note`."""
+        return _youtube.youtube_upload(
+            state, video_id, title=title, description=description, tags=tags,
+            category_id=category_id, privacy=privacy, made_for_kids=made_for_kids,
+            publish_at=publish_at, language=language, local_path=local_path,
+            force=force, playlist=playlist, thumbnail=thumbnail,
+        )
+
+    @mcp.tool()
+    def youtube_set_thumbnail(video_id: str, thumbnail_path: str) -> dict[str, Any]:
+        """Set a custom thumbnail on an already-uploaded video (thumbnails.set).
+        `video_id` = a Video-tab slug (resolved to its uploaded YouTube id) or a
+        raw YouTube id; `thumbnail_path` = local PNG/JPEG ≤2MB. Requires a
+        verified channel (403 otherwise). Uses the existing YouTube connection.
+        For a 9:16 SHORT this only changes the 16:9 renditions; the Shorts feed
+        keeps a frame YouTube picked (not settable via any API) — the result
+        carries `shorts_note`, so don't plan work around lifting Shorts-feed
+        views with thumbnails."""
+        return _youtube.youtube_set_thumbnail(state, video_id, thumbnail_path)
+
+    @mcp.tool()
+    def youtube_list_playlists() -> list[dict[str, Any]]:
+        """List the connected channel's YouTube playlists — [{playlist_id, title,
+        privacy, item_count, url}]. Uses the existing connection (no re-consent)."""
+        return _youtube.youtube_list_playlists(state)
+
+    @mcp.tool()
+    def youtube_create_playlist(title: str, description: str = "",
+                                privacy: str = "public") -> dict[str, Any]:
+        """Create a YouTube playlist. Returns {playlist_id, title, privacy, url}.
+        `privacy` is public|unlisted|private."""
+        return _youtube.youtube_create_playlist(
+            state, title, description=description, privacy=privacy)
+
+    @mcp.tool()
+    def youtube_add_to_playlist(playlist_id_or_title: str, video_id: str) -> dict[str, Any]:
+        """Add a video to a playlist. `playlist_id_or_title` = a playlist id or an
+        exact title; `video_id` = a Video-tab slug (resolved to its uploaded
+        YouTube id) or a raw YouTube id."""
+        return _youtube.youtube_add_to_playlist(state, playlist_id_or_title, video_id)
+
+    @mcp.tool()
+    def youtube_status(video_id: str) -> dict[str, Any]:
+        """Return a Video item's stored YouTube publish state (id/URL/privacy)
+        and whether this machine is connected."""
+        return _youtube.youtube_status(state, video_id)
+
+    @mcp.tool()
+    def youtube_check() -> dict[str, Any]:
+        """Pre-flight the YouTube connection (no video_id): refresh the token and
+        call channels.list?mine=true. Catches a revoked token (invalid_grant) or
+        a channel-less account BEFORE a render/upload. Returns {connected,
+        has_channel, channel_title, channel_id, uploads_ok} or a clear error.
+        Run this before /video-publish."""
+        return _youtube.youtube_check(state)
+
