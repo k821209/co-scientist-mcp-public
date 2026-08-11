@@ -1,8 +1,8 @@
 {
   "name": "co-scientist-pi",
-  "version": "0.1.0",
+  "version": "0.1.20260811.post1",
   "private": true,
-  "description": "Scivo / co-scientist harness for the Pi coding agent — the scientific-writing skill set, plus the provenance guard. The tools themselves come from the co-scientist MCP server via pi-mcp-adapter.",
+  "description": "Scivo / co-scientist harness for the Pi coding agent \u2014 the scientific-writing skill set, plus the provenance guard. The tools themselves come from the co-scientist MCP server via pi-mcp-adapter.",
   "license": "SEE LICENSE IN README.md",
   "homepage": "https://github.com/k821209/co-scientist-mcp-public#readme",
   "repository": {
@@ -10,7 +10,11 @@
     "url": "git+https://github.com/k821209/co-scientist-mcp-public.git"
   },
   "pi": {
-    "skills": ["./packages/skills"],
-    "extensions": ["./packages/pi/extensions"]
+    "skills": [
+      "./packages/skills"
+    ],
+    "extensions": [
+      "./packages/pi/extensions"
+    ]
   }
 }

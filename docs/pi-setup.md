@@ -13,6 +13,33 @@ pi install git:github.com/k821209/co-scientist-mcp-public
 
 That gives you the 25 skills and the provenance guard. Then wire the tools.
 
+## 0. One clone, not two — read this if you also use Claude Code
+
+Both hosts install from the SAME git repo, and that is where a machine running
+both can go wrong. `pi install git:…` clones into
+`~/.pi/agent/git/github.com/k821209/co-scientist-mcp-public`, while a Claude Code
+setup usually has its own clone elsewhere. Two copies, and only one of them is the
+one `pip install -e` points at — so you can end up running **new skills against an
+old MCP**, or the reverse, and `whoami`'s `update_available` cannot see it: it
+checks the pip-installed side only.
+
+So point pip at the clone Pi manages, and there is only ever one copy:
+
+```bash
+pi install git:github.com/k821209/co-scientist-mcp-public
+pip install -e ~/.pi/agent/git/github.com/k821209/co-scientist-mcp-public/apps/local-mcp
+```
+
+Then a single `pi install …` refresh upgrades the skills, the extension AND the
+MCP together. If you already have a Claude Code clone you would rather keep as the
+canonical one, do the reverse — install the Pi package from that local path
+(`pi install /path/to/co-scientist-mcp-public`) rather than from git.
+
+What does NOT collide: the skills. Pi reads `~/.pi/agent/skills` / `.pi/skills`,
+the MCP links Claude Code's into `<project>/.claude/skills`, and the MCP now
+leaves `.claude/` alone entirely unless the project already has one (so a Pi-only
+project stays clean).
+
 ## 1. The MCP server
 
 ```bash

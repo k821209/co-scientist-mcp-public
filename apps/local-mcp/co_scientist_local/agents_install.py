@@ -96,6 +96,21 @@ def install_agents(
             "source": str(source), "dest": str(dest_root), "strategy": strategy}
 
 
+def _claude_code_project(project_dir: pathlib.Path) -> bool:
+    """Whether this directory is a Claude Code project.
+
+    `.claude/` and `CLAUDE.md` are both written by `co-scientist link` before the
+    MCP ever starts, so their presence is a reliable marker — and their ABSENCE
+    means another host launched us. The same MCP now serves Pi (via
+    pi-mcp-adapter, same .mcp.json), and Pi reads its skills from
+    ~/.pi/agent/skills, never from .claude/. Creating .claude/ there would
+    scatter symlinks nothing reads through the user's repo.
+
+    Refresh what exists; never conjure it where it does not.
+    """
+    return (project_dir / ".claude").is_dir() or (project_dir / "CLAUDE.md").is_file()
+
+
 def install_agents_quietly() -> None:
     """Best-effort install for MCP startup. Never raises; logs to stderr.
 
@@ -103,8 +118,11 @@ def install_agents_quietly() -> None:
     """
     if os.environ.get("CO_SCIENTIST_SKIP_AGENT_INSTALL") == "1":
         return
+    cwd = pathlib.Path.cwd()
+    if not _claude_code_project(cwd):
+        return          # another host (e.g. Pi) — see _claude_code_project
     try:
-        res = install_agents(pathlib.Path.cwd())
+        res = install_agents(cwd)
     except Exception as e:  # never break server startup
         print(f"co-scientist-local: agent install skipped ({e})", file=sys.stderr)
         return
