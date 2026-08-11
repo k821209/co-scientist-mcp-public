@@ -17,7 +17,28 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+/** Only the surface this extension touches, declared LOCALLY on purpose.
+ *
+ *  `pi install git:…` clones the repo and runs no `npm install`, so there is no
+ *  `node_modules` beside this file. Importing the host's types
+ *  (`@earendil-works/pi-coding-agent`, as Pi's own example does) is erased by a
+ *  transpiling loader but would fail a type-CHECKING one, and which of those Pi
+ *  uses is not something this package should have to bet on. Structural typing
+ *  makes the real ExtensionAPI assignable to this anyway. */
+interface ToolCallEvent {
+  toolName?: unknown;
+  input?: unknown;
+}
+interface BlockResult {
+  block: true;
+  reason: string;
+}
+interface ExtensionAPI {
+  on(
+    event: "tool_call",
+    handler: (event: ToolCallEvent) => Promise<BlockResult | void>,
+  ): void;
+}
 
 /** Written by the local MCP at startup and after add_server/update_server. The
  *  hook reads a FILE rather than calling the registry, deliberately: a network
