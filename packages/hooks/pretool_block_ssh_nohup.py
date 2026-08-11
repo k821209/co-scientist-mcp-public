@@ -44,10 +44,16 @@ _BG_RE = re.compile(
     r"\s&\s*[\"']?\s*$",
     re.MULTILINE,
 )
-_SSH_RE = re.compile(
-    r"^\s*ssh\b\s+(?:-\S+\s+)*([A-Za-z0-9_.@-]+)",
-    re.MULTILINE,
-)
+# Positional parsing of the ssh target was WRONG: `(?:-\S+\s+)*` cannot know
+# which options take a separate value, so `ssh -i key alias …`, `ssh -p 2222
+# alias …` and `ssh -o k=v alias …` all failed to find the alias and the guard
+# silently allowed an untracked job through. Instead: confirm it IS an ssh
+# invocation, then look for a registered alias among ALL tokens. Over-matching
+# (an alias named as an argument rather than the target) still blocks a
+# backgrounded ssh job touching a registered host, which is the thing being
+# guarded — and `# allow-untracked` covers the rest.
+_SSH_CMD_RE = re.compile(r"^\s*ssh\b", re.MULTILINE)
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_.@-]+")
 
 
 def load_aliases() -> set[str]:
@@ -78,10 +84,11 @@ def is_blocked(command: str, aliases: set[str]) -> tuple[bool, str | None]:
         return False, None
     if not _BG_RE.search(command):
         return False, None
-    for m in _SSH_RE.finditer(command):
-        target = m.group(1)
-        if target in aliases:
-            return True, target
+    if not _SSH_CMD_RE.search(command):
+        return False, None
+    for token in _TOKEN_RE.findall(command):
+        if token in aliases:
+            return True, token
     return False, None
 
 
