@@ -32,6 +32,7 @@ from . import csl as _csl
 from . import display_lint as _display_lint
 from . import docx_export as _docx_export
 from . import figures as _figures
+from .figures import SUPPLEMENTARY_NUMBER_OFFSET
 from . import papers as _papers
 from . import references as _references
 from . import requirements as _requirements
@@ -224,10 +225,7 @@ def _figures_appendix(
             return None
         local_name = pathlib.Path(bp).name
         num = fig.get("figure_number")
-        if supplementary and isinstance(num, int):
-            label = f"Figure S{num - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
-        else:
-            label = f"Figure {num}"
+        label = _display_label("Figure", num, supplementary=supplementary)
         # Bold the "Figure N." label; the caption/legend stay regular weight
         # (the markdown is honored by both engines — pandoc parses the alt,
         # the native renderer renders the alt's inline tokens).
@@ -267,10 +265,7 @@ def _tables_appendix(
         if not content:
             return None
         num = tbl.get("table_number")
-        if supplementary and isinstance(num, int):
-            label = f"Table S{num - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
-        else:
-            label = f"Table {num}"
+        label = _display_label("Table", num, supplementary=supplementary)
         caption = (tbl.get("caption") or tbl.get("title") or "").strip()
         caption = " ".join(caption.split())  # collapse newlines for the caption line
         head = f"**{label}.** {caption}".rstrip() if caption else f"**{label}.**"
@@ -402,6 +397,23 @@ def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
         fields.append(f"  doi = {{{ref['doi']}}}")
     body = ",\n".join(fields)
     return f"@article{{{key},\n{body}\n}}\n"
+
+
+def _display_label(kind: str, num, *, supplementary: bool) -> str:
+    """The label for a figure/table, in the SAME spelling the manuscript body uses.
+
+    `STable 5` / `SFigure 1`, not `Table S5` / `Figure S1`. The appendix used the
+    S-suffix form while the prose cross-references (and every skill) use the
+    S-prefix form, so a reader following "STable 5" in the text found "Table S5."
+    in the appendix — a regression introduced when supplementary items moved onto
+    this export path; the paper's earlier submission had the prefix form in both.
+
+    One helper so the two cannot drift again: every label in a rendered document
+    comes from here.
+    """
+    if supplementary and isinstance(num, int):
+        return f"S{kind} {num - SUPPLEMENTARY_NUMBER_OFFSET}"
+    return f"{kind} {num}"
 
 
 def _run_output_at(run: dict) -> str | None:

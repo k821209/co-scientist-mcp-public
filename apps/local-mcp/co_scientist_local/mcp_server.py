@@ -1269,22 +1269,24 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def lint_legends(slug: str) -> dict[str, Any]:
-        """Deterministic legend QA — the figure/table analogue of
-        lint_manuscript. Flags legends that grew a mini-Results: over-LONG
-        (figure/SFig legend info>150/warn>220 words; table caption scored far
-        more leniently, info>300/warn>450, since footnotes define columns),
-        BODY_DUPLICATION (a legend sentence that also appears near-verbatim in a
-        section body — EVERY such sentence is enumerated in duplicated_spans, so
-        they clear in one pass), INTERPRETIVE phrasing that belongs in Results,
-        SAMPLE_ROSTER_RESTATEMENT (a sample-composition list also in the body),
-        BARE_CROSS_REFERENCE (a "…described/listed in Table/Results…" pointer),
-        and (table captions only) COLUMN_REDUNDANT (a sentence restating a value
-        already shown in a table column) + EXCLUDED_DATA_NOTE (meta-notes about
-        data not in the table). Reads the same text the export emits
-        (figure caption+legend joined, table caption). Returns {findings,
-        summary}; each finding has the flags, word_count, duplicated_spans and a
-        trim suggestion. prepare_export also surfaces a one-line summary per item
-        in its warnings/legend_warnings."""
+        """Deterministic legend QA — the figure/table analogue of lint_manuscript.
+
+        Returns one finding per flagged item; `level` is warn if any flag is
+        warn-grade. Flags: **caption_only** (see below), long, body_duplication
+        (every duplicated sentence enumerated in duplicated_spans),
+        interpretive, sample_roster_restatement, bare_cross_reference, and
+        table-only column_redundant / excluded_data_note in caption_smells.
+        The rules and the caption/Methods/Results split are documented in
+        /paper-writing ("Trimming a caption can delete the paper's method").
+
+        **caption_only is the one flag that means RELOCATE, not delete**, and it
+        is ranked first. It fires when a parameter-shaped token (± 250 kb,
+        q < 0.05, seed = 42, a software version) appears in the caption and in NO
+        section body — i.e. the caption is its only carrier, so trimming it
+        removes the value from the paper. Move it to Methods (threshold/constant)
+        or Results (derived statistic) FIRST, then drop it from the caption. Every
+        other flag here invites deletion; this is the only one whose absence can
+        destroy information."""
         return _legend_lint.lint_legends(state, slug)
 
     @mcp.tool()

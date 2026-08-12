@@ -139,6 +139,18 @@ def _table_columns(content: str) -> dict:
     return cols
 
 
+# A caption sentence that scopes itself to one sheet/panel of a MULTI-PART
+# artifact. `content` here is a single markdown table, so a workbook's other
+# sheets are simply not visible — matching such a sentence against the columns
+# we CAN see produced a false positive: "Sheet (b): PLINK linear regression…"
+# was called redundant because "PLINK" appears in a DIFFERENT sheet's column.
+# We cannot check the sheet the sentence is about, so we do not guess.
+_SHEET_SCOPED = re.compile(
+    r"\b(?:sheet|tab|panel|worksheet)\s*(?:\(?[a-z0-9]{1,3}\)?|[a-z0-9]{1,3})\s*[:.)-]",
+    re.I,
+)
+
+
 def _table_caption_smells(caption: str, content: str) -> list[dict]:
     """Table-only caption checks (feedback e5e8edaa2566), both advisory (info):
     a sentence that restates a table COLUMN VALUE, and meta-notes about data not
@@ -163,6 +175,8 @@ def _table_caption_smells(caption: str, content: str) -> list[dict]:
                 continue
             val_rx = re.compile(r"(?<!\w)" + re.escape(val) + r"(?!\w)")
             for sent in sents:
+                if _SHEET_SCOPED.search(sent):
+                    continue        # describes a sheet we cannot see — see _SHEET_SCOPED
                 if val_rx.search(sent) and not _is_crossref_or_definition(sent):
                     out.append({"kind": "column_redundant", "match": val,
                                 "column": name, "sentence": sent[:200],
@@ -185,6 +199,65 @@ def _legend_text_figure(fig: dict) -> str:
                                 (fig.get("legend") or "").strip()) if v)
 
 
+# ── caption_only: the check that can prevent DATA LOSS ────────────────────────
+#
+# Every other flag here answers "is this redundant?" and the natural response to
+# each is deletion — they are named `long`, `interpretive`, `bare_cross_reference`.
+# This one answers the opposite question, "is this load-bearing?", and it is the
+# only one whose absence can destroy information.
+#
+# Reported case: a Figure 6 legend said the QTL intervals were projected "with
+# ± 250 kb padding". It reads exactly like method detail whose home is Methods —
+# but Methods never stated that padding (it stated a DIFFERENT 100 kb constant for
+# a separate step), and the manuscript's headline overlap figure depends entirely
+# on that value: 39.7% unpadded, 41.4% at 100 kb, 44.9% at 250 kb, 54.0% at 1 Mb.
+# The caption was its only appearance in the whole submission, so trimming it
+# would have deleted the paper's method silently. The right action was the
+# opposite of trimming: relocate to Methods, then drop it from the legend.
+#
+# Parameter-shaped tokens only: a magnitude with a unit, a named constant
+# assignment, a threshold, an iteration count, a software version. Deliberately
+# narrow — a bare integer ("3 panels") is not a parameter and would make it noisy.
+_PARAM_TOKEN = re.compile(
+    r"""(?:±|\+/-)\s*\d[\d,.]*\s*(?:kb|Mb|bp|%|nm|µm|um|mm|s|min|h)\b
+      | \b\d[\d,.]*\s*(?:kb|Mb|bp)\b
+      | \b(?:seed|n_init|k|K|iterations?|permutations?|restarts?|bootstraps?)
+        \s*[=:]\s*\d[\d,.]*
+      | \b\d[\d,]{2,}\s*(?:iterations?|permutations?|restarts?|bootstraps?|times)\b
+      | \b[pq]\s*[<≤>=]\s*0?\.\d+
+      | \bv(?:ersion\s*)?\d+\.\d+(?:\.\d+)?\b
+    """,
+    re.X,
+)
+
+
+def _param_tokens(text: str) -> list[str]:
+    """Parameter-shaped tokens in `text`, whitespace-normalised."""
+    return [re.sub(r"\s+", " ", m.group(0)).strip()
+            for m in _PARAM_TOKEN.finditer(text or "")]
+
+
+def _norm_for_presence(text: str) -> str:
+    """Whitespace-stripped + lowercased, with ASCII +/- folded to ±, so "250 kb"
+    matches "250kb" and the comparison does not fail on spacing alone."""
+    return re.sub(r"\s+", "", (text or "").lower()).replace("+/-", "±")
+
+
+def _caption_only_tokens(caption: str, bodies_norm: str) -> list[str]:
+    """Parameter tokens present in the caption and NOWHERE in any section body.
+
+    A false NEGATIVE is cheap (the token really is in Methods → nothing to say);
+    a false POSITIVE costs the author one look. So presence is tested loosely: the
+    numeric+unit core has to appear somewhere in the body, not the token verbatim.
+    """
+    missing = []
+    for tok in _param_tokens(caption):
+        core = _norm_for_presence(tok).lstrip("±")
+        if core and core not in bodies_norm:
+            missing.append(tok)
+    return sorted(set(missing))
+
+
 def lint_legends(state: State, slug: str) -> dict:
     """Scan every figure / table / supplementary legend. Returns
     {slug, findings: [...], summary: {...}}.
@@ -205,6 +278,8 @@ def lint_legends(state: State, slug: str) -> dict:
     # "does this sentence already live in the body?" question we actually want).
     sec_shingles = [(s.get("title") or s.get("key") or "?",
                      _shingles(s.get("body") or "")) for s in sections]
+    # One normalised haystack of every section body, for the caption_only check.
+    bodies_norm = _norm_for_presence(" ".join((x.get("body") or "") for x in sections))
 
     def _dup_spans(text: str) -> list[dict]:
         spans: list[dict] = []
@@ -289,10 +364,23 @@ def lint_legends(state: State, slug: str) -> dict:
                 flags.append(s["kind"])
         if caption_smells:
             level = level or "info"
+        # RELOCATE, do not delete. Ranked warn and placed FIRST: every other flag
+        # here invites deletion, and this is the one case where deleting destroys
+        # information that exists nowhere else.
+        orphan_params = _caption_only_tokens(text, bodies_norm)
+        if orphan_params:
+            flags.insert(0, "caption_only"); level = "warn"
         if not flags:
             return
         sugg = None
-        if "body_duplication" in flags or "interpretive" in flags:
+        if orphan_params:
+            sugg = ("RELOCATE, do not delete: " + ", ".join(orphan_params) +
+                    " appears in this caption and in NO section body, so trimming "
+                    "it removes the value from the paper. Move it to Methods (a "
+                    "threshold/constant) or Results (a derived statistic) FIRST, "
+                    "then drop it here. If the value is tunable, state how much "
+                    "the result moves with it.")
+        elif "body_duplication" in flags or "interpretive" in flags:
             sugg = ("keep panel descriptions, key numbers, colour coding and "
                     "cross-refs; move derivation/interpretation to Results "
                     "(\"Full derivation in Results\") — and prefer commas/colons "
@@ -303,6 +391,7 @@ def lint_legends(state: State, slug: str) -> dict:
             "item": item, "type": kind, "number": number, "word_count": wc,
             "level": level, "flags": flags,
             "duplicated_spans": dup,
+            "caption_only_params": orphan_params,
             "interpretive_phrases": interp,
             "suggestion": sugg,
         }

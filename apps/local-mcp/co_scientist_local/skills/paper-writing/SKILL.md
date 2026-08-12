@@ -210,6 +210,51 @@ the same 285. The claim came from one case and was written as a general one.
   actually covers the counterexample ("the cohort a gene-level test needs scales
   with that gene's allele-type count" covers both loci; the original did not).
 
+### 2d-quater. Trimming a caption can delete the paper's method
+
+Before cutting anything from a caption or legend, check whether the value exists
+anywhere else. A caption can be the **sole carrier** of a parameter, and every
+other lint flag here (`long`, `interpretive`, `bare_cross_reference`) invites
+deletion.
+
+This nearly shipped: a Figure 6 legend carried "projected … with **± 250 kb
+padding**". It reads exactly like method detail whose home is Methods — but
+Methods never stated it (it stated a *different* 100 kb constant, for a separate
+upstream step), and the paper's headline number depended on it entirely:
+
+| padding | candidates inside a QTL |
+|---|---|
+| 0 kb | 188/474 = 39.7% |
+| 100 kb | 196/474 = 41.4% |
+| **250 kb** | **213/474 = 44.9%** ← the manuscript's number |
+| 1 Mb | 256/474 = 54.0% |
+
+`lint_manuscript`'s sibling `lint_legends` now flags this as **`caption_only`**,
+ranked above every other flag, with the action **RELOCATE, do not delete**.
+
+Two rules follow:
+
+- **A value that depends on a tunable parameter states the parameter AND how much
+  the value moves with it.** "44.9% at ± 250 kb, 39.7% unpadded, 54.0% at ± 1 Mb"
+  is one sentence and pre-empts "why 250 kb?" at review.
+- **State the predicate**, not just the threshold. "Inside a QTL" has two equally
+  natural readings — the gene's start point contained in the interval, or its span
+  intersecting it. They disagree (one gene, 8 QTL vs 10), the headline percentage
+  was identical either way, so no numeric check could ever catch it, and a
+  reproducer is left guessing.
+
+#### What belongs where
+
+| Keep in the caption | Move to Methods | Move to Results/Discussion | Delete |
+|---|---|---|---|
+| panel letters and what each shows; visual encodings (colour, shape, line style, size); axis definitions; `n`; values that appear ONLY in the figure; a note that prevents misreading the panel ("an empty cell means no study reported a QTL there") | test names, correction procedures, software + versions, iteration/restart counts, thresholds, merge conventions, annotation-source IDs, and **any predicate a number depends on** | derived statistics the text already quotes; interpretation; generalisability caveats | only sentences duplicated near-verbatim from a body section — exactly what `body_duplication` enumerates |
+
+Worked example, a table caption 200 → 66 words: the stage list, `52.1 ± 8.5 s`,
+`~3.6× faster` and `~64× less RAM` all came out because **each is a cell in the
+table itself**; the incremental-append argument came out because it is a
+Discussion paragraph. Nothing was lost — because every token was verified present
+elsewhere first, which is the check `caption_only` automates.
+
 ### 2e. Cite display items parenthetically
 
 A figure or table is cited in parentheses, never woven into the sentence as a noun
