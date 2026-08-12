@@ -88,12 +88,33 @@ def _escape_thematic_breaks(text: str) -> str:
     return _THEMATIC_BREAK_RE.sub("***", text)
 
 
+def _by_number(
+    main: list[dict], supplementary: list[dict], number_key: str
+) -> dict[int, tuple[dict, bool]]:
+    """Index figures/tables by their number, tagged main (False) / supp (True)."""
+    out: dict[int, tuple[dict, bool]] = {}
+    for items, supp in ((main, False), (supplementary, True)):
+        for item in items:
+            num = item.get(number_key)
+            if isinstance(num, int):
+                out[num] = (item, supp)
+    return out
+
+
 _INLINE_FIGURE_RE = re.compile(r"!\[([^\]]*)\]\(figure:(\d+)\)")
+_INLINE_TABLE_RE = re.compile(r"!\[([^\]]*)\]\(table:(\d+)\)")
+# A table embed alone on its own line, starting at column 0 — the only place a
+# multi-line pipe table can be substituted without breaking the structure around
+# it. Deliberately NOT tolerant of leading whitespace: an indented embed may be
+# list-item or blockquote content, and splicing a top-level table there would
+# silently reflow the author's list.
+_LONE_TABLE_EMBED_RE = re.compile(r"^!\[([^\]]*)\]\(table:(\d+)\)[ \t]*$")
 
 
 def _rewrite_inline_figure_refs(
-    text: str, figures: list[dict], supp_figures: list[dict]
-) -> str:
+    text: str, figures: list[dict], supp_figures: list[dict],
+    *, placeable: set[int] | None = None,
+) -> tuple[str, set[int]]:
     """Rewrite body embeds `![alt](figure:N)` to point at the staged image file
     (`figure_N.png`) that export_to_path writes into pandoc's working dir.
 
@@ -101,26 +122,100 @@ def _rewrite_inline_figure_refs(
     URL; pandoc can't, so without this rewrite it looks for a file literally
     named `figure:N` and emits a broken/missing image. An unresolved N (no
     blob) drops the image node and keeps the alt text as plain caption text.
+
+    An embed with NO alt text gets the registered caption/legend as its alt, so
+    a figure the author placed inline still carries its legend. Without this the
+    inline copy would be a bare image and — now that placing inline suppresses
+    the appendix copy — the legend would be dropped from the document entirely.
+
+    `figures`/`supp_figures` are the FULL registered sets, so a supplementary
+    figure keeps its "SFigure N" label; `placeable` restricts which numbers this
+    file may actually embed (the scope-included ones). A registered figure that
+    cannot be embedded here degrades to a bold label rather than to its empty
+    alt text, which rendered as nothing at all.
+
+    Returns (text, placed) where `placed` is the figure numbers the body itself
+    positions; the caller excludes those from the Figures appendix so they are
+    not rendered a second time at the end of the document.
     """
-    name_by_num: dict[int, str] = {}
-    for fig in (*figures, *supp_figures):
-        bp = fig.get("blob_path")
-        num = fig.get("figure_number")
-        if bp and isinstance(num, int):
-            name_by_num[num] = pathlib.Path(bp).name
+    entry_by_num = _by_number(figures, supp_figures, "figure_number")
+    placed: set[int] = set()
 
     def repl(m: re.Match) -> str:
         alt, num = m.group(1), int(m.group(2))
-        name = name_by_num.get(num)
-        return f"![{alt}]({name})" if name else alt
+        entry = entry_by_num.get(num)
+        if entry is None:
+            return alt  # never registered — keep whatever the author wrote
+        fig, supp = entry
+        bp = fig.get("blob_path")
+        if not bp or (placeable is not None and num not in placeable):
+            label = _display_label("Figure", num, supplementary=supp)
+            return alt or f"**{label}**"
+        placed.add(num)
+        return f"![{alt or _figure_alt(fig, supplementary=supp)}]({pathlib.Path(bp).name})"
 
-    return _INLINE_FIGURE_RE.sub(repl, text)
+    return _INLINE_FIGURE_RE.sub(repl, text), placed
+
+
+def _rewrite_inline_table_refs(
+    text: str, tables: list[dict], supp_tables: list[dict],
+    *, placeable: set[int] | None = None,
+) -> tuple[str, set[int]]:
+    """Expand a body embed `![alt](table:N)` into the table itself, in place.
+
+    `table:N` is the table counterpart of the `figure:N` scheme the dashboard
+    resolves live. On export it had NO handler at all: the embed stayed an image
+    node pointing at a file named `table:8`, which resolves to nothing, and both
+    engines fall back to the alt text — empty for the usual `![](table:8)`. So
+    the line rendered as an empty paragraph and the table appeared only in the
+    appendix at the end of the document, with **no trace left at the point the
+    author placed it** — not even a cross-reference to reconstruct from
+    (feedback 0e394fb76649: a 107-table proposal where every in-body table
+    position was lost, and one table vanished from the document entirely).
+
+    An embed alone on its own line becomes the caption + pipe table, so it
+    renders where the author put it. An embed that shares a line with prose (or
+    is indented, so it may be list/quote content) cannot become a block without
+    reflowing what surrounds it, so it degrades to a bold `**Table N**` text
+    reference — visible, never silent. So does an embed of a table this file may
+    not carry (`placeable`) — a `scope="main"` export referencing a supplementary
+    table correctly points at "STable 1" without pasting it into the manuscript.
+
+    Returns (text, placed); the caller excludes `placed` from the Tables
+    appendix so an in-body table is not repeated at the end.
+    """
+    entry_by_num = _by_number(tables, supp_tables, "table_number")
+    placed: set[int] = set()
+
+    def fallback(m: re.Match) -> str:
+        num = int(m.group(2))
+        entry = entry_by_num.get(num)
+        supp = entry[1] if entry else False
+        return f"**{_display_label('Table', num, supplementary=supp)}**"
+
+    out: list[str] = []
+    for line in text.splitlines():
+        m = _LONE_TABLE_EMBED_RE.match(line)
+        if m:
+            num = int(m.group(2))
+            entry = entry_by_num.get(num)
+            if placeable is not None and num not in placeable:
+                entry = None
+            block = _table_block(entry[0], supplementary=entry[1]) if entry else None
+            if block:
+                placed.add(num)
+                # Blank lines around the block so the pipe table parses as a
+                # block element rather than joining the neighbouring paragraph.
+                out.extend(("", block, ""))
+                continue
+        out.append(_INLINE_TABLE_RE.sub(fallback, line))
+    return "\n".join(out), placed
 
 
 _REF_TOKEN_RE = re.compile(r"\{(fig|tab):(\d+)\}")
 
 
-def _rewrite_inline_ref_tokens(text: str) -> str:
+def _rewrite_inline_ref_tokens(text: str, *, number_supplementary: bool = True) -> str:
     """Resolve inline reference tokens `{fig:N}` / `{tab:N}` to display text.
 
     These are the co-scientist inline cross-reference convention in section
@@ -128,17 +223,71 @@ def _rewrite_inline_ref_tokens(text: str) -> str:
     into plain text or the literal `{fig:1}` token leaks into the .docx/PDF
     (same class of gap as `{doi:…}`). N ≥ the +100 supplementary offset renders
     as "Supplementary Figure/Table N-100"; otherwise "Figure/Table N".
+
+    `number_supplementary=False` turns the offset convention off: in a report or
+    proposal, table 100 is the hundredth table, not supplementary table 0 (see
+    `prepare_export`).
     """
     off = _figures.SUPPLEMENTARY_NUMBER_OFFSET
 
     def repl(m: re.Match) -> str:
         noun = "Figure" if m.group(1) == "fig" else "Table"
         n = int(m.group(2))
-        if n >= off:
+        if number_supplementary and _figures.is_supplementary_number(n):
             return f"Supplementary {noun} {n - off}"
         return f"{noun} {n}"
 
     return _REF_TOKEN_RE.sub(repl, text)
+
+
+def _dangling_artifact_refs(manuscript: str, bundle: dict, *, scope: str,
+                            include_main: bool, include_supp: bool) -> list[str]:
+    """Body references to a figure/table this export does not actually contain.
+
+    The check every other export guard misses, because each one verifies that
+    something is PRESENT somewhere: `orphan_references` compares prose against
+    everything registered, so a table that is registered but excluded from THIS
+    file passes it. Yet the reader gets a reference with nothing behind it.
+
+    That is how feedback 0e394fb76649 lost a table silently: in a 107-table
+    report, table 107 crossed the +100 supplementary threshold, `scope="main"`
+    dropped it, and the body's `![](table:107)` rendered as nothing. 94 of 95
+    references resolved and no warning said which one didn't — it was found by
+    counting tables by hand.
+    """
+    referenced: dict[str, set[int]] = {"Figure": set(), "Table": set()}
+    for m in _INLINE_FIGURE_RE.finditer(manuscript):
+        referenced["Figure"].add(int(m.group(2)))
+    for m in _INLINE_TABLE_RE.finditer(manuscript):
+        referenced["Table"].add(int(m.group(2)))
+    for m in _REF_TOKEN_RE.finditer(manuscript):
+        referenced["Figure" if m.group(1) == "fig" else "Table"].add(int(m.group(2)))
+
+    sources = {
+        "Figure": (bundle["figures"], bundle["supplementary_figures"], "figure_number"),
+        "Table": (bundle["tables"], bundle["supplementary_tables"], "table_number"),
+    }
+    out: list[str] = []
+    for kind in ("Figure", "Table"):
+        main, supp, key = sources[kind]
+        main_nums = {d.get(key) for d in main}
+        supp_nums = {d.get(key) for d in supp}
+        for n in sorted(referenced[kind]):
+            if (n in main_nums and include_main) or (n in supp_nums and include_supp):
+                continue
+            if n in main_nums or n in supp_nums:
+                where = "supplementary" if n in supp_nums else "main"
+                out.append(
+                    f"the body references {kind} {n}, which is registered as {where} "
+                    f"content and excluded by scope={scope!r} — the reference renders "
+                    f"with nothing behind it. Export the matching scope, or renumber."
+                )
+            else:
+                out.append(
+                    f"the body references {kind} {n} but no such {kind.lower()} is "
+                    f"registered — nothing is rendered at that point"
+                )
+    return out
 
 
 def _rewrite_inline_citations(
@@ -209,8 +358,55 @@ def _rewrite_inline_citations(
     return _CITE_RUN_RE.sub(repl, text), unmatched
 
 
+def _figure_alt(fig: dict, *, supplementary: bool) -> str:
+    """The caption line for a figure, as markdown alt text.
+
+    Bold the "Figure N." label; the caption/legend stay regular weight (the
+    markdown is honored by both engines — pandoc parses the alt, the native
+    renderer renders the alt's inline tokens). Newlines are collapsed so the
+    `![ ... ]( ... )` stays a single image node.
+
+    Shared by the appendix and the in-body `![](figure:N)` rewrite so an inline
+    figure and an appendix figure are captioned identically.
+    """
+    label = _display_label("Figure", fig.get("figure_number"),
+                           supplementary=supplementary)
+    parts = [f"**{label.rstrip('.')}.**"]
+    for field in ("caption", "legend"):
+        val = (fig.get(field) or "").strip()
+        if val:
+            parts.append(val)
+    return " ".join(parts).replace("\n", " ").strip()
+
+
+def _figure_block(fig: dict, *, supplementary: bool) -> str | None:
+    bp = fig.get("blob_path")
+    if not bp:
+        return None
+    return f"![{_figure_alt(fig, supplementary=supplementary)}]({pathlib.Path(bp).name})"
+
+
+def _table_block(tbl: dict, *, supplementary: bool) -> str | None:
+    """A bold 'Table N.' caption line followed by the stored pipe-table markdown.
+
+    Shared by the appendix and the in-body `![](table:N)` rewrite, so a table
+    renders the same whether the author placed it or it fell to the appendix.
+    """
+    content = (tbl.get("content") or "").strip()
+    if not content:
+        return None
+    label = _display_label("Table", tbl.get("table_number"),
+                           supplementary=supplementary)
+    caption = (tbl.get("caption") or tbl.get("title") or "").strip()
+    caption = " ".join(caption.split())  # collapse newlines for the caption line
+    head = f"**{label}.** {caption}".rstrip() if caption else f"**{label}.**"
+    # Blank line between the caption and the table so it parses as a block.
+    return f"{head}\n\n{content}"
+
+
 def _figures_appendix(
-    figures: list[dict], supp_figures: list[dict], heading: str = "Figures"
+    figures: list[dict], supp_figures: list[dict], heading: str = "Figures",
+    *, skip: set[int] | None = None,
 ) -> str:
     """Markdown that embeds each registered figure's image as a Pandoc figure.
 
@@ -218,30 +414,17 @@ def _figures_appendix(
     has no image to embed (dev-todo EXP-1). We append a Figures section whose
     image targets are the blob basenames — matching the files export_to_path
     writes into the pandoc working dir.
-    """
-    def block(fig: dict, supplementary: bool) -> str | None:
-        bp = fig.get("blob_path")
-        if not bp:
-            return None
-        local_name = pathlib.Path(bp).name
-        num = fig.get("figure_number")
-        label = _display_label("Figure", num, supplementary=supplementary)
-        # Bold the "Figure N." label; the caption/legend stay regular weight
-        # (the markdown is honored by both engines — pandoc parses the alt,
-        # the native renderer renders the alt's inline tokens).
-        parts = [f"**{label.rstrip('.')}.**"]
-        for field in ("caption", "legend"):
-            val = (fig.get(field) or "").strip()
-            if val:
-                parts.append(val)
-        # Alt text becomes the docx/PDF caption; collapse newlines so the
-        # `![ ... ]( ... )` stays a single image node.
-        alt = " ".join(parts).replace("\n", " ").strip()
-        return f"![{alt}]({local_name})"
 
+    `skip` holds numbers the body already positions via `![](figure:N)`; those
+    are omitted, because appending them here rendered the same image twice —
+    once where the author put it and once at the end.
+    """
+    skip = skip or set()
     blocks = [b for b in (
-        *(block(f, False) for f in figures),
-        *(block(f, True) for f in supp_figures),
+        *(_figure_block(f, supplementary=False) for f in figures
+          if f.get("figure_number") not in skip),
+        *(_figure_block(f, supplementary=True) for f in supp_figures
+          if f.get("figure_number") not in skip),
     ) if b]
     if not blocks:
         return ""
@@ -249,7 +432,8 @@ def _figures_appendix(
 
 
 def _tables_appendix(
-    tables: list[dict], supp_tables: list[dict], heading: str = "Tables"
+    tables: list[dict], supp_tables: list[dict], heading: str = "Tables",
+    *, skip: set[int] | None = None,
 ) -> str:
     """Markdown that appends each registered table after the body.
 
@@ -259,22 +443,15 @@ def _tables_appendix(
     saw it and every export dropped all tables (dev-todo: tables-appendix). We
     emit a Tables section: a bold 'Table N.' caption line followed by the
     stored pipe-table markdown, mirroring `_figures_appendix`.
-    """
-    def block(tbl: dict, supplementary: bool) -> str | None:
-        content = (tbl.get("content") or "").strip()
-        if not content:
-            return None
-        num = tbl.get("table_number")
-        label = _display_label("Table", num, supplementary=supplementary)
-        caption = (tbl.get("caption") or tbl.get("title") or "").strip()
-        caption = " ".join(caption.split())  # collapse newlines for the caption line
-        head = f"**{label}.** {caption}".rstrip() if caption else f"**{label}.**"
-        # Blank line between the caption and the table so it parses as a block.
-        return f"{head}\n\n{content}"
 
+    `skip` holds numbers the body positions itself via `![](table:N)`.
+    """
+    skip = skip or set()
     blocks = [b for b in (
-        *(block(t, False) for t in tables),
-        *(block(t, True) for t in supp_tables),
+        *(_table_block(t, supplementary=False) for t in tables
+          if t.get("table_number") not in skip),
+        *(_table_block(t, supplementary=True) for t in supp_tables
+          if t.get("table_number") not in skip),
     ) if b]
     if not blocks:
         return ""
@@ -501,19 +678,65 @@ def _stale_artifact_warnings(
     return out
 
 
-def prepare_export(state: State, slug: str) -> dict:
+BUNDLE_FIELDS = (
+    "slug", "paper", "sections", "manuscript", "figures", "supplementary_figures",
+    "tables", "supplementary_tables", "references", "bibtex", "placeholders",
+    "legend_warnings", "unresolved_citations", "doiless_uncited_refs",
+    "csl_filename", "csl_slug", "csl_source", "csl_status", "requirements_check",
+    "review_triage", "warnings",
+)
+
+
+def numbers_supplementary(paper: dict) -> bool:
+    """Whether the "+100 = supplementary" numbering convention applies.
+
+    Only to journal papers. A report or proposal has no supplementary section,
+    and its 100th table is simply table 100 — applying the offset there
+    reclassified 8 body tables as supplementary and then `scope="main"` dropped
+    them from the export, one of them cited in the body (feedback 0e394fb76649:
+    a 107-table technical proposal).
+    """
+    return (paper.get("doc_type") or "paper").lower() == "paper"
+
+
+def prepare_export(
+    state: State,
+    slug: str,
+    *,
+    fields: list[str] | None = None,
+    stage_dir: str | None = None,
+) -> dict:
     """Collect everything needed to export `slug` to a finished document.
 
     Returns a dict with:
         slug, paper, sections, manuscript (str), figures, tables,
         references, bibtex (str), warnings, placeholders,
         unresolved_citations (list of DOIs), suggested_csl_filename.
+
+    `fields` narrows the reply to those top-level keys (`slug` is always kept).
+    A document with ~100 tables makes the full bundle a few hundred KB, past the
+    tool-reply limit; ask for `["sections", "tables"]` instead of taking the
+    file fallback. An unknown key raises rather than returning an empty reply.
+
+    `stage_dir` also writes every figure's image blob into that directory and
+    adds `local_path` to each figure dict — what you need to post-process the
+    bundle yourself, since `blob_path` alone names a remote object.
     """
+    if fields:
+        unknown = [f for f in fields if f not in BUNDLE_FIELDS]
+        if unknown:
+            raise ValueError(
+                f"unknown prepare_export field(s): {', '.join(unknown)}; "
+                f"choose from {', '.join(BUNDLE_FIELDS)}"
+            )
     bundle = _papers.get_paper_state(state, slug)
-    figs = _figures.list_figures(state, slug)
-    supp_figs = _figures.list_figures(state, slug, supplementary=True)
-    tbls = _tables.list_tables(state, slug)
-    supp_tbls = _tables.list_tables(state, slug, supplementary=True)
+    # A report/proposal has no supplementary split — take every figure/table as
+    # main content rather than reading numbers ≥100 as supplementary.
+    split_supp = numbers_supplementary(bundle["paper"])
+    figs = _figures.list_figures(state, slug, supplementary=False if split_supp else None)
+    supp_figs = _figures.list_figures(state, slug, supplementary=True) if split_supp else []
+    tbls = _tables.list_tables(state, slug, supplementary=False if split_supp else None)
+    supp_tbls = _tables.list_tables(state, slug, supplementary=True) if split_supp else []
     refs = _references.list_references(state, slug)
 
     manuscript = bundle["manuscript"]
@@ -590,6 +813,7 @@ def prepare_export(state: State, slug: str) -> dict:
         manuscript,
         [t["table_number"] for t in tbls + supp_tbls],
         [f["figure_number"] for f in figs + supp_figs],
+        number_supplementary=split_supp,
     )
     if orphans["tables"]:
         warnings.append(
@@ -654,7 +878,27 @@ def prepare_export(state: State, slug: str) -> dict:
     ]
     warnings.extend(legend_warnings)
 
-    return {
+    # Optionally hand back real files: `blob_path` names a remote object, so an
+    # agent post-processing this bundle (assembling its own .docx, say) had no
+    # way to reach the image bytes without a per-figure get_figure(dest_dir=…).
+    if stage_dir:
+        dest = pathlib.Path(stage_dir).expanduser()
+        dest.mkdir(parents=True, exist_ok=True)
+        for fig in (*figs, *supp_figs):
+            bp = fig.get("blob_path")
+            if not bp:
+                continue
+            data = state.backend.get_blob(bp)
+            if data is None:
+                warnings.append(
+                    f"figure {fig.get('figure_number')} blob missing at {bp} "
+                    f"— not staged to {dest}")
+                continue
+            local = dest / pathlib.Path(bp).name
+            local.write_bytes(data)
+            fig["local_path"] = str(local.resolve())
+
+    out = {
         "slug": slug,
         "paper": paper,
         "sections": bundle["sections"],
@@ -677,6 +921,10 @@ def prepare_export(state: State, slug: str) -> dict:
         "review_triage": triage,
         "warnings": warnings,
     }
+    if fields:
+        keep = {"slug", *fields}
+        return {k: v for k, v in out.items() if k in keep}
+    return out
 
 
 _VALID_FORMATS = {"docx", "tex", "pdf", "md"}
@@ -871,10 +1119,13 @@ def export_to_path(
     csl_path: str | None = None,
     upload_to_storage: bool = True,
     scope: str = "main",
+    page_size: str = _docx_export.DEFAULT_PAGE_SIZE,
 ) -> dict:
     """Full export pipeline.
 
     `fmt` is inferred from output_path extension if None.
+    `page_size` is "a4" (default) or "letter", applied to every .docx on both
+    engines.
     The citation style is auto-resolved from the paper's journal and
     downloaded from the CSL styles repo; pass `csl_path` to override with a
     local CSL file.
@@ -897,11 +1148,22 @@ def export_to_path(
     scope = (scope or "main").lower()
     if scope not in _VALID_SCOPES:
         raise ValueError(f"invalid scope {scope!r}; choose from {_VALID_SCOPES}")
+    page_size = _docx_export.validate_page_size(page_size)
     include_main = scope in ("main", "all")
     include_supp = scope in ("supplementary", "all")
 
     bundle = prepare_export(state, slug)
     export_warnings = list(bundle["warnings"])
+    split_supp = numbers_supplementary(bundle["paper"])
+    if scope == "supplementary" and not split_supp:
+        export_warnings.append(
+            f"doc_type={bundle['paper'].get('doc_type')!r} has no supplementary "
+            f"split (the +100 numbering convention is journal-paper only), so "
+            f"scope='supplementary' produces an empty document — use scope='main'"
+        )
+    export_warnings.extend(_dangling_artifact_refs(
+        bundle["manuscript"], bundle, scope=scope,
+        include_main=include_main, include_supp=include_supp))
     out = pathlib.Path(output_path).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -933,10 +1195,22 @@ def export_to_path(
         # append Tables/Figures sections so registered items get embedded
         # (dev-todo EXP-1 + tables-appendix). For a supplementary-only export
         # there is no main manuscript text — start from a heading.
+        placed_figs: set[int] = set()
+        placed_tbls: set[int] = set()
         if include_main:
             manuscript_text = _escape_thematic_breaks(bundle["manuscript"])
-            manuscript_text = _rewrite_inline_figure_refs(
-                manuscript_text, staged_figs, [],
+            # Pass the FULL registered sets so a supplementary item keeps its
+            # "SFigure N" / "STable N" label, and `placeable` (the scope-included
+            # numbers) decides what may actually be embedded in THIS file.
+            manuscript_text, placed_figs = _rewrite_inline_figure_refs(
+                manuscript_text, bundle["figures"], bundle["supplementary_figures"],
+                placeable={f["figure_number"] for f in staged_figs},
+            )
+            # `![](table:N)` had no handler at all and rendered as nothing; now
+            # it expands into the table where the author placed it.
+            manuscript_text, placed_tbls = _rewrite_inline_table_refs(
+                manuscript_text, bundle["tables"], bundle["supplementary_tables"],
+                placeable={t["table_number"] for t in (*main_tbls, *supp_tbls)},
             )
             tbl_heading, fig_heading = "Tables", "Figures"
             # Place the bibliography BEFORE the Tables/Figures appendices:
@@ -954,10 +1228,12 @@ def export_to_path(
 
         # Tables before figures (conventional manuscript order). Both
         # appendices carry markup the body only text-references.
-        tbl_appendix = _tables_appendix(main_tbls, supp_tbls, heading=tbl_heading)
+        tbl_appendix = _tables_appendix(main_tbls, supp_tbls, heading=tbl_heading,
+                                        skip=placed_tbls)
         if tbl_appendix:
             manuscript_text = manuscript_text.rstrip() + "\n\n" + tbl_appendix
-        fig_appendix = _figures_appendix(main_figs, supp_figs, heading=fig_heading)
+        fig_appendix = _figures_appendix(main_figs, supp_figs, heading=fig_heading,
+                                         skip=placed_figs)
         if fig_appendix:
             manuscript_text = manuscript_text.rstrip() + "\n\n" + fig_appendix
         # Convert `{doi:…}` markers to pandoc `[@key]` citations so --citeproc
@@ -969,7 +1245,8 @@ def export_to_path(
             )
         # Resolve {fig:N}/{tab:N} inline refs to text on ALL engines — else the
         # literal tokens leak into the exported file (dev-todo: EXP figure refs).
-        manuscript_text = _rewrite_inline_ref_tokens(manuscript_text)
+        manuscript_text = _rewrite_inline_ref_tokens(
+            manuscript_text, number_supplementary=split_supp)
         (tmp_path / "manuscript.md").write_text(manuscript_text, encoding="utf-8")
         has_bib = bool(bundle["bibtex"].strip())
         csl_arg: str | None = None
@@ -1003,6 +1280,7 @@ def export_to_path(
             # staged blobs in tmp_path.
             _docx_export.render_markdown_to_docx(
                 manuscript_text, tmp_output, asset_dir=tmp_path,
+                page_size=page_size,
             )
             docx_hancom_fix = "native_python_docx"
             if has_bib:
@@ -1035,7 +1313,8 @@ def export_to_path(
             # have dropped pandoc's table style). Non-fatal.
             if fmt == "docx":
                 try:
-                    _docx_export.apply_base_font_to_docx(tmp_output)
+                    _docx_export.apply_base_font_to_docx(
+                        tmp_output, page_size=page_size)
                 except Exception as e:
                     export_warnings.append(f"export font swap skipped: {e!s}")
 
@@ -1084,6 +1363,7 @@ def export_to_path(
         "scope": scope,
         "doc_type": doc_type,
         "engine": engine,
+        "page_size": page_size if fmt == "docx" else None,
         "local_path": str(out),
         "blob_path": blob_path,
         "size_bytes": len(output_bytes),

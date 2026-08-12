@@ -26,6 +26,19 @@ from .papers import _paper_path
 SUPPLEMENTARY_NUMBER_OFFSET = 100
 
 
+def is_supplementary_number(n) -> bool:
+    """Whether a figure/table number denotes a supplementary item.
+
+    Supplementary item N is stored as OFFSET + N, so the FIRST one is 101 and
+    100 is the hundredth main item. Every docstring here said "≥ 101" and the
+    reorder path allocates from 101 up, but the two list functions compared
+    `>= 100` — so a manually registered item 100 was classified supplementary
+    and then labelled "STable 0". One predicate, so the readers cannot drift
+    from the writer again.
+    """
+    return isinstance(n, int) and n > SUPPLEMENTARY_NUMBER_OFFSET
+
+
 def _figure_path(state: State, slug: str, figure_number: int) -> str:
     return state.project_path("papers", slug, "figures", str(figure_number))
 
@@ -221,16 +234,15 @@ def get_figure(
 def list_figures(state: State, slug: str, *, supplementary: bool | None = False) -> list[dict]:
     """List figures in ascending figure_number order.
 
-    supplementary=False → main figures only (number < 101, default); True →
-    SFigures only (number >= 101); None → all (main + supplementary).
+    supplementary=False → main figures only (number ≤ 100, default); True →
+    SFigures only (number ≥ 101); None → all (main + supplementary).
     """
     _ensure_paper(state, slug)
     pairs = state.backend.list_collection(state.project_path("papers", slug, "figures"))
     figs = [data for _, data in pairs]
     if supplementary is not None:
         figs = [f for f in figs
-                if (supplementary and f["figure_number"] >= SUPPLEMENTARY_NUMBER_OFFSET)
-                or (not supplementary and f["figure_number"] < SUPPLEMENTARY_NUMBER_OFFSET)]
+                if is_supplementary_number(f["figure_number"]) == supplementary]
     figs.sort(key=lambda f: f["figure_number"])
     return figs
 

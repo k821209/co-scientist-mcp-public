@@ -12,7 +12,7 @@ from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
 from . import limits as _limits
-from .figures import SUPPLEMENTARY_NUMBER_OFFSET
+from .figures import SUPPLEMENTARY_NUMBER_OFFSET, is_supplementary_number
 from .papers import _paper_path
 
 
@@ -127,8 +127,7 @@ def list_tables(state: State, slug: str, *, supplementary: bool | None = False) 
     tables = [data for _, data in pairs]
     if supplementary is not None:
         tables = [t for t in tables
-                  if (supplementary and t["table_number"] >= SUPPLEMENTARY_NUMBER_OFFSET)
-                  or (not supplementary and t["table_number"] < SUPPLEMENTARY_NUMBER_OFFSET)]
+                  if is_supplementary_number(t["table_number"]) == supplementary]
     tables.sort(key=lambda t: t["table_number"])
     return tables
 

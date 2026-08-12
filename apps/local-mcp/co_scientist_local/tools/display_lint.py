@@ -20,8 +20,26 @@ SUPPLEMENTARY_NUMBER_OFFSET = 100
 # one dash, sitting directly under a non-empty (header) line. One per table.
 _SEP_CHARS = set("|:- ")
 _IMG_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
-_PROSE_TABLE_RE = re.compile(r"\bTable\s+(S?)(\d+)\b", re.IGNORECASE)
-_PROSE_FIG_RE = re.compile(r"\b(?:Figure|Fig)\.?\s+(S?)(\d+)\b", re.IGNORECASE)
+# `![](figure:3)` / `![](table:8)` are the REGISTERED-object embed schemes, not
+# untracked inline images: they are how an author positions a tracked figure or
+# table in the body. Counting them fired "use add_figure so they're tracked"
+# precisely at the authors who had done exactly that, and hid a genuinely
+# untracked `![](photo.png)` in the same inflated count.
+_TRACKED_EMBED_RE = re.compile(r"!\[[^\]]*\]\((?:figure|table):\d+\)")
+# The number ends with a non-digit lookahead, NOT `\b`: Korean is word-class to
+# `re`, so `\b` after the digits failed on "Table 107에 있다" — every prose
+# reference written in Korean text went unchecked, which reads as "no dangling
+# references" rather than "not looked at".
+_PROSE_TABLE_RE = re.compile(r"\bTable\s+(S?)(\d+)(?!\d)", re.IGNORECASE)
+_PROSE_FIG_RE = re.compile(r"\b(?:Figure|Fig)\.?\s+(S?)(\d+)(?!\d)", re.IGNORECASE)
+# The S-PREFIX spelling — "STable 5" / "SFigure 1" — which is the convention our
+# own skills and rendered captions use, while the patterns above only recognised
+# the S-suffix "Table S5". So a reference to a supplementary item that does not
+# exist was never reported in the one spelling we tell authors to write.
+# Case-SENSITIVE on purpose: an ignore-case `S?Table` also matches the ordinary
+# word "stable" ("a stable 3 kb region" → STable 3).
+_PROSE_STABLE_RE = re.compile(r"\bSTable\s+(\d+)(?!\d)")
+_PROSE_SFIG_RE = re.compile(r"\bS(?:Figure|Fig)\.?\s+(\d+)(?!\d)")
 
 
 def count_inline_tables(text: str) -> int:
@@ -36,30 +54,52 @@ def count_inline_tables(text: str) -> int:
 
 
 def count_inline_images(text: str) -> int:
-    """Count inline markdown images (![alt](src))."""
-    return len(_IMG_RE.findall(text))
+    """Count UNTRACKED inline markdown images (![alt](src)).
+
+    Embeds of a registered figure/table (`figure:N` / `table:N`) don't count —
+    see `_TRACKED_EMBED_RE`.
+    """
+    return len(_IMG_RE.findall(_TRACKED_EMBED_RE.sub("", text)))
 
 
-def label_for(number: int) -> str:
-    """Registered object number → prose label: 3 -> '3', 101 -> 'S1'."""
+def label_for(number: int, *, number_supplementary: bool = True) -> str:
+    """Registered object number → prose label: 3 -> '3', 101 -> 'S1'.
+
+    `number_supplementary=False` turns the +100 convention off — in a report or
+    proposal, table 107 is labelled "107". With it left on, a report's prose
+    "Table 107" was compared against a registered label of "S7" and reported as
+    a reference to a table that does not exist.
+    """
     return (f"S{number - SUPPLEMENTARY_NUMBER_OFFSET}"
-            if number > SUPPLEMENTARY_NUMBER_OFFSET else str(number))
+            if number_supplementary and number > SUPPLEMENTARY_NUMBER_OFFSET
+            else str(number))
 
 
-def _prose_labels(text: str, regex: re.Pattern) -> set[str]:
-    return {("S" if s else "") + n for s, n in regex.findall(text)}
+def _prose_labels(text: str, regex: re.Pattern, s_regex: re.Pattern) -> set[str]:
+    """Referenced labels, normalized to the S-prefix form ("S5" / "3").
+
+    `regex` reads the S-suffix spelling ("Table S5"), `s_regex` the S-prefix one
+    ("STable 5"); both are in use and both must resolve to the same label.
+    """
+    return ({("S" if s else "") + n for s, n in regex.findall(text)}
+            | {"S" + n for n in s_regex.findall(text)})
 
 
-def orphan_references(text: str, table_numbers, figure_numbers) -> dict[str, list[str]]:
+def orphan_references(text: str, table_numbers, figure_numbers,
+                      *, number_supplementary: bool = True) -> dict[str, list[str]]:
     """Prose 'Table N' / 'Figure N' references with no matching registered
     object. Returns {'tables': [...], 'figures': [...]} of orphaned labels."""
-    reg_tables = {label_for(n) for n in table_numbers}
-    reg_figs = {label_for(n) for n in figure_numbers}
+    reg_tables = {label_for(n, number_supplementary=number_supplementary)
+                  for n in table_numbers}
+    reg_figs = {label_for(n, number_supplementary=number_supplementary)
+                for n in figure_numbers}
     return {
-        "tables": sorted(_prose_labels(text, _PROSE_TABLE_RE) - reg_tables,
-                         key=lambda x: (x.startswith("S"), x)),
-        "figures": sorted(_prose_labels(text, _PROSE_FIG_RE) - reg_figs,
-                          key=lambda x: (x.startswith("S"), x)),
+        "tables": sorted(
+            _prose_labels(text, _PROSE_TABLE_RE, _PROSE_STABLE_RE) - reg_tables,
+            key=lambda x: (x.startswith("S"), x)),
+        "figures": sorted(
+            _prose_labels(text, _PROSE_FIG_RE, _PROSE_SFIG_RE) - reg_figs,
+            key=lambda x: (x.startswith("S"), x)),
     }
 
 

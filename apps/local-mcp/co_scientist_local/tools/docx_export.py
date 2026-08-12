@@ -27,12 +27,28 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Mm, Pt, RGBColor
 from markdown_it import MarkdownIt
 from markdown_it.tree import SyntaxTreeNode
 
-# Cap image width to the usable text column of a default Letter page
-# (8.5in − 1in margins each side). Smaller images keep their native size.
+# Page setup. python-docx's default template is US Letter with 1.25in side
+# margins, and pandoc's default reference doc is Letter too — so every .docx we
+# produced was Letter, whatever the document was for. A4 is the standard
+# everywhere outside the US/Canada and is a hard requirement for Korean public
+# documents (feedback 0e394fb76649: an RFP that specified A4), so it is the
+# default here; pass page_size="letter" for the old behaviour. The narrower
+# 20mm side margins also widen the text column, which is what wide tables need.
+PAGE_SIZES = {
+    "a4": (Mm(210), Mm(297)),
+    "letter": (Inches(8.5), Inches(11)),
+}
+DEFAULT_PAGE_SIZE = "a4"
+_MARGIN_VERTICAL = Mm(25)
+_MARGIN_SIDE = Mm(20)
+
+# Cap image width to the usable text column — 170mm on A4 with the side margins
+# above, and wider still on Letter, so 6.0in fits both. Smaller images keep
+# their native size.
 _MAX_IMAGE_WIDTH = Inches(6.0)
 _MONO_FONT = "Consolas"
 _LINK_COLOR = RGBColor(0x05, 0x63, 0xC1)
@@ -50,6 +66,32 @@ _HEADING_COLOR = RGBColor(0x1F, 0x38, 0x64)  # deep navy — reads as a section 
 _TABLE_STYLE = "Light Grid Accent 1"
 # (level, size pt, space-before pt, space-after pt)
 _HEADING_SPECS = [(1, 16, 12, 6), (2, 13, 10, 4), (3, 11.5, 8, 3)]
+
+
+def validate_page_size(page_size: str | None) -> str:
+    """Normalize a page-size name, raising on anything unknown.
+
+    Deliberately strict: silently falling back to a default would let a typo
+    ("A-4") ship a Letter document to a submission that requires A4, with
+    nothing in the reply to show it happened.
+    """
+    key = (page_size or DEFAULT_PAGE_SIZE).strip().lower()
+    if key not in PAGE_SIZES:
+        raise ValueError(
+            f"unknown page_size {page_size!r}; choose from {sorted(PAGE_SIZES)}")
+    return key
+
+
+def apply_page_setup(doc, page_size: str = DEFAULT_PAGE_SIZE) -> None:
+    """Set every section's paper size and margins."""
+    width, height = PAGE_SIZES[validate_page_size(page_size)]
+    for section in doc.sections:
+        section.page_width = width
+        section.page_height = height
+        section.top_margin = _MARGIN_VERTICAL
+        section.bottom_margin = _MARGIN_VERTICAL
+        section.left_margin = _MARGIN_SIDE
+        section.right_margin = _MARGIN_SIDE
 
 
 def _set_eastasia_font(style, eastasia: str) -> None:
@@ -93,14 +135,18 @@ def _set_doc_default_font(doc, latin: str, eastasia: str) -> None:
     rFonts.set(qn("w:eastAsia"), eastasia)
 
 
-def apply_base_font_to_docx(path) -> None:
+def apply_base_font_to_docx(path, *, page_size: str = DEFAULT_PAGE_SIZE) -> None:
     """Swap an existing .docx's base font to the export font (Times New Roman)
     at 1.15 line spacing, WITHOUT touching any other style — so a pandoc-
     generated doc keeps its "Table" style (borders/shading), headings, etc.,
     and only the default typeface changes. Sets the document-wide default font
     (so table cells + body inherit it) plus the Normal style's font + spacing.
+
+    Also applies the page setup, so the pandoc and native paths cannot drift to
+    different paper sizes.
     """
     doc = Document(str(path))
+    apply_page_setup(doc, page_size)
     _set_doc_default_font(doc, _BODY_FONT_LATIN, _BODY_FONT_EASTASIA)
     try:
         normal = doc.styles["Normal"]
@@ -462,6 +508,7 @@ def render_markdown_to_docx(
     output_path: str | pathlib.Path,
     *,
     asset_dir: str | pathlib.Path | None = None,
+    page_size: str = DEFAULT_PAGE_SIZE,
 ) -> pathlib.Path:
     """Render `markdown_text` to a .docx at `output_path`.
 
@@ -476,6 +523,7 @@ def render_markdown_to_docx(
     root = SyntaxTreeNode(tokens)
 
     doc = Document()
+    apply_page_setup(doc, page_size)
     _apply_report_template(doc)
     for node in root.children:
         _render_block(doc, node, assets)

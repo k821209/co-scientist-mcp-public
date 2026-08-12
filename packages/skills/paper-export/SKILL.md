@@ -108,13 +108,45 @@ mcp__co_scientist__export_to_path(
   slug,
   output_path="<absolute path or ./{slug}.{ext}>",
   fmt="docx" | "tex" | "pdf" | "md",
-  scope="main",   # "main" | "supplementary" | "all"
+  scope="main",     # "main" | "supplementary" | "all"
+  page_size="a4",   # "a4" (default) | "letter" — .docx only
 )
 ```
 
+**Where tables and figures land.** By default a registered table or figure is
+collected into a `Tables` / `Figures` section at the END of the document, which
+is right for a journal manuscript and wrong for almost everything else. To put
+one IN the body, the author (or you) puts its embed **alone on its own line**
+where it belongs:
+
+```markdown
+아래 표와 같이 요구사항을 모두 충족한다.
+
+![](table:107)
+
+다음 절에서는 …
+```
+
+That renders the caption + table at that spot and it is **not** repeated in the
+appendix. Same for `![](figure:5)`. Two rules matter:
+
+- **Alone on its line.** An embed sharing a line with prose can't become a block
+  without breaking the paragraph, so it degrades to a bold `**Table 107**` text
+  reference instead. Visible, but not the table.
+- **An alt-less embed inherits the registered caption.** Write `![](table:8)`,
+  not `![Table 8](table:8)`, unless you deliberately want to override the
+  caption for this position — an authored alt REPLACES the registered legend.
+
+For a report or proposal (`doc_type="report"`), placing every table and figure
+inline this way is normally what the reader expects: a proposal whose 100 tables
+sit forty pages away from the prose that cites them does not function as a
+document.
+
 **Main vs supplementary (`scope`).** A journal receives a main manuscript
 containing only the MAIN figures/tables; supplementary items (figure/table
-number ≥ 101) belong in a separate file. So:
+number ≥ 101) belong in a separate file. This convention applies to
+`doc_type="paper"` ONLY — in a report or proposal, table 100 is the hundredth
+table, not a supplementary one, and every item is body content. So:
 - `scope="main"` (default) — manuscript text + main figures/tables only.
 - `scope="supplementary"` — a standalone *Supplementary Material* document
   with only the supplementary figures/tables (no main body).
@@ -137,8 +169,20 @@ The tool:
   `papers/{slug}/exports/{filename}` so it's downloadable from the
   dashboard.
 
-Returns `{ local_path, blob_path, format, size_bytes, csl_filename,
+Returns `{ local_path, blob_path, format, page_size, size_bytes, csl_filename,
 csl_status, warnings, placeholders, unresolved_citations }`.
+
+**Read the `warnings` for dangling references.** A warning of the form
+"the body references Table 107 … excluded by scope='main'" means the reader gets
+a reference with nothing behind it. Do NOT hand over the file until it is
+resolved — the reference count is the thing to check, not the file's existence.
+
+**A very large document.** `prepare_export` on a ~100-table document exceeds the
+tool-reply limit and spills to a file. Ask for the keys you need instead:
+`prepare_export(slug, fields=["sections", "tables"])`. Add
+`stage_dir="/tmp/…"` to also write every figure's image file to disk and get a
+`local_path` per figure — needed only if you are assembling a document yourself
+rather than using `export_to_path`.
 
 ### Journal citation style (CSL)
 
@@ -213,6 +257,13 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
 
 ## Common follow-ups
 
+- "This is a proposal/report, not a paper" → the document should have
+  `doc_type="report"` (`update_paper(slug, doc_type="report")`). That switches
+  the .docx engine to python-docx (Hancom-safe) and turns OFF the +100
+  supplementary convention. Then place tables/figures inline (see step 4);
+  A4 is already the default page size.
+- "Make it A4" / "the RFP requires A4" → already the default. Pass
+  `page_size="letter"` only when a US journal asks for Letter.
 - "Make it ready for Nature" → set `paper.journal = "Nature"` via
   `update_paper`, then re-export — the Nature CSL is resolved and
   downloaded automatically.

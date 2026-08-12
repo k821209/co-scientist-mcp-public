@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 
 from ..state import State
-from .figures import SUPPLEMENTARY_NUMBER_OFFSET, list_figures
+from .figures import SUPPLEMENTARY_NUMBER_OFFSET, is_supplementary_number, list_figures
 from .sections import list_sections
 from .tables import list_tables
 
@@ -401,14 +401,14 @@ def lint_legends(state: State, slug: str) -> dict:
 
     for fig in list_figures(state, slug, supplementary=None):
         num = fig["figure_number"]
-        supp = num >= SUPPLEMENTARY_NUMBER_OFFSET
+        supp = is_supplementary_number(num)
         label = (f"SFig S{num - SUPPLEMENTARY_NUMBER_OFFSET}" if supp
                  else f"Fig {num}")
         _score(label, "figure", num, _legend_text_figure(fig), _FIG_INFO, _FIG_WARN)
 
     for tbl in list_tables(state, slug, supplementary=None):
         num = tbl["table_number"]
-        supp = num >= SUPPLEMENTARY_NUMBER_OFFSET
+        supp = is_supplementary_number(num)
         label = (f"STable S{num - SUPPLEMENTARY_NUMBER_OFFSET}" if supp
                  else f"Table {num}")
         cap = (tbl.get("caption") or tbl.get("title") or "")

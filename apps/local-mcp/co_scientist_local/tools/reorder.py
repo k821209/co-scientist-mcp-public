@@ -25,7 +25,8 @@ import re
 
 from ..backends.base import NotFound
 from ..state import State
-from .figures import SUPPLEMENTARY_NUMBER_OFFSET, _figure_blob_path, _figure_path
+from .figures import (SUPPLEMENTARY_NUMBER_OFFSET, _figure_blob_path, _figure_path,
+                      is_supplementary_number)
 from . import sections as _sections
 from .tables import _table_path
 
@@ -67,7 +68,7 @@ def reorder_supplementary(
     current = sorted(
         n for did, d in items
         if (n := (d.get(num_field) if isinstance(d.get(num_field), int) else _safe_int(did)))
-        is not None and n >= SUPPLEMENTARY_NUMBER_OFFSET
+        is not None and is_supplementary_number(n)
     )
     if not current:
         raise ValueError(f"no supplementary {kind}s to reorder for {slug!r}")

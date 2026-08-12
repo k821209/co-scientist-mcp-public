@@ -22,6 +22,12 @@ a **+100 offset**:
 The dashboard renders them under separate "Supplementary Figures /
 Tables" headings.
 
+**Journal papers only.** The offset is a submission convention, so it applies to
+`doc_type="paper"`. A report or proposal has no supplementary section, and its
+100th table is table 100 — so for those documents every figure/table is body
+content regardless of number, and `scope="supplementary"` produces nothing.
+Don't reach for this skill on a report.
+
 ## Flow
 
 ### 1. Audit existing state

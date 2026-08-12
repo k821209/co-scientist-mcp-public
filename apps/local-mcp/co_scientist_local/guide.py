@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-12a"
+GUIDE_VERSION = "2026-08-13a"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -212,7 +212,11 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   itself** — ANY file you build locally (tracked-changes docx, a response
   letter, a converted table) needs an explicit
   `attach_export(slug, local_path=…, scope=…)`, or it silently never
-  reaches the dashboard.
+  reaches the dashboard. A registered table/figure defaults to a `Tables` /
+  `Figures` section at the END; to place one IN the body put `![](table:N)` /
+  `![](figure:N)` alone on its own line there. Reports/proposals
+  (`doc_type="report"`) render A4 via python-docx and are NOT subject to the
+  +100 supplementary convention.
 - `/tracked-changes-export` — a real marked-up `.docx` (genuine `w:ins`/
   `w:del`) between the submitted version and the current one, by comparing
   two RENDERED docx files with headless LibreOffice. Never diff the

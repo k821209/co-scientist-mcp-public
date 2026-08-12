@@ -1500,9 +1500,21 @@ def build_mcp(state: State) -> FastMCP:
 
     # ─── export ──────────────────────────────────────────────────────────────
     @mcp.tool()
-    def prepare_export(slug: str) -> dict[str, Any]:
-        """Pre-export bundle: manuscript text, bibtex, figures, warnings."""
-        return _exports.prepare_export(state, slug)
+    def prepare_export(
+        slug: str,
+        fields: list[str] | None = None,
+        stage_dir: str | None = None,
+    ) -> dict[str, Any]:
+        """Pre-export bundle: manuscript text, bibtex, figures, warnings.
+
+        `fields` narrows the reply to those top-level keys (e.g.
+        ["sections", "tables"]) — use it on a large document, where the full
+        bundle exceeds the reply limit and spills to a file. An unknown key
+        raises. `stage_dir` also writes every figure's image blob there and adds
+        `local_path` to each figure, for assembling a document yourself.
+        """
+        return _exports.prepare_export(state, slug, fields=fields,
+                                       stage_dir=stage_dir)
 
     @mcp.tool()
     def export_to_path(
@@ -1512,8 +1524,14 @@ def build_mcp(state: State) -> FastMCP:
         csl_path: str | None = None,
         upload_to_storage: bool = True,
         scope: str = "main",
+        page_size: str = "a4",
     ) -> dict[str, Any]:
         """Run pandoc to produce a document; upload result to Cloud Storage.
+
+        Place a table or figure IN the body by putting `![](table:N)` /
+        `![](figure:N)` alone on a line where it belongs; anything not placed
+        that way is collected into a Tables/Figures section at the end.
+        `page_size` is "a4" (default) or "letter", for .docx output.
 
         `scope`: "main" (default) = manuscript + MAIN figures/tables only;
         "supplementary" = a standalone Supplementary Material file with only
@@ -1530,6 +1548,7 @@ def build_mcp(state: State) -> FastMCP:
         return _exports.export_to_path(
             state, slug, output_path=output_path, fmt=fmt,
             csl_path=csl_path, upload_to_storage=upload_to_storage, scope=scope,
+            page_size=page_size,
         )
 
     @mcp.tool()
