@@ -243,19 +243,127 @@ def _norm_for_presence(text: str) -> str:
     return re.sub(r"\s+", "", (text or "").lower()).replace("+/-", "±")
 
 
-def _caption_only_tokens(caption: str, bodies_norm: str) -> list[str]:
-    """Parameter tokens present in the caption and NOWHERE in any section body.
+def _caption_only_tokens(caption: str, data_norm: str) -> list[str]:
+    """Parameter tokens present in the caption and NOWHERE else in the submission.
+
+    `data_norm` covers section bodies AND every table's cells — a value sitting in
+    a table cell is not caption-only, and calling it so would put this flag in
+    direct contradiction with `number_restatement` below, which reads the same
+    value as redundant. One is "never delete", the other "delete": they must never
+    fire on the same token.
 
     A false NEGATIVE is cheap (the token really is in Methods → nothing to say);
     a false POSITIVE costs the author one look. So presence is tested loosely: the
-    numeric+unit core has to appear somewhere in the body, not the token verbatim.
+    numeric+unit core has to appear somewhere, not the token verbatim.
     """
     missing = []
     for tok in _param_tokens(caption):
         core = _norm_for_presence(tok).lstrip("±")
-        if core and core not in bodies_norm:
+        if core and core not in data_norm:
             missing.append(tok)
     return sorted(set(missing))
+
+
+# ── number_restatement: the caption re-tabulating data the item already shows ──
+#
+# `column_redundant` above catches a caption echoing a CATEGORICAL cell value
+# ("Gene-Miner", "Representative") and is table-only. It cannot see the more
+# egregious case: a caption whose prose re-quotes the NUMBERS in the item's own
+# cells. Reported case (feedback 4aa8a17820fc): an STable caption walked through
+# "rice 93.6% → 96.5%, Drosophila 96.5% → 98.9%, C. elegans 95.1% → 98.3%,
+# soybean 91.9% → 92.1%" — every one of those the exact value in the table's own
+# Complete (C) column — and the lint fired only on the words "Gene-Miner" and
+# "BRAKER3". A figure caption could carry a whole mini-Results of numbers with no
+# rule able to see it at all, since figures have no columns.
+#
+# Word count does not surface this: a numeric-dense caption can be short, and the
+# `long` flag is the one authors most reasonably ignore.
+_MEASURE_TOKEN = re.compile(
+    r"""\d[\d,]*(?:\.\d+)?\s*[×x]\s*10\s*\^?\s*-?\d+   # 1.4 × 10^8
+      | \d[\d,]*(?:\.\d+)?\s*%                          # 96.5%
+      | \b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b                # 1,234 / 9,876.5
+      | \b\d+\.\d+\b                                    # 96.5
+    """,
+    re.X,
+)
+# How many restated numbers make a caption a re-tabulation rather than emphasis.
+# NOT 1: quoting the one headline value is good caption writing, and our own
+# suggestion text tells authors to "keep key numbers". Three is where a caption
+# has stopped pointing at the data and started reprinting it.
+_MIN_RESTATED = 3
+
+
+def _measure_tokens(text: str) -> list[tuple[str, str]]:
+    """Measurement-shaped numeric literals as (verbatim, normalised).
+
+    Excludes any literal a `_PARAM_TOKEN` span already claims — a threshold,
+    named constant, padding or version. That is what keeps this rule and
+    `caption_only` disjoint BY CONSTRUCTION rather than by coincidence of which
+    haystack each happens to search.
+    """
+    param_spans = [m.span() for m in _PARAM_TOKEN.finditer(text or "")]
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for m in _MEASURE_TOKEN.finditer(text or ""):
+        s, e = m.span()
+        if any(ps < e and s < pe for ps, pe in param_spans):
+            continue
+        norm = _norm_number(m.group(0))
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append((m.group(0).strip(), norm))
+    return out
+
+
+def _norm_number(tok: str) -> str:
+    """Canonical form of a numeric literal, for comparison across contexts.
+
+    Lowercased, whitespace and thousands commas removed, ×→x, ^ dropped, and a
+    trailing % stripped — the caption writes "96.5%" while the cell under a
+    "Complete (C) %" header often writes "96.5", and those are the same number.
+    """
+    s = re.sub(r"\s+", "", (tok or "").lower())
+    return s.replace("×", "x").replace("^", "").replace(",", "").rstrip("%")
+
+
+# Generous on the HAYSTACK side: any numeric literal counts as the number being
+# shown, including one inside a threshold or a version, because the question here
+# is only "is this value already in front of the reader somewhere".
+_ANY_NUMBER = re.compile(
+    r"\d[\d,]*(?:\.\d+)?(?:\s*[×x]\s*10\s*\^?\s*-?\d+)?\s*%?")
+
+
+def _number_set(text: str) -> set[str]:
+    """Every numeric literal in `text`, canonicalised.
+
+    A SET, not a squashed haystack string: the obvious implementation — strip
+    whitespace and substring-search — silently fails on exactly the reported case.
+    Adjacent numeric cells "| 93.6 | 96.5 |" squash to "93.696.5", where a
+    digit-boundary guard then REFUSES to match the real "96.5" (it is preceded by
+    the "." of 93.6). The check would have reported clean on the caption it exists
+    to catch.
+    """
+    return {n for n in (_norm_number(m.group(0)) for m in _ANY_NUMBER.finditer(text or ""))
+            if n and any(ch.isdigit() for ch in n)}
+
+
+def _restated_numbers(caption: str, own_cells: set[str],
+                      shown: set[str]) -> list[dict]:
+    """Caption numbers already shown in the item's own cells or elsewhere.
+
+    Own cells are reported separately because restating your own table is the
+    stronger finding — there is no argument for it at all, whereas quoting a body
+    number can be a deliberate pointer to the key result.
+    """
+    out: list[dict] = []
+    for verbatim, norm in _measure_tokens(caption):
+        if norm in own_cells:
+            out.append({"number": verbatim, "source": "own_cells",
+                        "note": "already a cell in this table"})
+        elif norm in shown:
+            out.append({"number": verbatim, "source": "body_or_other_item",
+                        "note": "already in a section body or another table"})
+    return out
 
 
 def lint_legends(state: State, slug: str) -> dict:
@@ -265,11 +373,13 @@ def lint_legends(state: State, slug: str) -> dict:
     Each finding: {item, type, number, word_count, level (info|warn), flags, and
     detail lists. Flags: long, body_duplication (EVERY duplicated sentence is
     enumerated in duplicated_spans, each with its section + a trim suggestion),
-    interpretive, sample_roster_restatement (a sample-composition list also in
-    the body), bare_cross_reference (a "…described/listed in Table/Results…"
-    pointer), and table-only column_redundant / excluded_data_note (in
-    caption_smells). `level` is warn if any flag is warn-grade, else info; an
-    item with no flags is omitted.
+    number_restatement (>= 3 caption numbers already shown in the item's own cells
+    or in the body — every one listed in duplicated_numbers so they clear in a
+    single pass), interpretive, sample_roster_restatement (a sample-composition
+    list also in the body), bare_cross_reference (a "…described/listed in
+    Table/Results…" pointer), and table-only column_redundant /
+    excluded_data_note (in caption_smells). `level` is warn if any flag is
+    warn-grade, else info; an item with no flags is omitted.
     """
     sections = list_sections(state, slug)
     # Pre-shingle each section body once; the duplication check is containment of
@@ -278,8 +388,19 @@ def lint_legends(state: State, slug: str) -> dict:
     # "does this sentence already live in the body?" question we actually want).
     sec_shingles = [(s.get("title") or s.get("key") or "?",
                      _shingles(s.get("body") or "")) for s in sections]
-    # One normalised haystack of every section body, for the caption_only check.
-    bodies_norm = _norm_for_presence(" ".join((x.get("body") or "") for x in sections))
+    # One normalised haystack of everything the submission SHOWS: every section
+    # body plus every table's cells. Captions are deliberately excluded — an
+    # item's own caption would trivially "contain" its own numbers, and two
+    # captions quoting the same value is not the duplication either rule is about.
+    all_tables = list_tables(state, slug, supplementary=None)
+    cells_text = " ".join(
+        v for t in all_tables
+        for vals in _table_columns(t.get("content") or "").values()
+        for v in vals if v
+    )
+    bodies_text = " ".join((x.get("body") or "") for x in sections)
+    data_norm = _norm_for_presence(bodies_text + " " + cells_text)
+    shown_numbers = _number_set(bodies_text) | _number_set(cells_text)
 
     def _dup_spans(text: str) -> list[dict]:
         spans: list[dict] = []
@@ -356,6 +477,19 @@ def lint_legends(state: State, slug: str) -> dict:
         interp = _interpretive(text)
         if interp:
             flags.append("interpretive"); level = level or "info"
+        # number_restatement: the caption reprinting numbers the reader already
+        # sees. Ranked warn like body_duplication — the reporter's point is that
+        # it is the MORE egregious duplication, and `long` (the flag authors most
+        # reasonably ignore) cannot surface it, since a numeric-dense caption can
+        # be short.
+        own_cells = (_number_set(" ".join(
+            v for vals in _table_columns(table_content).values() for v in vals if v))
+            if table_content is not None else set())
+        restated = _restated_numbers(text, own_cells, shown_numbers)
+        if len(restated) >= _MIN_RESTATED:
+            flags.append("number_restatement"); level = "warn"
+        else:
+            restated = []       # below the threshold this is emphasis, not a finding
         caption_smells: list[dict] = _prose_smells(text)
         if table_content is not None:
             caption_smells += _table_caption_smells(text, table_content)
@@ -367,7 +501,7 @@ def lint_legends(state: State, slug: str) -> dict:
         # RELOCATE, do not delete. Ranked warn and placed FIRST: every other flag
         # here invites deletion, and this is the one case where deleting destroys
         # information that exists nowhere else.
-        orphan_params = _caption_only_tokens(text, bodies_norm)
+        orphan_params = _caption_only_tokens(text, data_norm)
         if orphan_params:
             flags.insert(0, "caption_only"); level = "warn"
         if not flags:
@@ -380,6 +514,15 @@ def lint_legends(state: State, slug: str) -> dict:
                     "threshold/constant) or Results (a derived statistic) FIRST, "
                     "then drop it here. If the value is tunable, state how much "
                     "the result moves with it.")
+        elif restated:
+            where = ("this table's own cells"
+                     if any(r["source"] == "own_cells" for r in restated)
+                     else "the body or another table")
+            sugg = (f"{len(restated)} number(s) in this caption are already shown in "
+                    f"{where} — see duplicated_numbers. A caption points at the key "
+                    f"result; it does not reprint the data. Cut the walk-through and "
+                    f"keep at most the single headline value, or replace it with what "
+                    f"the reader should NOTICE in those numbers.")
         elif "body_duplication" in flags or "interpretive" in flags:
             sugg = ("keep panel descriptions, key numbers, colour coding and "
                     "cross-refs; move derivation/interpretation to Results "
@@ -391,6 +534,7 @@ def lint_legends(state: State, slug: str) -> dict:
             "item": item, "type": kind, "number": number, "word_count": wc,
             "level": level, "flags": flags,
             "duplicated_spans": dup,
+            "duplicated_numbers": restated,
             "caption_only_params": orphan_params,
             "interpretive_phrases": interp,
             "suggestion": sugg,

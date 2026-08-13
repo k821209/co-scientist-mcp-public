@@ -255,6 +255,35 @@ table itself**; the incremental-append argument came out because it is a
 Discussion paragraph. Nothing was lost — because every token was verified present
 elsewhere first, which is the check `caption_only` automates.
 
+#### 2d-quinquies. A caption points at numbers; it does not reprint them
+
+The most common padding is a caption walking the reader through values already in
+front of them:
+
+> Gene-Miner's all-isoform Complete (C) fraction rises where the RNA-seq captures
+> alternative isoforms (rice 93.6% → 96.5%, Drosophila 96.5% → 98.9%, C. elegans
+> 95.1% → 98.3%; soybean only 91.9% → 92.1%), whereas BRAKER3's barely changes.
+
+Every one of those percentages is a cell in that same table. The caption has
+become a worse-formatted copy of the table underneath it.
+
+- **One headline value is good caption writing.** "Completeness reaches 96.5% for
+  rice" earns its place. A walk-through of eight does not.
+- **Replace the list with what to NOTICE.** The sentence above is trying to say
+  "all-isoform gains track isoform richness; BRAKER3 is flat" — say that, and let
+  the numbers stay in the table.
+- **Figures are the worse offender**, because nothing structural stops it: a
+  figure has no columns, so a caption can carry a whole mini-Results of numbers
+  and still look like a caption.
+- **Word count will not save you.** A numeric-dense caption can be short, so the
+  `long` flag stays quiet.
+
+`lint_legends` reports this as **`number_restatement`** (warn) and lists every
+offending number in `duplicated_numbers` with its source (`own_cells` vs
+`body_or_other_item`), so one editing pass clears the item. It never fires on the
+same token as `caption_only`: a parameter you must relocate and a measurement you
+should cut are different things, and the report will not ask you to do both.
+
 ### 2e. Cite display items parenthetically
 
 A figure or table is cited in parentheses, never woven into the sentence as a noun

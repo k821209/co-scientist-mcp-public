@@ -1274,10 +1274,19 @@ def build_mcp(state: State) -> FastMCP:
         Returns one finding per flagged item; `level` is warn if any flag is
         warn-grade. Flags: **caption_only** (see below), long, body_duplication
         (every duplicated sentence enumerated in duplicated_spans),
-        interpretive, sample_roster_restatement, bare_cross_reference, and
-        table-only column_redundant / excluded_data_note in caption_smells.
-        The rules and the caption/Methods/Results split are documented in
-        /paper-writing ("Trimming a caption can delete the paper's method").
+        **number_restatement**, interpretive, sample_roster_restatement,
+        bare_cross_reference, and table-only column_redundant /
+        excluded_data_note in caption_smells. The rules and the
+        caption/Methods/Results split are documented in /paper-writing
+        ("Trimming a caption can delete the paper's method").
+
+        **number_restatement** fires when 3+ measurement-shaped numbers in the
+        caption (percentages, thousands-separated counts, ×10^n magnitudes) are
+        already shown in the item's OWN cells or in a section body — a caption
+        walking through the values instead of pointing at them. Every offending
+        number is listed in `duplicated_numbers` with its source, so they clear
+        in one pass. Word count does not surface this: a numeric-dense caption
+        can be short. One quoted headline value is deliberately NOT flagged.
 
         **caption_only is the one flag that means RELOCATE, not delete**, and it
         is ranked first. It fires when a parameter-shaped token (± 250 kb,
@@ -1286,7 +1295,10 @@ def build_mcp(state: State) -> FastMCP:
         removes the value from the paper. Move it to Methods (threshold/constant)
         or Results (derived statistic) FIRST, then drop it from the caption. Every
         other flag here invites deletion; this is the only one whose absence can
-        destroy information."""
+        destroy information. It and number_restatement can never fire on the same
+        token — a parameter is claimed by caption_only, a measurement by the
+        restatement rule — so the report never tells you to both keep and cut the
+        same value."""
         return _legend_lint.lint_legends(state, slug)
 
     @mcp.tool()

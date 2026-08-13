@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-13a"
+GUIDE_VERSION = "2026-08-13b"
 
 
 def render_guide(include_video: bool = True) -> str:
