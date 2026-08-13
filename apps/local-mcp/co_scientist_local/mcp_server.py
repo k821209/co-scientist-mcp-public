@@ -3,7 +3,31 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError as _e:                       # pragma: no cover — env-dependent
+    # An incompatible `mcp` is the one dependency failure a user cannot diagnose.
+    # The server dies during import, so Claude Code shows only CONNECTION_CLOSED
+    # in `claude mcp list` and the real cause — a bare ModuleNotFoundError — is
+    # buried in a stdio stderr stream nobody thinks to read (feedback
+    # 01606ac4f264: a fresh install resolved mcp 2.0.0, which renamed FastMCP to
+    # MCPServer, and it cost a debugging session). So say what happened, which
+    # version is installed, and the exact command that fixes it.
+    def _installed_mcp_version() -> str:
+        try:
+            from importlib.metadata import version
+            return version("mcp")
+        except Exception:
+            return "unknown"
+
+    raise ImportError(
+        f"co-scientist-local needs the `mcp` package in the 1.2–1.x range; "
+        f"mcp {_installed_mcp_version()} is installed and does not provide "
+        f"`mcp.server.fastmcp.FastMCP` (mcp 2.0 renamed it to MCPServer under "
+        f"mcp.server.mcpserver). Fix with:\n"
+        f"    pip install 'mcp>=1.2,<2'\n"
+        f"then restart Claude Code. Original error: {_e}"
+    ) from _e
 
 from .guide import GUIDE_VERSION, render_guide
 from .state import State

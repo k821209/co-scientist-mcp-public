@@ -357,12 +357,28 @@ def reap_all_local_runs(state: State) -> dict:
     return {"checked": checked, "finished": finished}
 
 
-def start_local_reaper(state: State, *, interval_seconds: float = 30.0) -> threading.Thread:
+def start_local_reaper(state: State, *, interval_seconds: float = 30.0,
+                       full_sweep_first: bool = True) -> threading.Thread:
     """Spawn a daemon thread that periodically reaps dead local jobs so the
     dashboard (a Firestore listener) reflects kills/crashes within one
     interval — without the agent calling `reap_local_run` by hand.
+
+    `full_sweep_first` runs the one-shot `reap_all_local_runs` HERE, on this
+    thread, rather than on the caller's startup path. That sweep is
+    O(papers × analyses) SEQUENTIAL backend round-trips — 66 of them for a modest
+    5-paper project — and it used to run before `mcp.run()`, so Claude Code saw a
+    server that had not finished starting for as long as those round-trips took.
+    On a slow link (a container talking to Firestore) that is seconds of a stdio
+    server that looks stuck "still connecting". Nothing needs the sweep to have
+    completed before the first tool call: the worst case is one stale "running"
+    row for a moment, which the sweep then corrects.
     """
     def _loop() -> None:
+        if full_sweep_first:
+            try:
+                reap_all_local_runs(state)
+            except Exception as e:  # pragma: no cover — best-effort startup cleanup
+                print(f"co-scientist-local: startup reap failed: {e}", file=sys.stderr)
         while True:
             time.sleep(interval_seconds)
             try:

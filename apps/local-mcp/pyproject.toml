@@ -4,11 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "co-scientist-local"
-version = "0.1.20260813.post1"
+version = "0.1.20260813.post2"
 description = "Local MCP server for co-scientist-cloud (Claude Code <-> Firestore)"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp>=1.0.0",
+    # mcp_server.py imports `mcp.server.fastmcp.FastMCP`, and that module exists
+    # ONLY in the 1.2 – 1.x range. The old `>=1.0.0` spec was wrong at BOTH ends:
+    # 1.0.0 and 1.1.0 have no `mcp.server.fastmcp` at all, so the declared range
+    # never described what the code imports — the missing ceiling is just what
+    # made it visible. mcp 2.0.0 renamed FastMCP to MCPServer under
+    # `mcp.server.mcpserver`, so every fresh install after its release resolved to
+    # 2.0.0 and died at import with CONNECTION_CLOSED and no stated cause
+    # (feedback 01606ac4f264). Porting to the 2.0 API is separate work; this spec
+    # states the truth about today's code.
+    "mcp>=1.2,<2",
     "pydantic>=2.6",
     # API-key mode (the production path) talks to Firestore via the
     # google-cloud SDK with a user-token credential.

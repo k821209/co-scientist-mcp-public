@@ -220,13 +220,13 @@ def main() -> None:
     from .agents_install import install_agents_quietly
     install_agents_quietly()
 
-    # Reap local jobs that died while no session was running, then start a
-    # background reaper so kills/crashes reflect on the dashboard automatically.
-    from .tools.runs import reap_all_local_runs, start_local_reaper
-    try:
-        reap_all_local_runs(state)
-    except Exception as e:  # pragma: no cover — best-effort startup cleanup
-        print(f"co-scientist-local: startup reap failed: {e}", file=sys.stderr)
+    # Start the background reaper, which ALSO does the one-shot sweep for local
+    # jobs that died while no session was running. Deliberately not awaited here:
+    # that sweep is O(papers × analyses) sequential Firestore round-trips, and
+    # doing it before mcp.run() delayed the stdio server's first response by that
+    # whole time — a server Claude Code reports as "still connecting"
+    # (feedback bfa97278f680). Nothing needs it finished before the first call.
+    from .tools.runs import start_local_reaper
     start_local_reaper(state)
 
     from .mcp_server import build_mcp
