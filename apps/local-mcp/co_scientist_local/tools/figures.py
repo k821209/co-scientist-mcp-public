@@ -49,6 +49,20 @@ def _figure_blob_path(state: State, slug: str, figure_number: int, ext: str) -> 
     )
 
 
+# The one line a caller sees at the moment memory is freshest. Registration is
+# when back-filling provenance is cheapest — an hour later the command is gone
+# from scrollback, and a month later it is unrecoverable (feedback f3f9b4b56577:
+# 9 hours of foreground training whose hyperparameters no longer exist anywhere).
+# Returned, never stored, and never an error: a schematic has no analysis behind
+# it and failing the call would be wrong.
+_NO_PROVENANCE_HINT = (
+    "no source_analysis on this artifact — if its numbers were computed, record "
+    "the run (create_analysis + record_analysis_run) and link it with "
+    "source_analysis=, or it will be untraceable at submission. Ignore for "
+    "schematics and hand-built tables."
+)
+
+
 def _ensure_paper(state: State, slug: str) -> None:
     if state.backend.get_doc(_paper_path(state, slug)) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
@@ -135,6 +149,8 @@ def add_figure(
         else (existing.get("content_updated_at") or existing.get("updated_at")),
     }
     state.backend.set_doc(path, doc)
+    if not (source_analysis or "").strip():
+        return {**doc, "provenance_hint": _NO_PROVENANCE_HINT}
     return doc
 
 

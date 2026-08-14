@@ -19,6 +19,23 @@ analysis via raw Bash/ssh and move on. If you already did, **back-fill it now**
 with `create_analysis(...)` + `record_analysis_run(host=, command=, …)`, and
 reconcile with `scan_untracked_jobs` / `list_analysis_runs`.
 
+**Where this actually gets lost: the exploratory stretch.** Nine short
+interactive `ssh … python script.py` runs never feel like "time to use
+/analysis-run", and then six tables depend on them. One measured case: 9 hours of
+foreground training, no log file written, checkpoints sitting on disk, and no way
+left to say which command or hyperparameters produced the reported auPRC. Treat
+the **second** ad-hoc run in a session as the signal to start recording.
+
+**To reconstruct a gap after the fact, `scan_untracked_jobs` is the wrong tool.**
+It reads `ps`, so it only ever sees a job still RUNNING — and nearly every
+provenance gap is a job that already finished, which is why it can keep returning
+clean while a paper has zero records. Use
+`scan_recent_outputs(alias, workdir=…, since_hours=…)`: it lists output files
+recently written on that host next to the runs we did record, so "7 checkpoints
+in the window, 0 recorded runs" becomes visible. It reports both sides and does
+not claim which file came from which command — a run record doesn't declare its
+outputs, so that inference is yours to make.
+
 ## What it does
 
 Wraps a computation in a tracked record on a specific paper:

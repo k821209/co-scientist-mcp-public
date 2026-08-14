@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-14a"
+GUIDE_VERSION = "2026-08-14b"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -163,6 +163,23 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   or new bytes via `local_path`) clears a warning. Editing a caption or legend
   deliberately will not; if a warning persists, regenerate the artifact or say
   why it is unaffected.
+- **The exploratory stretch is where this is lost, not the big jobs.** Nine short
+  interactive `ssh … python script.py` runs never feel like "time to use
+  /analysis-run", and then six tables depend on them. One measured case: 9 hours
+  of foreground training, no log file written, checkpoints on disk, and no way
+  left to say which command or hyperparameters produced the reported auPRC. Treat
+  the SECOND ad-hoc run in a session as the signal to start recording.
+- **Two detectors, and they see different things.** `scan_untracked_jobs` reads
+  `ps`, so it only ever finds a job still RUNNING — nearly every provenance gap
+  is a job that already finished, which is why it can return clean forever while
+  a paper has zero records. `scan_recent_outputs(alias, workdir=, since_hours=)`
+  is the other half: it lists output files recently written on that host beside
+  the runs we recorded, so "7 checkpoints, 0 recorded runs" becomes visible.
+- **`prepare_export` now names artifacts with NO link**, not just stale linked
+  ones. It used to be silent on them, which made the riskiest state the quietest
+  — link honestly and you might get a warning, link nothing and you got none.
+  Schematics and hand-built tables legitimately have no analysis; say so rather
+  than linking something false.
 - Reconcile periodically: `list_analysis_runs` shows what's recorded;
   `scan_untracked_jobs` finds detached job-like processes with no record.
   If the user asks "which server did we run on / where's the record" and you

@@ -678,6 +678,62 @@ def _stale_artifact_warnings(
     return out
 
 
+def _provenance_coverage_warnings(
+    state: State, slug: str, figures: list[dict], tables: list[dict],
+) -> list[str]:
+    """Report artifacts with NO `source_analysis`, and how many analyses exist.
+
+    The gap this closes (feedback f3f9b4b56577): the staleness check above fires
+    only for artifacts that HAVE a link, so the incentive ran backwards —
+
+      - link your artifact honestly  → you may get a warning
+      - link nothing at all          → silence
+
+    which made the most dangerous state the quietest one. A paper with six
+    computed tables and zero recorded runs passed every structural check. The
+    reporter's case had 9 hours of foreground `ssh … python …` training whose
+    commands, hyperparameters and checkpoints are now unrecoverable, and none of
+    it was visible to any guard.
+
+    Absence of a link means UNKNOWN, and unknown is worth saying out loud. This
+    reports the counts and leaves the judgement to the agent — a schematic figure
+    legitimately has no analysis behind it, and the server cannot tell which is
+    which. Deliberately not an error, and it costs one extra backend call (the
+    analyses list; zero analyses implies zero runs).
+    """
+    items = [("Figure", "figure_number", figures), ("Table", "table_number", tables)]
+    total = sum(len(x[2]) for x in items)
+    if total == 0:
+        return []
+    unlinked: list[str] = []
+    for kind, key, rows in items:
+        for a in rows:
+            if not (a.get("source_analysis") or "").strip():
+                unlinked.append(f"{kind} {a.get(key)}")
+    if not unlinked:
+        return []
+    n_analyses = len(state.backend.list_collection(
+        state.project_path("papers", slug, "analyses")))
+    shown = ", ".join(unlinked[:8]) + ("…" if len(unlinked) > 8 else "")
+    if n_analyses == 0:
+        return [
+            f"NO analysis provenance on this paper: {len(unlinked)} of {total} "
+            f"registered figures/tables have no `source_analysis`, and no analysis "
+            f"is registered at all ({shown}). If any of those numbers were "
+            f"computed, the command that produced them is not recorded anywhere — "
+            f"back-fill now with create_analysis + record_analysis_run and link via "
+            f"update_figure/update_table(source_analysis=…). Journals that require "
+            f"a data/code availability statement need exactly this. Schematics and "
+            f"hand-built tables need no link — say so and move on."
+        ]
+    return [
+        f"{len(unlinked)} of {total} registered figures/tables have no "
+        f"`source_analysis` ({shown}) while {n_analyses} analysis/analyses are "
+        f"registered — the unlinked ones are invisible to the staleness check. "
+        f"Link them, or confirm they are not computational outputs."
+    ]
+
+
 BUNDLE_FIELDS = (
     "slug", "paper", "sections", "manuscript", "figures", "supplementary_figures",
     "tables", "supplementary_tables", "references", "bibtex", "placeholders",
@@ -841,6 +897,10 @@ def prepare_export(
     # passed too).
     warnings.extend(_stale_artifact_warnings(state, slug, figs + supp_figs,
                                              tbls + supp_tbls))
+    # ...and the counterpart: artifacts with no link at all, which the staleness
+    # check cannot see by construction.
+    warnings.extend(_provenance_coverage_warnings(state, slug, figs + supp_figs,
+                                                 tbls + supp_tbls))
 
     # A registered supplementary item with NO caption. Cheap and certain: two
     # supplementary tables shipped cited-but-uncaptioned in one session, so the

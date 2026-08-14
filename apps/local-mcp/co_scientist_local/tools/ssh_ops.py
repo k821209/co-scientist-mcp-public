@@ -811,3 +811,118 @@ def scan_untracked_jobs(
                 "etime_sec": etime_sec, "cmd": cmdline,
             })
     return {"alias": alias, "tracked": tracked_seen, "untracked": untracked}
+
+
+# Files that look like an analysis PRODUCED them, as opposed to inputs or
+# scratch. Deliberately a small list: a scan that returns every file in a work
+# directory is one nobody reads.
+_OUTPUT_SUFFIXES = (
+    ".pt", ".pth", ".ckpt", ".h5", ".hdf5", ".pkl", ".joblib", ".model",
+    ".csv", ".tsv", ".parquet", ".xlsx", ".json", ".npy", ".npz",
+    ".png", ".pdf", ".svg", ".log", ".txt", ".bed", ".vcf", ".gff",
+)
+_SCAN_SENTINEL = "__CS_SCAN_OK__"
+
+
+def scan_recent_outputs(
+    state: State,
+    alias: str,
+    *,
+    workdir: str | None = None,
+    since_hours: float = 168.0,
+    limit: int = 200,
+) -> dict:
+    """Output-looking files recently written on `alias`, beside the runs we recorded.
+
+    The counterpart `scan_untracked_jobs` cannot be. That tool reads `ps`, so it
+    only ever sees a job that is still ALIVE — while almost every provenance gap
+    is a job that already finished and whose process is gone. Detector and
+    failure mode were misaligned, so it returned clean no matter how diligently
+    it was called (feedback f3f9b4b56577). This one looks at what a run leaves
+    behind instead of at what is running.
+
+    Returns {alias, workdir, since, files: [{path, mtime, size_bytes}],
+    recorded_runs: [{run_key, paper_slug, analysis_name, started_at, command}],
+    note}. Files are newest-first.
+
+    It reports BOTH sides and does not compute "orphans". A recorded run does not
+    declare which files it wrote, so nothing here can prove a given file came
+    from no recorded run — claiming that would be false precision of exactly the
+    kind these guards exist to avoid. Seven checkpoints in the window against
+    zero recorded runs is the answer; the agent draws it.
+    """
+    server = get_server(state, alias)
+    ssh = state.require_ssh()
+    root = workdir or server.get("default_workdir") or "."
+    since_hours = max(0.1, float(since_hours))
+    # `find -newermt` beats -mtime: minutes of resolution, and no rounding to
+    # whole days, which matters when the question is "what did today produce".
+    names = " -o ".join(f"-name {shlex.quote('*' + s)}" for s in _OUTPUT_SUFFIXES)
+    cmd = (
+        f"echo {_SCAN_SENTINEL}; "
+        f"find {shlex.quote(root)} -xdev -type f "
+        f"-newermt '-{since_hours} hours' \\( {names} \\) "
+        f"-printf '%T@\\t%s\\t%p\\n' 2>/dev/null "
+        f"| sort -rn | head -n {int(limit)} || true"
+    )
+    rc, out, err = ssh.run(server, cmd, timeout=60)
+    if _SCAN_SENTINEL in (out or ""):
+        out = (out or "").split(_SCAN_SENTINEL, 1)[1]
+    elif rc != 0:
+        # No sentinel means the remote shell itself never ran — an ssh failure,
+        # NOT "nothing found". Reporting an empty list here would read as "clean"
+        # and is the single worst answer this tool could give.
+        return {"alias": alias, "workdir": root,
+                "error": (err or "").strip() or f"ssh rc={rc}",
+                "files": [], "recorded_runs": []}
+
+    files: list[dict] = []
+    for line in (out or "").splitlines():
+        parts = line.strip().split("\t")
+        if len(parts) != 3:
+            continue
+        epoch, size, path = parts
+        try:
+            mtime = datetime.fromtimestamp(float(epoch), tz=timezone.utc)
+        except (ValueError, OSError):
+            continue
+        files.append({"path": path, "mtime": mtime.isoformat().replace("+00:00", "Z"),
+                      "size_bytes": int(size) if size.isdigit() else None})
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    recorded: list[dict] = []
+    for r in _runs_for_host_since(state, alias, cutoff):
+        recorded.append({k: r.get(k) for k in
+                         ("run_key", "paper_slug", "analysis_name",
+                          "started_at", "command", "workdir")})
+
+    note = (
+        f"{len(files)} output file(s) written in the last {since_hours:g}h under "
+        f"{root}, against {len(recorded)} recorded run(s) on '{alias}' in the same "
+        f"window."
+    )
+    if files and not recorded:
+        note += (" Nothing was recorded: back-fill with create_analysis + "
+                 "record_analysis_run(command=…, host=alias, workdir=…) and link "
+                 "the artifacts via source_analysis, while you can still tell "
+                 "which command produced which file.")
+    return {"alias": alias, "workdir": root,
+            "since": cutoff.isoformat().replace("+00:00", "Z"),
+            "files": files, "recorded_runs": recorded, "note": note}
+
+
+def _runs_for_host_since(state: State, host: str, cutoff: datetime) -> list[dict]:
+    """Every recorded run on `host` started at/after `cutoff`, across all papers."""
+    out: list[dict] = []
+    for slug, _ in state.backend.list_collection(state.project_path("papers")):
+        for analysis, _ in state.backend.list_collection(
+            state.project_path("papers", slug, "analyses")
+        ):
+            for r in list_analysis_runs(state, slug, analysis):
+                if (r.get("host") or "local") != host:
+                    continue
+                started = _parse_iso(r.get("started_at"))
+                if started is not None and started >= cutoff:
+                    out.append({**r, "paper_slug": slug, "analysis_name": analysis})
+    out.sort(key=lambda r: r.get("started_at") or "", reverse=True)
+    return out

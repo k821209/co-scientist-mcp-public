@@ -1541,8 +1541,33 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def scan_untracked_jobs(alias: str, min_etime_seconds: int = 60) -> dict[str, Any]:
-        """Find detached job-like processes on `alias` not in analysis_runs."""
+        """Find detached job-like processes on `alias` not in analysis_runs.
+
+        Reads `ps`, so it sees only jobs still RUNNING. For provenance that is
+        already lost — a finished foreground run — use scan_recent_outputs."""
         return _ssh_ops.scan_untracked_jobs(state, alias, min_etime_seconds=min_etime_seconds)
+
+    @mcp.tool()
+    def scan_recent_outputs(
+        alias: str,
+        workdir: str | None = None,
+        since_hours: float = 168.0,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """Output files recently written on `alias`, beside the runs we recorded.
+
+        The counterpart to scan_untracked_jobs, which reads `ps` and so can only
+        ever see a LIVE job — while almost every provenance gap is a job that
+        already finished. Use this when a paper's figures/tables have no
+        `source_analysis` and you need to reconstruct what produced them.
+
+        Reports both sides and does NOT compute "orphans": a recorded run does
+        not declare which files it wrote, so nothing can prove a file came from
+        no recorded run. "7 checkpoints in the window, 0 recorded runs" is the
+        answer — you draw the conclusion, then back-fill with create_analysis +
+        record_analysis_run and link via update_figure/update_table."""
+        return _ssh_ops.scan_recent_outputs(
+            state, alias, workdir=workdir, since_hours=since_hours, limit=limit)
 
     # ─── export ──────────────────────────────────────────────────────────────
     @mcp.tool()
