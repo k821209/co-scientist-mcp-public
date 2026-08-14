@@ -88,14 +88,75 @@ _EXCLUDED_RX = re.compile(
     r"|\bexcluded from this table\b|\bnot part of this table\b", re.I)
 
 # Interpretation/derivation phrasing that belongs in Results, not a legend.
-_INTERPRETIVE = [re.compile(p, re.I) for p in (
-    r"\bwe (?:show|showed|demonstrate[sd]?|found|find|confirm(?:ed)?)\b",
+#
+# This was a 12-entry exact-phrase list, and it missed most interpretation
+# (feedback 73667d96e179). Real unflagged examples: "the models are
+# overwhelmingly larger than the reference, most exceeding it on all three
+# axes", "Gene-Miner approaches their completeness ceiling and matches or
+# exceeds BRAKER3", "Reference-matching loci are well supported …; the novel
+# loci are markedly lower", "they are complete gene models rather than
+# fragments … as expected". A user caught them by eye after a lint pass reported
+# clean.
+#
+# It is in TWO tiers, because the naive broadening — add comparative adjectives
+# — fires on exactly the sentences a legend is SUPPOSED to contain. "Darker
+# shading indicates higher coverage" and "Larger circles denote more reads"
+# describe the visual mapping; "higher" and "Larger" there are not claims.
+#
+# STRONG: evaluative intensifiers, inference and causation, first-person claims.
+# These essentially never describe an encoding, so they fire unconditionally —
+# which matters, because the reporter's Fig 2 sentence contains "axes" and would
+# otherwise be suppressed as encoding text.
+_INTERP_STRONG = [re.compile(p, re.I) for p in (
+    # Evaluative intensifiers.
+    r"\b(?:overwhelmingly|markedly|substantially|considerably|dramatically"
+    r"|strikingly|notably|remarkably|appreciably|materially|vastly)\b",
+    # Inference / causation / expectation.
+    r"\bas expected\b", r"\bconsistent with\b", r"\btherefore\b", r"\bthus\b",
+    r"\breflect(?:s|ing)?\b", r"\bdriven by\b", r"\bbecause\b", r"\bowing to\b",
+    r"\bdue to\b", r"\bsuggest(?:s|ing|ed)?\b", r"\bimpl(?:y|ies|ying)\b",
+    r"\bindicat(?:e|es|ing)\s+that\b", r"\bdemonstrat(?:e|es|ing)\b",
+    r"\bsupport(?:s|ing)?\s+(?:the|our|this|that)\b",
+    # Evaluative predicates.
+    r"\bwell (?:supported|resolved|separated|characteri[sz]ed|conserved)\b",
+    # First-person claims + the original list's specific phrasings.
+    r"\bwe (?:show|showed|demonstrate[sd]?|found|find|confirm(?:ed)?|adopt)\b",
     r"\bconfirm(?:s|ed)?\b", r"\bunderscore", r"\bhighlight(?:s|ed)?\b",
     r"\bindependently recover(?:s|ed)?\b", r"\bjustified by\b",
-    r"\bis adopted as\b", r"\bwe adopt\b", r"\bsets? the threshold\b",
+    r"\bis adopted as\b", r"\bsets? the threshold\b",
     r"\bderived from\b.{0,40}\bbimodal", r"\bfull derivation\b",
-    r"\bsuggest(?:s|ing)?\b", r"\bconsistent with\b",
 )]
+
+# COMPARATIVE: a comparison or an outcome verb. Real interpretation when the
+# subject is a result, ordinary legend text when it describes the graphic — so
+# these are suppressed in a sentence that talks about the encoding.
+_INTERP_COMPARATIVE = [re.compile(p, re.I) for p in (
+    r"\b(?:larger|smaller|higher|lower|greater|better|worse|stronger|weaker"
+    r"|faster|slower|denser|sparser)\b",
+    r"\b(?:match(?:es|ed)?|exceed(?:s|ed|ing)?|outperform(?:s|ed)?"
+    r"|approach(?:es|ed)?|surpass(?:es|ed)?|recover(?:s|ed)?"
+    r"|improve(?:s|d)?)\b",
+)]
+
+# Encoding-description context: the sentence is about the graphic, not a result.
+# Deliberately generous — a missed interpretation costs one look, while a flag on
+# "The lower panel shows the same data" is the kind of noise that gets a whole
+# rule ignored.
+_ENCODING_CX = re.compile(
+    r"\b(?:colou?r(?:s|ed|ing)?|shad(?:e|es|ing|ed)|hue|greyscale|grayscale"
+    r"|size[sd]?|symbol|marker|glyph|circle|square|triangle|bar|line|dash(?:ed)?"
+    r"|solid|dotted|hatch(?:ing|ed)?|axis|axes|tick|arrow(?:head)?|asterisk"
+    r"|panel|inset|legend|whisker|box(?:es|plot)?|ribbon|shape|width|thickness"
+    r"|opacity|scale"
+    # ...and the verbs that introduce an encoding statement.
+    r"|shown|show[s]?|plotted|displayed|drawn|rendered|marked|labell?ed"
+    r"|denote[sd]?|represent(?:s|ed)?|encode[sd]?|correspond(?:s|ing)?)\b",
+    re.I,
+)
+
+# One interpretive sentence in a legend is a style note; several mean the legend
+# has grown a mini-Results, which is what the rule is actually for.
+_INTERP_WARN_AT = 2
 
 
 def _words(text: str) -> list[str]:
@@ -451,13 +512,28 @@ def lint_legends(state: State, slug: str) -> dict:
                                 "guides the reader to specific rows; else cut."})
         return out
 
-    def _interpretive(text: str) -> list[str]:
-        hits = []
-        for rx in _INTERPRETIVE:
-            m = rx.search(text)
-            if m:
-                hits.append(m.group(0))
-        return hits
+    def _interpretive(text: str) -> list[dict]:
+        """Interpretive sentences, each with what triggered it.
+
+        Per SENTENCE, not per document: the old version searched the whole text
+        and returned bare matched phrases, so an author was told "interpretive:
+        confirms" with no indication of where. Reporting the sentence is what
+        lets the item clear in one editing pass, like duplicated_spans.
+        """
+        out: list[dict] = []
+        for sent in _sentences(text):
+            # finditer, not search: "matches or exceeds BRAKER3" has two
+            # triggers in one pattern, and listing only the first reads as if the
+            # rest were fine.
+            hits = [m.group(0) for rx in _INTERP_STRONG for m in rx.finditer(sent)]
+            # Comparisons only count outside an encoding description.
+            if not _ENCODING_CX.search(sent):
+                hits += [m.group(0) for rx in _INTERP_COMPARATIVE
+                         for m in rx.finditer(sent)]
+            if hits:
+                out.append({"sentence": sent[:200],
+                            "matches": sorted(set(h.lower() for h in hits))})
+        return out
 
     findings: list[dict] = []
 
@@ -476,7 +552,11 @@ def lint_legends(state: State, slug: str) -> dict:
             flags.append("body_duplication"); level = "warn"
         interp = _interpretive(text)
         if interp:
-            flags.append("interpretive"); level = level or "info"
+            flags.append("interpretive")
+            # One interpretive sentence is a style note; several mean the legend
+            # has grown a mini-Results. Escalating on VOLUME keeps the warn tier
+            # meaningful now that the detector is broad enough to fire often.
+            level = "warn" if len(interp) >= _INTERP_WARN_AT else (level or "info")
         # number_restatement: the caption reprinting numbers the reader already
         # sees. Ranked warn like body_duplication — the reporter's point is that
         # it is the MORE egregious duplication, and `long` (the flag authors most
@@ -536,7 +616,10 @@ def lint_legends(state: State, slug: str) -> dict:
             "duplicated_spans": dup,
             "duplicated_numbers": restated,
             "caption_only_params": orphan_params,
-            "interpretive_phrases": interp,
+            # The sentence AND what triggered it, so the item clears in one pass.
+            "interpretive_spans": interp,
+            "interpretive_phrases": sorted(
+                {m for i in interp for m in i["matches"]}),
             "suggestion": sugg,
         }
         if caption_smells:

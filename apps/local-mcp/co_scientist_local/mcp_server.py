@@ -1304,6 +1304,16 @@ def build_mcp(state: State) -> FastMCP:
         caption/Methods/Results split are documented in /paper-writing
         ("Trimming a caption can delete the paper's method").
 
+        **interpretive** flags a legend sentence making a claim instead of
+        describing the panel — an evaluative intensifier (markedly,
+        overwhelmingly), an inference (as expected, driven by, consistent with),
+        or a comparison/outcome verb (larger, matches, exceeds). Each offending
+        SENTENCE is in `interpretive_spans`. Comparisons are deliberately NOT
+        flagged in a sentence about the graphic ("Darker shading indicates higher
+        coverage", "The lower panel shows…") — describing the encoding is what a
+        legend is for. One such sentence is info; 2+ is warn, because that is a
+        legend that has grown a mini-Results.
+
         **number_restatement** fires when 3+ measurement-shaped numbers in the
         caption (percentages, thousands-separated counts, ×10^n magnitudes) are
         already shown in the item's OWN cells or in a section body — a caption

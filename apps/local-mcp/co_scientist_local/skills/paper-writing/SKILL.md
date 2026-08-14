@@ -284,6 +284,31 @@ offending number in `duplicated_numbers` with its source (`own_cells` vs
 same token as `caption_only`: a parameter you must relocate and a measurement you
 should cut are different things, and the report will not ask you to do both.
 
+#### 2d-sexies. Describe the panel; don't argue from it
+
+The same failure in words rather than numbers. A legend says what the reader is
+looking at. The moment it says what the reader should *conclude*, that sentence
+belongs in Results.
+
+| legend text | verdict |
+|---|---|
+| "Darker shading indicates higher coverage." | fine — that IS the legend's job |
+| "The lower panel shows the same data on a log scale." | fine — describes the graphic |
+| "In rice the models are **overwhelmingly larger** than the reference." | Results |
+| "Gene-Miner **approaches** their ceiling and **matches or exceeds** BRAKER3." | Results |
+| "The novel loci are **markedly lower**." | Results |
+| "They are complete gene models, **as expected** for lineage-specific genes." | Results/Discussion |
+
+The tell is not the comparative word — legends compare all the time — it is
+**what the subject is**. When the subject is the graphic (shading, panel, bars,
+axis), a comparison describes an encoding. When the subject is a result (the
+models, the loci, the pipeline), it is a claim.
+
+`lint_legends` flags these as **`interpretive`** and puts each offending sentence
+in `interpretive_spans`. Comparisons in a sentence about the graphic are
+deliberately not flagged. One such sentence is `info`; two or more is `warn`,
+which is the signal that the legend has grown a mini-Results.
+
 ### 2e. Cite display items parenthetically
 
 A figure or table is cited in parentheses, never woven into the sentence as a noun
