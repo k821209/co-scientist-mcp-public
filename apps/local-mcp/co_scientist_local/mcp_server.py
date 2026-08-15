@@ -59,6 +59,7 @@ from .tools import requirements as _requirements
 from .tools import reviews as _reviews
 from .tools import runs as _runs
 from .tools import sections as _sections
+from .tools import datasets as _datasets
 from .tools import servers as _servers
 from .tools import workdirs as _workdirs
 from .tools import ssh_ops as _ssh_ops
@@ -250,9 +251,18 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
-    def list_papers() -> list[dict[str, Any]]:
-        """List all papers for the active user."""
-        return _papers.list_papers(state)
+    def list_papers(
+        summary: bool = False,
+        fields: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """List all papers for the active user.
+
+        `summary=True` returns just slug/title/journal/doc_type/status/dates —
+        use it for the session-start "what papers exist" call. The full record
+        includes each paper's journal-requirements notes, so a project with
+        several papers spends a lot of context answering a small question.
+        `fields=[...]` picks explicitly; `slug` is always included."""
+        return _papers.list_papers(state, summary=summary, fields=fields)
 
     @mcp.tool()
     def import_document(
@@ -1091,6 +1101,109 @@ def build_mcp(state: State) -> FastMCP:
             conda_root=conda_root, default_workdir=default_workdir,
             polite_max_cores_pct=polite_max_cores_pct, notes=notes,
         )
+
+    # ─── datasets ────────────────────────────────────────────────────────────
+    @mcp.tool()
+    def register_dataset(
+        name: str,
+        path: str,
+        kind: str = "other",
+        server_alias: str | None = None,
+        id_convention: str | None = None,
+        joins_with: list[dict[str, Any]] | None = None,
+        canonical: bool = True,
+        superseded_by: str | None = None,
+        n_records: int | None = None,
+        notes: str | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Record WHERE a dataset lives and HOW it is keyed.
+
+        `add_server` says which machines exist; this says which data is on them.
+        `server_alias=None` means local. `kind`: expression_matrix | annotation |
+        genome | metadata | reads | variants | alignment | phenotype | other.
+
+        `id_convention` must carry a REAL example, not a description —
+        "Glyma.01G000100 (Wm82.a4 gene ids)", not "soybean gene ids". Four
+        conventions in one project, discovered by opening files one at a time, is
+        what this field exists for; an id mismatch does not raise, it shows up as
+        "the signal is weak".
+
+        `joins_with` records what it connects to AND WHAT IT DOES NOT:
+            [{"dataset": "sl-gff", "key": "gene_id", "joins": true},
+             {"dataset": "sl-gff", "joins": false,
+              "note": "quantified on a separate assembly — cannot be linked"}]
+        The negative entry is the one that saves the half-day."""
+        return _datasets.register_dataset(
+            state, name=name, path=path, kind=kind, server_alias=server_alias,
+            id_convention=id_convention, joins_with=joins_with,
+            canonical=canonical, superseded_by=superseded_by,
+            n_records=n_records, notes=notes, overwrite=overwrite)
+
+    @mcp.tool()
+    def list_datasets(
+        kind: str | None = None,
+        server_alias: str | None = None,
+        canonical_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Every dataset registered for this project.
+
+        Call this BEFORE concluding what data exists. Searching the servers you
+        happen to know about and concluding "there is no tissue information" is
+        the reported failure — two finished analyses had to be re-run."""
+        return _datasets.list_datasets(state, kind=kind, server_alias=server_alias,
+                                       canonical_only=canonical_only)
+
+    @mcp.tool()
+    def get_dataset(name: str) -> dict[str, Any]:
+        """One dataset record."""
+        return _datasets.get_dataset(state, name)
+
+    @mcp.tool()
+    def update_dataset(
+        name: str,
+        path: str | None = None,
+        kind: str | None = None,
+        server_alias: str | None = None,
+        id_convention: str | None = None,
+        joins_with: list[dict[str, Any]] | None = None,
+        canonical: bool | None = None,
+        superseded_by: str | None = None,
+        n_records: int | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Patch a dataset record; only the supplied fields change."""
+        return _datasets.update_dataset(
+            state, name, path=path, kind=kind, server_alias=server_alias,
+            id_convention=id_convention, joins_with=joins_with,
+            canonical=canonical, superseded_by=superseded_by,
+            n_records=n_records, notes=notes)
+
+    @mcp.tool()
+    def check_dataset(name: str, count_lines: bool = False) -> dict[str, Any]:
+        """Verify a dataset's path and report what CHANGED since the last check.
+
+        Not just "does it exist" — a file that is still there but no longer the
+        file you recorded is the failure that matters, so size/mtime are compared
+        against the stored values. `count_lines` runs `wc -l` (off by default: it
+        reads the whole file) and compares against the recorded `n_records`.
+        An ssh failure returns `checked: false` + `error`, never `exists: false`."""
+        return _datasets.check_dataset(state, name, count_lines=count_lines)
+
+    @mcp.tool()
+    def link_dataset(name: str, paper: str | None = None,
+                     analysis: str | None = None) -> dict[str, Any]:
+        """Attach a dataset to a paper (and optionally one of its analyses).
+
+        `prepare_export` then returns the paper's datasets, so an "Availability
+        of data and materials" statement is written from the record instead of
+        reassembled by hand."""
+        return _datasets.link_dataset(state, name, paper=paper, analysis=analysis)
+
+    @mcp.tool()
+    def delete_dataset(name: str) -> bool:
+        """Remove a dataset record (the data itself is untouched)."""
+        return _datasets.delete_dataset(state, name)
 
     @mcp.tool()
     def list_servers(active_only: bool = True) -> list[dict[str, Any]]:

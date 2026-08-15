@@ -124,19 +124,42 @@ def create_paper(
     return {**paper, "dashboard_url": state.dashboard_url("papers", slug)}
 
 
-def list_papers(state: State) -> list[dict]:
+# What a session-start "which papers exist?" call actually needs. The full doc
+# carries the whole journal-requirements notes blob per paper, so seven papers
+# cost a large slice of context to answer a question the summary answers
+# (feedback 68c41dc91fef).
+SUMMARY_FIELDS = ("slug", "title", "journal", "doc_type", "status",
+                  "updated_at", "created_at")
+
+
+def list_papers(
+    state: State,
+    *,
+    summary: bool = False,
+    fields: list[str] | None = None,
+) -> list[dict]:
     """List all papers for the active user, ordered by `updated_at` desc.
 
     Authors + affiliations are normalized to the same canonical (stored-order)
     shape get_paper_state returns, so the author order is consistent everywhere
-    (list == detail == export)."""
+    (list == detail == export).
+
+    `summary=True` returns only SUMMARY_FIELDS; `fields=[...]` picks explicitly
+    (`slug` is always kept, so a row is always identifiable). Both exist because
+    the full record includes the journal-requirements notes, which makes a
+    seven-paper project an expensive way to ask "what is here".
+    """
     pairs = state.backend.list_collection(state.project_path("papers"))
     papers = [data for _, data in pairs]
     for p in papers:
         p["authors"] = normalize_authors(p.get("authors"))
         p["affiliations"] = normalize_affiliations(p.get("affiliations"))
     papers.sort(key=lambda p: p.get("updated_at", ""), reverse=True)
-    return papers
+    keep = set(fields) | {"slug"} if fields else (
+        set(SUMMARY_FIELDS) if summary else None)
+    if keep is None:
+        return papers
+    return [{k: v for k, v in p.items() if k in keep} for p in papers]
 
 
 def get_paper_state(state: State, slug: str) -> dict:

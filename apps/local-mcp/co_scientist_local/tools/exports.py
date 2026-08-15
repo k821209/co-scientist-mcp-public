@@ -29,6 +29,7 @@ from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
 from . import csl as _csl
+from . import datasets as _datasets
 from . import display_lint as _display_lint
 from . import docx_export as _docx_export
 from . import figures as _figures
@@ -739,7 +740,7 @@ BUNDLE_FIELDS = (
     "tables", "supplementary_tables", "references", "bibtex", "placeholders",
     "legend_warnings", "unresolved_citations", "doiless_uncited_refs",
     "csl_filename", "csl_slug", "csl_source", "csl_status", "requirements_check",
-    "review_triage", "warnings",
+    "review_triage", "datasets", "warnings",
 )
 
 
@@ -895,6 +896,8 @@ def prepare_export(
     # DB-embedded preview can be narrower than the source file (the column that
     # changed was absent from the preview, so any preview-based check would have
     # passed too).
+    linked_datasets = _datasets.datasets_for_paper(state, slug)
+
     warnings.extend(_stale_artifact_warnings(state, slug, figs + supp_figs,
                                              tbls + supp_tbls))
     # ...and the counterpart: artifacts with no link at all, which the staleness
@@ -979,6 +982,10 @@ def prepare_export(
         "csl_status": csl["csl_status"],
         "requirements_check": req_check,
         "review_triage": triage,
+        # Source data linked to this paper — what an "Availability of data and
+        # materials" statement is written FROM, instead of being reassembled by
+        # hand at submission time (feedback 68c41dc91fef).
+        "datasets": linked_datasets,
         "warnings": warnings,
     }
     if fields:

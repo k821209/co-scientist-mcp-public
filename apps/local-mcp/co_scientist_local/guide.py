@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-14b"
+GUIDE_VERSION = "2026-08-15a"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -77,7 +77,7 @@ On every session start:
    `mcp__co_scientist__get_project_skills()` — freeform, project-scoped
    playbooks/instructions the user defined in the Memory tab; follow them for
    THIS project (they complement the built-in skills). Skip if it returns "".
-3. Call `mcp__co_scientist__list_papers()` then, for each paper,
+3. Call `mcp__co_scientist__list_papers(summary=True)` then, for each paper,
    `mcp__co_scientist__count_open_user_comments(slug)`. If non-zero,
    call `mcp__co_scientist__list_reviews(slug, status="open")` to get
    the open comments with their `anchor_text` — use that quoted passage
@@ -130,6 +130,37 @@ drives each project's **Runs tab**, the politeness caps, and
   compute details sitting in memory, move them to the registry and prune
   the memory entry.
 - `ssh_key` stores a *path on the user's disk*, never key material.
+- `notes` is the place for MEASURED facts you had to discover — "egress to EBI
+  43 B/s vs 365 KB/s locally, don't download here". A download that silently
+  crawls looks identical to one that is working.
+
+## Datasets — WHERE the data is and HOW it is keyed
+
+The servers registry says which machines exist; `list_datasets()` says which
+data is on them. **Call it before concluding what a project has.** Searching the
+servers you happen to know about and deciding "there is no tissue information"
+is a real reported failure — the metadata was on a third server, and two
+finished analyses had to be re-run once it surfaced (tissue assignment 33% →
+81%).
+
+- `register_dataset(name, path, kind, server_alias=, id_convention=,
+  joins_with=, canonical=, n_records=, notes=)`.
+- **`id_convention` takes a REAL example**: `Glyma.01G000100 (Wm82.a4 gene ids)`,
+  not "soybean gene ids". One project carried four conventions at once
+  (`PRAM_267.1.p1`, `Os01t0100100-01`, `Glyma.01G000100`, `Solyc00g005000`). An
+  id mismatch never raises — it shows up as "the signal is weak", which is the
+  most expensive kind of wrong.
+- **`joins_with` records the NEGATIVES too.** `{{"dataset": "sl-gff",
+  "joins": false, "note": "quantified on a separate assembly"}}` is the entry
+  that saves half a day of opening files.
+- **Mark the canonical copy** when the same data sits in five directories.
+- `check_dataset(name)` re-verifies the path and reports what CHANGED (size,
+  mtime, line count vs `n_records`) — not just whether it still exists.
+- `link_dataset(name, paper=, analysis=)` puts it in `prepare_export`'s
+  `datasets`, so "Availability of data and materials" is written from the record.
+
+Register a dataset the first time you locate it. That is the moment the path,
+the id format and the join keys are all in front of you.
 
 ## Analysis provenance — RECORD EVERY RUN (not optional)
 
