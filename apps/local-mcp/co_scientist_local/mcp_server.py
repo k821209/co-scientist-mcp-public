@@ -637,14 +637,22 @@ def build_mcp(state: State) -> FastMCP:
         local_path: str | None = None,
         status: str | None = None,
         source_analysis: str | None = None,
+        prompt: str | None = None,
     ) -> dict[str, Any]:
         """Patch a figure; optionally replace the image bytes.
 
-        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
+        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+
+        Replacing the bytes (`local_path`) WITHOUT passing a `prompt` retires the
+        stored generation prompt to `prompt_superseded`. Supplying bytes says the
+        image is no longer what the prompt described, and a surviving prompt lets
+        a dashboard re-render silently replace a hand-built figure with an AI
+        raster drawn from stale text. `prompt=""` clears it explicitly; a plain
+        metadata edit leaves it alone."""
         return _figures.update_figure(
             state, slug, figure_number, title=title, caption=caption,
             legend=legend, local_path=local_path, status=status,
-            source_analysis=source_analysis,
+            source_analysis=source_analysis, prompt=prompt,
         )
 
     @mcp.tool()
@@ -1110,15 +1118,22 @@ def build_mcp(state: State) -> FastMCP:
         description: str | None = None,
         repo: str | None = None,
         notes: str | None = None,
+        executor: str | None = None,
     ) -> dict[str, Any]:
-        """Create/update a Nextflow pipeline's identity. ACCOUNT-wide, like servers.
+        """Create/update a workflow pipeline's identity. ACCOUNT-wide, like servers.
+
+        `executor` says what runs it: nextflow | snakemake | script | wdl | cwl |
+        make | other (default nextflow). The processes/edges/params model fits a
+        plain bash or python pipeline just as well — recording edge formats and
+        parameter defaults is what makes those re-runnable — so say which it is
+        rather than putting "not a Nextflow pipeline" in the notes.
 
         This is the stable part only — name, repo, description. The process
         graph, the parameters and the edge formats belong to a VERSION, because
         "which version produced this figure" is a methods-section question."""
         return _pipelines.register_pipeline(state, name=name,
                                             description=description, repo=repo,
-                                            notes=notes)
+                                            notes=notes, executor=executor)
 
     @mcp.tool()
     def register_pipeline_version(
@@ -1127,6 +1142,7 @@ def build_mcp(state: State) -> FastMCP:
         processes: list[dict[str, Any]] | None = None,
         edges: list[dict[str, Any]] | None = None,
         params: list[dict[str, Any]] | None = None,
+        engine_version: str | None = None,
         nextflow_version: str | None = None,
         description: str | None = None,
         overwrite: bool = False,
@@ -1149,7 +1165,8 @@ def build_mcp(state: State) -> FastMCP:
         processes named."""
         return _pipelines.register_pipeline_version(
             state, name, version, processes=processes, edges=edges, params=params,
-            nextflow_version=nextflow_version, description=description,
+            engine_version=engine_version, nextflow_version=nextflow_version,
+            description=description,
             overwrite=overwrite)
 
     @mcp.tool()

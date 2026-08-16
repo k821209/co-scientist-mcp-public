@@ -68,6 +68,41 @@ def _ensure_paper(state: State, slug: str) -> None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
 
 
+
+def _prompt_fields(existing: dict | None, prompt: str | None,
+                   uploading_bytes: bool) -> dict:
+    """Decide what happens to the stored generation `prompt` on this write.
+
+    The stored prompt is an INSTRUCTION the dashboard's re-render button obeys.
+    When a generated figure is later replaced by a hand-built one — an uploaded
+    vector, say — the prompt survives and silently outranks the image: pressing
+    re-render regenerates an AI raster from text that no longer describes the
+    figure, destroying a production asset with nothing to warn anyone. Reported
+    on a real manuscript whose stored prompt still specified a notation the paper
+    had deliberately retired, so a re-render would have produced a figure
+    contradicting its own caption (feedback 3f65f2e18dd5).
+
+    So: supplying image BYTES without also supplying a prompt is taken as the
+    statement it is — this image is no longer what the prompt described. The old
+    text moves to `prompt_superseded` rather than being deleted, because it is
+    still the provenance of whatever was there before. `generate_image` passes
+    both prompt and local_path, so the generation path is untouched.
+
+    An explicit empty string clears it too, for the case where no new bytes are
+    being written.
+    """
+    prev = (existing or {}).get("prompt")
+    if prompt is not None and prompt.strip():
+        return {"prompt": prompt, "prompt_superseded": None}
+    if prompt is not None:                       # explicit "" → clear
+        return {"prompt": None, "prompt_superseded": prev or
+                (existing or {}).get("prompt_superseded")}
+    if uploading_bytes and prev:
+        return {"prompt": None, "prompt_superseded": prev}
+    return {"prompt": prev,
+            "prompt_superseded": (existing or {}).get("prompt_superseded")}
+
+
 def add_figure(
     state: State,
     slug: str,
@@ -124,8 +159,7 @@ def add_figure(
         "legend": legend,
         "blob_path": blob_path,
         "status": status,
-        "prompt": prompt if prompt is not None
-        else (existing.get("prompt") if existing else None),
+        **_prompt_fields(existing, prompt, bool(local_path)),
         "style_applied": style_applied if style_applied is not None
         else (existing.get("style_applied") if existing else None),
         "aspect_ratio": aspect_ratio if aspect_ratio is not None
@@ -165,11 +199,16 @@ def update_figure(
     local_path: str | None = None,
     status: str | None = None,
     source_analysis: str | None = None,
+    prompt: str | None = None,
 ) -> dict:
     """Patch a figure's metadata; optionally replace the image bytes.
 
     `source_analysis` links the figure to the analysis that generates it, which
-    lets `prepare_export` warn when that analysis has re-run since."""
+    lets `prepare_export` warn when that analysis has re-run since.
+
+    Replacing the bytes (`local_path`) without also passing a `prompt` retires
+    the stored generation prompt to `prompt_superseded` — see `_prompt_fields`.
+    `prompt=""` clears it explicitly."""
     _ensure_paper(state, slug)
     path = _figure_path(state, slug, figure_number)
     existing = state.backend.get_doc(path)
@@ -183,6 +222,8 @@ def update_figure(
     if legend is not None: fields["legend"] = legend
     if status is not None: fields["status"] = status
     if source_analysis is not None: fields["source_analysis"] = source_analysis
+    if prompt is not None or local_path:
+        fields.update(_prompt_fields(existing, prompt, bool(local_path)))
 
     # Rows created before content_updated_at existed have none, so seed it from
     # the CURRENT updated_at before that gets overwritten. Without this, the very

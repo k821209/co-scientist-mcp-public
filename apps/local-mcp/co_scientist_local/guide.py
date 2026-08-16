@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-16a"
+GUIDE_VERSION = "2026-08-16b"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -162,12 +162,15 @@ finished analyses had to be re-run once it surfaced (tissue assignment 33% →
 Register a dataset the first time you locate it. That is the moment the path,
 the id format and the join keys are all in front of you.
 
-## Pipelines — Nextflow workflows, ACCOUNT-wide and versioned
+## Pipelines — workflows, ACCOUNT-wide and versioned
 
 Like the servers registry, not per project: the same workflow feeds every
 project you run it in, and per-project copies would drift.
 
-- `register_pipeline(name, repo=, description=)` is the stable identity.
+- `register_pipeline(name, repo=, description=, executor=)` is the stable
+  identity. `executor` is nextflow | snakemake | script | wdl | cwl | make —
+  the processes/edges/params model fits a plain bash pipeline just as well, so
+  say which it is rather than noting "not Nextflow" in prose.
 - `register_pipeline_version(name, version, processes=, edges=, params=)` holds
   everything that can change — the process graph, the parameters, and the FORMAT
   on each edge (`{{"from":"star","to":"featurecounts","format":"bam"}}`), which

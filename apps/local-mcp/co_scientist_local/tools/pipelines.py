@@ -1,4 +1,4 @@
-"""Nextflow pipeline registry — ACCOUNT-wide, versioned.
+"""Workflow pipeline registry — ACCOUNT-wide, versioned.
 
 Paths:
     doc: users/{uid}/pipelines/{pipeline}
@@ -25,6 +25,14 @@ from __future__ import annotations
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso, slugify
+
+# What runs the workflow. Nextflow was the first case, but the processes/edges/
+# params model turned out to fit a plain bash or python pipeline just as well —
+# recording the edge formats and parameter defaults is exactly what makes those
+# re-runnable. Registering them meant writing "NOT a Nextflow pipeline" in the
+# notes of every one, which is a field pretending to be prose (feedback
+# 3f65f2e18dd5). The record states it instead.
+EXECUTORS = ("nextflow", "snakemake", "script", "wdl", "cwl", "make", "other")
 
 
 def _pipelines_path(state: State) -> str:
@@ -56,12 +64,17 @@ def register_pipeline(
     description: str | None = None,
     repo: str | None = None,
     notes: str | None = None,
+    executor: str | None = None,
 ) -> dict:
     """Create or update the pipeline's stable identity (not its graph).
 
     `repo` is where it comes from — `nf-core/rnaseq`, a git URL, or a local path.
+    `executor` is what runs it (see EXECUTORS); defaults to "nextflow" for a new
+    record, and is left alone on an update that does not mention it.
     """
     pid = _norm(name)
+    if executor is not None and executor not in EXECUTORS:
+        raise ValueError(f"executor must be one of {EXECUTORS}, got {executor!r}")
     path = _pipeline_path(state, pid)
     existing = state.backend.get_doc(path)
     now = now_iso()
@@ -72,6 +85,8 @@ def register_pipeline(
         else (existing or {}).get("description"),
         "repo": repo if repo is not None else (existing or {}).get("repo"),
         "notes": notes if notes is not None else (existing or {}).get("notes"),
+        "executor": executor if executor is not None
+        else (existing or {}).get("executor") or "nextflow",
         "created_at": (existing or {}).get("created_at", now),
         "updated_at": now,
     }
@@ -187,6 +202,7 @@ def register_pipeline_version(
     processes: list | None = None,
     edges: list | None = None,
     params: list | None = None,
+    engine_version: str | None = None,
     nextflow_version: str | None = None,
     description: str | None = None,
     overwrite: bool = False,
@@ -221,7 +237,10 @@ def register_pipeline_version(
         "version": vid,
         "pipeline": pid,
         "description": description,
-        "nextflow_version": nextflow_version,
+        # One field for "which version of the thing that runs this".
+        # `nextflow_version=` is still accepted so records written before the
+        # registry covered other executors keep working.
+        "engine_version": engine_version or nextflow_version,
         "processes": procs,
         "edges": edge_list,
         "params": _norm_params(params),
