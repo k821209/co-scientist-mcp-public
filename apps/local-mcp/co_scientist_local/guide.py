@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-15a"
+GUIDE_VERSION = "2026-08-16a"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -161,6 +161,24 @@ finished analyses had to be re-run once it surfaced (tissue assignment 33% →
 
 Register a dataset the first time you locate it. That is the moment the path,
 the id format and the join keys are all in front of you.
+
+## Pipelines — Nextflow workflows, ACCOUNT-wide and versioned
+
+Like the servers registry, not per project: the same workflow feeds every
+project you run it in, and per-project copies would drift.
+
+- `register_pipeline(name, repo=, description=)` is the stable identity.
+- `register_pipeline_version(name, version, processes=, edges=, params=)` holds
+  everything that can change — the process graph, the parameters, and the FORMAT
+  on each edge (`{{"from":"star","to":"featurecounts","format":"bam"}}`), which
+  is what you need when wiring a new dataset in.
+- **Versions are immutable.** "Produced by v3.14.0" is a methods-section claim,
+  so `overwrite=True` exists only to fix a mis-registration.
+- An edge naming an undeclared process is REJECTED, not dropped — a missing edge
+  would leave a graph that looks complete and is not. A cycle is rejected with
+  the processes named.
+- The dashboard **Pipelines** tab draws the flow box-by-box with the formats on
+  the edges, lists the parameters, and lets you switch versions.
 
 ## Analysis provenance — RECORD EVERY RUN (not optional)
 

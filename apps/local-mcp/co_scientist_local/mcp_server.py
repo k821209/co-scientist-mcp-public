@@ -53,6 +53,7 @@ from .tools import assets as _assets
 from .tools import materials as _materials
 from .tools import memory as _memory
 from .tools import papers as _papers
+from .tools import pipelines as _pipelines
 from .tools import references as _references
 from .tools import reorder as _reorder
 from .tools import requirements as _requirements
@@ -1101,6 +1102,80 @@ def build_mcp(state: State) -> FastMCP:
             conda_root=conda_root, default_workdir=default_workdir,
             polite_max_cores_pct=polite_max_cores_pct, notes=notes,
         )
+
+    # ─── pipelines (account-wide, versioned) ─────────────────────────────────
+    @mcp.tool()
+    def register_pipeline(
+        name: str,
+        description: str | None = None,
+        repo: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Create/update a Nextflow pipeline's identity. ACCOUNT-wide, like servers.
+
+        This is the stable part only — name, repo, description. The process
+        graph, the parameters and the edge formats belong to a VERSION, because
+        "which version produced this figure" is a methods-section question."""
+        return _pipelines.register_pipeline(state, name=name,
+                                            description=description, repo=repo,
+                                            notes=notes)
+
+    @mcp.tool()
+    def register_pipeline_version(
+        name: str,
+        version: str,
+        processes: list[dict[str, Any]] | None = None,
+        edges: list[dict[str, Any]] | None = None,
+        params: list[dict[str, Any]] | None = None,
+        nextflow_version: str | None = None,
+        description: str | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Register one version's process graph, edge formats and parameters.
+
+            processes=[{"name":"fastp","label":"fastp","tool":"fastp",
+                        "container":"biocontainers/fastp:0.23.4"}, …]
+            edges=[{"from":"fastp","to":"star","format":"fastq.gz"}, …]
+            params=[{"name":"--genome","default":"GRCh38","required":true,
+                     "description":"iGenomes key"}, …]
+
+        `format` on an edge is what actually moves between two steps — the thing
+        you need when wiring a new dataset in.
+
+        Versions are IMMUTABLE by default: `overwrite=True` only to fix a
+        mis-registration, never to edit a released version, or every past
+        "produced by v1.2" becomes wrong. An edge naming an undeclared process is
+        rejected rather than silently dropped, and a cycle is rejected with the
+        processes named."""
+        return _pipelines.register_pipeline_version(
+            state, name, version, processes=processes, edges=edges, params=params,
+            nextflow_version=nextflow_version, description=description,
+            overwrite=overwrite)
+
+    @mcp.tool()
+    def list_pipelines() -> list[dict[str, Any]]:
+        """Every pipeline registered on this account."""
+        return _pipelines.list_pipelines(state)
+
+    @mcp.tool()
+    def list_pipeline_versions(name: str) -> list[dict[str, Any]]:
+        """Every registered version of one pipeline, newest first."""
+        return _pipelines.list_pipeline_versions(state, name)
+
+    @mcp.tool()
+    def get_pipeline(name: str, version: str | None = None) -> dict[str, Any]:
+        """A pipeline with one version's full graph. Defaults to the latest."""
+        return _pipelines.get_pipeline(state, name, version)
+
+    @mcp.tool()
+    def delete_pipeline_version(name: str, version: str) -> bool:
+        """Remove one registered version."""
+        return _pipelines.delete_pipeline_version(state, name, version)
+
+    @mcp.tool()
+    def delete_pipeline(name: str) -> bool:
+        """Remove a pipeline and all its versions."""
+        return _pipelines.delete_pipeline(state, name)
 
     # ─── datasets ────────────────────────────────────────────────────────────
     @mcp.tool()
