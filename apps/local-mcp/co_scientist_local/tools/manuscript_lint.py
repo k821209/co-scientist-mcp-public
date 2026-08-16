@@ -377,6 +377,22 @@ def lint_manuscript(state, slug: str) -> dict:
     sections = bundle["sections"]
     paper = bundle.get("paper") or {}
 
+    # Captions/legends are prose too. Run the sibling lint and fold a summary in
+    # so this tool's `clean` cannot mean "clean, except where I did not look".
+    from . import legend_lint as _legend_lint
+    _legends = _legend_lint.lint_legends(state, slug)
+    display_items = {
+        "total": _legends["summary"]["total"],
+        "warn": _legends["summary"]["warn"],
+        "info": _legends["summary"]["info"],
+        "items": [
+            {"item": f["item"], "level": f["level"], "flags": f["flags"],
+             "word_count": f["word_count"]}
+            for f in _legends["findings"]
+        ],
+        "detail": "run lint_legends(slug) for the offending sentences",
+    }
+
     # Which sections are correspondence. The section KEY is checked first, but a
     # letter is often its own paper, and then its keys are structural rather than
     # type-declaring — a real response letter came back with `opening`,
@@ -623,6 +639,15 @@ def lint_manuscript(state, slug: str) -> dict:
         # than dropped: a silent exemption makes the lint unauditable, and this
         # list is exactly what you would want to see if a profile were wrong.
         "suppressed_by_profile": suppressed[:_MAX_PER_KIND],
+        # Captions and legends, from lint_legends. Included because this tool's
+        # `clean` is the gate skills re-run until it goes true, and it used to
+        # cover section text ONLY — so a manuscript whose figure legends restated
+        # whole paragraphs of the synthesis reported "clean: 0 warnings"
+        # (feedback 81d4a52c0212). Duplication does not stop being duplication
+        # because it is under a figure, and a gate that cannot see half the prose
+        # is the quiet failure this codebase keeps meeting. Summary only; the
+        # per-sentence detail stays in lint_legends(slug).
+        "display_items": display_items,
         "summary": {
             "total": total,
             "by_kind": {
@@ -632,6 +657,9 @@ def lint_manuscript(state, slug: str) -> dict:
                 "insider_context": len(insider),
             },
             "suppressed_by_profile": len(suppressed),
-            "clean": total == 0,
+            "display_items": display_items["total"],
+            # Body only — kept so "is the prose clean?" is still answerable.
+            "body_clean": total == 0,
+            "clean": total == 0 and display_items["total"] == 0,
         },
     }

@@ -117,6 +117,11 @@ _INTERP_STRONG = [re.compile(p, re.I) for p in (
     r"\bdue to\b", r"\bsuggest(?:s|ing|ed)?\b", r"\bimpl(?:y|ies|ying)\b",
     r"\bindicat(?:e|es|ing)\s+that\b", r"\bdemonstrat(?:e|es|ing)\b",
     r"\bsupport(?:s|ing)?\s+(?:the|our|this|that)\b",
+    # Reported as missed: an agent writing an argument into a caption reaches
+    # for these as readily as for "suggests" (feedback 81d4a52c0212).
+    r"\b(?:this|these|it|they)\s+(?:shows?|indicates?|means?)\s+that\b",
+    r"\brule[sd]?\s+out\b",
+    r"\bexclude[sd]?\s+(?:the|any|a|an)\b",
     # Evaluative predicates.
     r"\bwell (?:supported|resolved|separated|characteri[sz]ed|conserved)\b",
     # First-person claims + the original list's specific phrasings.

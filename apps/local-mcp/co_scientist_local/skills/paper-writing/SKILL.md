@@ -284,6 +284,34 @@ offending number in `duplicated_numbers` with its source (`own_cells` vs
 same token as `caption_only`: a parameter you must relocate and a measurement you
 should cut are different things, and the report will not ask you to do both.
 
+#### 2d-quinquies-bis. What goes in a caption, and what does not
+
+`caption` and `legend` describe what the item **shows**. Interpretation belongs
+to the body section that cites it.
+
+| field | holds |
+|---|---|
+| `title` | the short name ("Genome size by accession") |
+| `caption` | the "Figure N." sentence plus what is depicted — axes, units, `n`, normalisation, the reference the values are relative to |
+| `legend` | panel-by-panel and symbol-level detail: what A/B/C are, what the colours and shapes mean, what an empty cell means |
+| the body | what the result MEANS, what it excludes, why it matters, how it relates to the other evidence |
+
+Journals print caption and legend as one block, and the naming is not consistent
+between them — Annual Reviews says caption, Nature-family says legend, and
+"legend" also still means the key drawn inside the figure. Use the split above
+regardless of what the target journal calls it.
+
+**This is where "write from the reader's context" gets misapplied.** That rule
+says to keep the context that makes a claim checkable when you compress. It does
+NOT say to move the context into the caption — keep it, but keep it in the body.
+A caption that argues duplicates the body, and the two copies then drift apart
+under revision, which is how a manuscript ends up stating its central argument
+twice in two places that have to be kept in sync by hand.
+
+`lint_manuscript`'s `summary.clean` now covers captions and legends too, so a
+manuscript whose figure legends restate the synthesis can no longer report clean;
+`summary.body_clean` is the section-text-only answer.
+
 #### 2d-sexies. Describe the panel; don't argue from it
 
 The same failure in words rather than numbers. A legend says what the reader is

@@ -620,7 +620,18 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """Register a figure. If local_path provided, uploads image bytes to Storage.
 
-        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
+        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+
+        `caption` and `legend` describe what the item SHOWS: panels, axes,
+        units, sample sizes, normalisation, and how to read the symbols.
+        Interpretation stays OUT — what the result means, what it excludes,
+        why it matters, and how it relates to other evidence belong to the
+        body section that cites the item. A caption that argues duplicates
+        the body, and the two copies then drift apart under revision.
+        The split between the two fields: `caption` is the 'Figure N.'
+        sentence plus what is depicted; `legend` is panel-by-panel and
+        symbol-level detail. Journals print them as one block.
+        lint_legends flags a caption that has grown into a mini-Results."""
         return _figures.add_figure(
             state, slug, figure_number=figure_number, title=title,
             caption=caption, legend=legend, local_path=local_path,
@@ -648,7 +659,16 @@ def build_mcp(state: State) -> FastMCP:
         image is no longer what the prompt described, and a surviving prompt lets
         a dashboard re-render silently replace a hand-built figure with an AI
         raster drawn from stale text. `prompt=""` clears it explicitly; a plain
-        metadata edit leaves it alone."""
+        metadata edit leaves it alone.
+
+        `caption`/`legend` describe what the item SHOWS: panels, axes, units,
+        sample sizes, normalisation, how to read the symbols. Interpretation
+        stays OUT — what the result means, what it excludes, why it matters
+        belong to the body section that cites the item. A caption that argues
+        duplicates the body, and the two copies drift apart under revision.
+        `caption` = the 'Figure N.' sentence plus what is depicted; `legend` =
+        panel-by-panel and symbol detail. lint_legends flags a caption that
+        has grown into a mini-Results."""
         return _figures.update_figure(
             state, slug, figure_number, title=title, caption=caption,
             legend=legend, local_path=local_path, status=status,
@@ -780,7 +800,16 @@ def build_mcp(state: State) -> FastMCP:
         caption: str | None = None,
         source_analysis: str | None = None,
     ) -> dict[str, Any]:
-        """Register a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
+        """Register a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+
+        `caption`/`legend` describe what the item SHOWS: columns, units, sample
+        sizes, normalisation, how to read the symbols. Interpretation
+        stays OUT — what the result means, what it excludes, why it matters
+        belong to the body section that cites the item. A caption that argues
+        duplicates the body, and the two copies drift apart under revision.
+        `caption` = the 'Table N.' sentence plus what is depicted; `legend` =
+        column definitions and footnotes. lint_legends flags a caption that
+        has grown into a mini-Results."""
         return _tables.add_table(
             state, slug, table_number=table_number, title=title,
             content=content, caption=caption, source_analysis=source_analysis,
@@ -796,7 +825,16 @@ def build_mcp(state: State) -> FastMCP:
         status: str | None = None,
         source_analysis: str | None = None,
     ) -> dict[str, Any]:
-        """Patch a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale."""
+        """Patch a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+
+        `caption`/`legend` describe what the item SHOWS: columns, units, sample
+        sizes, normalisation, how to read the symbols. Interpretation
+        stays OUT — what the result means, what it excludes, why it matters
+        belong to the body section that cites the item. A caption that argues
+        duplicates the body, and the two copies drift apart under revision.
+        `caption` = the 'Table N.' sentence plus what is depicted; `legend` =
+        column definitions and footnotes. lint_legends flags a caption that
+        has grown into a mini-Results."""
         return _tables.update_table(
             state, slug, table_number, title=title, content=content,
             caption=caption, status=status, source_analysis=source_analysis,
