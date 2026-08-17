@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-17b"
+GUIDE_VERSION = "2026-08-17c"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -199,6 +199,13 @@ project you run it in, and per-project copies would drift.
   you need. `get_public_pipeline(public_id)` for the full graph, then
   `import_public_pipeline(public_id)` to take a PRIVATE copy you can run and
   adapt — a copy, because the owner can change or unpublish theirs at any time.
+- **Improving someone's pipeline and republishing it is fine, and attributed
+  automatically.** The import records `derived_from` (a structured link to the
+  source) and that field is PUBLISHED, so credit travels with the copy without
+  anyone having to remember. Two things are still yours to decide, and
+  publish_pipeline says so in its reply: whether the original's `license` permits
+  a derivative, and whether `public_notes` still describes YOUR version — it was
+  inherited from the original author and may now be wrong.
 
 ## Analysis provenance — RECORD EVERY RUN (not optional)
 

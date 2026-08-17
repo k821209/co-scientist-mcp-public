@@ -66,6 +66,8 @@ def register_pipeline(
     notes: str | None = None,
     public_notes: str | None = None,
     executor: str | None = None,
+    license: str | None = None,
+    derived_from: dict | None = None,
 ) -> dict:
     """Create or update the pipeline's stable identity (not its graph).
 
@@ -100,6 +102,12 @@ def register_pipeline(
         # Published with the pipeline (see PUBLIC_FIELDS); `notes` never is.
         "public_notes": public_notes if public_notes is not None
         else (existing or {}).get("public_notes"),
+        # Terms an adopter is bound by, and whose work this started from. Both
+        # published; both empty by default.
+        "license": license if license is not None
+        else (existing or {}).get("license"),
+        "derived_from": derived_from if derived_from is not None
+        else (existing or {}).get("derived_from"),
         "executor": executor if executor is not None
         else (existing or {}).get("executor") or "nextflow",
         # Private unless explicitly published. Never flipped by a plain update.
@@ -336,7 +344,14 @@ def delete_pipeline(state: State, name: str) -> bool:
 PUBLIC_FIELDS = ("name", "display_name", "description", "repo", "executor",
                  # The note written FOR adopters. Its private sibling `notes`
                  # is absent by design — see the docstring below.
-                 "public_notes")
+                 "public_notes",
+                 # Attribution. `derived_from` HAS to be published: the first
+                 # version of import recorded provenance as prose in the private
+                 # `notes`, which is the one field that never goes out — so
+                 # improving someone's pipeline and republishing it presented
+                 # their work as original. A structured field in the public
+                 # projection makes the lineage travel with the copy.
+                 "derived_from", "license")
 _MAX_PUBLIC_VERSIONS = 20
 
 
@@ -417,7 +432,8 @@ def _sync_public(state: State, name: str) -> dict | None:
 
 
 def publish_pipeline(state: State, name: str, *, published: bool = True,
-                     public_notes: str | None = None) -> dict:
+                     public_notes: str | None = None,
+                     license: str | None = None) -> dict:
     """Make a pipeline visible to other accounts, or take it back private.
 
     Private is the default and stays the default. Publishing copies only
@@ -436,10 +452,13 @@ def publish_pipeline(state: State, name: str, *, published: bool = True,
     patch: dict = {"published": bool(published), "updated_at": now_iso()}
     if public_notes is not None:
         patch["public_notes"] = public_notes
+    if license is not None:
+        patch["license"] = license
     state.backend.update_doc(path, patch)
     public = _sync_public(state, pid)
     record = state.backend.get_doc(path) or {}
     has_public_note = bool((record.get("public_notes") or "").strip())
+    derived = record.get("derived_from") or None
     out = {
         "name": pid,
         "published": bool(published),
@@ -447,15 +466,31 @@ def publish_pipeline(state: State, name: str, *, published: bool = True,
         "shared_fields": list(PUBLIC_FIELDS) + ["versions (graph/params)"],
         "withheld": ["notes"],
         "public_notes_set": has_public_note,
+        "derived_from": derived,
+        "license": record.get("license"),
         "version_count": (public or {}).get("version_count", 0),
     }
+    notes: list[str] = []
     if published and not has_public_note:
-        out["suggestion"] = (
+        notes.append(
             "No public_notes set. Whoever adopts this sees the graph and the "
             "parameters but nothing about resource requirements, what it was "
             "tested against, or known limitations. Add one with "
             "publish_pipeline(name, public_notes=...) — it does NOT touch your "
             "private notes.")
+    if published and derived:
+        # Republishing someone else's work with improvements. The attribution
+        # rides along automatically; the two things a human still has to decide
+        # are the terms and whether the inherited note still describes the thing.
+        notes.append(
+            f"This is a derivative of {derived.get('public_id')} and is published "
+            f"WITH that attribution. Confirm the original's license permits it — "
+            f"this record says "
+            f"{record.get('license') or 'nothing about a license'} — and check "
+            f"that `public_notes` describes YOUR version, since it was inherited "
+            f"from the original author.")
+    if notes:
+        out["suggestion"] = " ".join(notes)
     return out
 
 
@@ -536,8 +571,18 @@ def import_public_pipeline(
         executor=src.get("executor") or "nextflow",
         # The author's note to adopters is exactly what a copy should keep.
         public_notes=src.get("public_notes"),
-        notes=(f"imported from published pipeline {public_id} "
-               f"(owner {src.get('owner_uid')})"),
+        license=src.get("license"),
+        # Structured, and in PUBLIC_FIELDS — so if this copy is improved and
+        # republished, the attribution goes with it. Recording it as prose in the
+        # private `notes` (the first version of this) meant a republished
+        # derivative carried no credit at all.
+        derived_from={
+            "public_id": public_id.strip(),
+            "owner_uid": src.get("owner_uid"),
+            "name": src.get("name"),
+            "version": src.get("latest_version"),
+            "imported_at": now_iso(),
+        },
     )
     imported = []
     for v in src.get("versions") or []:
@@ -548,5 +593,16 @@ def import_public_pipeline(
             description=v.get("description"), overwrite=overwrite,
         )
         imported.append(v.get("version"))
-    return {"name": target, "imported_versions": imported,
-            "published": False, "source": public_id}
+    return {
+        "name": target, "imported_versions": imported,
+        "published": False, "source": public_id,
+        "license": src.get("license"),
+        "note": (
+            "Private copy. If you improve it and publish, the attribution to "
+            f"{public_id} travels with it automatically (derived_from). Review "
+            "`public_notes` before republishing — it is currently the ORIGINAL "
+            "author's note and may not describe your changes."
+            + ("" if src.get("license") else
+               " The original states no license, so ask the owner before "
+               "republishing a derivative.")),
+    }

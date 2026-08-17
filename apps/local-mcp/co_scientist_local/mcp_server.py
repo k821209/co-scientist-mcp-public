@@ -1158,6 +1158,7 @@ def build_mcp(state: State) -> FastMCP:
         notes: str | None = None,
         public_notes: str | None = None,
         executor: str | None = None,
+        license: str | None = None,
     ) -> dict[str, Any]:
         """Create/update a workflow pipeline's identity. ACCOUNT-wide, like servers.
 
@@ -1182,7 +1183,7 @@ def build_mcp(state: State) -> FastMCP:
         return _pipelines.register_pipeline(state, name=name,
                                             description=description, repo=repo,
                                             notes=notes, public_notes=public_notes,
-                                            executor=executor)
+                                            executor=executor, license=license)
 
     @mcp.tool()
     def register_pipeline_version(
@@ -1220,7 +1221,8 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def publish_pipeline(name: str, published: bool = True,
-                         public_notes: str | None = None) -> dict[str, Any]:
+                         public_notes: str | None = None,
+                         license: str | None = None) -> dict[str, Any]:
         """Share a pipeline with other Scivo accounts, or take it back private.
 
         Pipelines are PRIVATE by default and publishing is the only thing that
@@ -1238,7 +1240,8 @@ def build_mcp(state: State) -> FastMCP:
         exactly what went out, plus a suggestion when a pipeline is published with
         nothing said to whoever picks it up."""
         return _pipelines.publish_pipeline(state, name, published=published,
-                                           public_notes=public_notes)
+                                           public_notes=public_notes,
+                                           license=license)
 
     @mcp.tool()
     def search_public_pipelines(
@@ -1272,7 +1275,14 @@ def build_mcp(state: State) -> FastMCP:
         A copy, not a reference: the original owner can unpublish or change theirs
         at any time, and a workflow you have already run against has to keep
         meaning what it meant. The copy starts unpublished — republishing someone
-        else's work should be a decision, not a side effect of adopting it."""
+        else's work should be a decision, not a side effect of adopting it.
+
+        The copy records `derived_from` — a structured link to the source — and
+        that field IS published. So improving an imported pipeline and publishing
+        it carries the attribution automatically; you do not have to remember to
+        credit anyone. What you DO have to decide is the license (the reply says
+        whether the original stated one) and whether the inherited `public_notes`
+        still describes your version."""
         return _pipelines.import_public_pipeline(
             state, public_id, name=name, overwrite=overwrite)
 
