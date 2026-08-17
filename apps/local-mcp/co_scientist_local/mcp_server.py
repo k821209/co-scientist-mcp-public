@@ -1208,6 +1208,57 @@ def build_mcp(state: State) -> FastMCP:
             overwrite=overwrite)
 
     @mcp.tool()
+    def publish_pipeline(name: str, published: bool = True) -> dict[str, Any]:
+        """Share a pipeline with other Scivo accounts, or take it back private.
+
+        Pipelines are PRIVATE by default and publishing is the only thing that
+        changes that. It copies the identity, the process graphs and the
+        parameters to a public registry — and deliberately NOT `notes`, which is
+        where machine-specific facts live ("egress to EBI 43 B/s"). Fields added
+        to the record in future stay private until they are added to the public
+        projection on purpose.
+
+        Returns what was shared and what was withheld, so you can tell the user
+        exactly what went out."""
+        return _pipelines.publish_pipeline(state, name, published=published)
+
+    @mcp.tool()
+    def search_public_pipelines(
+        query: str | None = None,
+        executor: str | None = None,
+        include_own: bool = False,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Search pipelines other accounts have published, to reuse instead of
+        rebuilding.
+
+        Every term of `query` must appear in the name, repo, description or in one
+        of the process/tool names — so "rnaseq star" finds a Nextflow RNA-seq
+        pipeline whose graph contains a STAR step. Returns summaries; call
+        get_public_pipeline for the full graph, and import_public_pipeline to take
+        a private copy you can run and adapt."""
+        return _pipelines.search_public_pipelines(
+            state, query, executor=executor, include_own=include_own, limit=limit)
+
+    @mcp.tool()
+    def get_public_pipeline(public_id: str) -> dict[str, Any]:
+        """One published pipeline in full — every version's graph and params."""
+        return _pipelines.get_public_pipeline(state, public_id)
+
+    @mcp.tool()
+    def import_public_pipeline(
+        public_id: str, name: str | None = None, overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Copy a published pipeline into your account, private.
+
+        A copy, not a reference: the original owner can unpublish or change theirs
+        at any time, and a workflow you have already run against has to keep
+        meaning what it meant. The copy starts unpublished — republishing someone
+        else's work should be a decision, not a side effect of adopting it."""
+        return _pipelines.import_public_pipeline(
+            state, public_id, name=name, overwrite=overwrite)
+
+    @mcp.tool()
     def list_pipelines() -> list[dict[str, Any]]:
         """Every pipeline registered on this account."""
         return _pipelines.list_pipelines(state)
