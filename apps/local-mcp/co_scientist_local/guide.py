@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-17a"
+GUIDE_VERSION = "2026-08-17b"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -182,11 +182,17 @@ project you run it in, and per-project copies would drift.
   the processes named.
 - The dashboard **Pipelines** tab draws the flow box-by-box with the formats on
   the edges, lists the parameters, and lets you switch versions.
-- **Private by default.** `publish_pipeline(name)` shares it with other Scivo
-  accounts; `published=False` takes it back. Publishing copies the identity, the
-  graphs and the parameters — and NEVER `notes`, which is where machine-specific
-  facts belong. A field added to the record later stays private until it is added
-  to the public projection deliberately.
+- **Private by default.** `publish_pipeline(name, public_notes=…)` shares it with
+  other Scivo accounts; `published=False` takes it back. Publishing copies the
+  identity, the graphs, the parameters and `public_notes` — and NEVER `notes`.
+  A field added to the record later stays private until it is added to the public
+  projection deliberately.
+- **Two note fields, and they are not interchangeable.** `notes` is private:
+  machine-specific facts ("egress to EBI 43 B/s"). `public_notes` is written FOR
+  adopters and is published: resource requirements, what it was tested against,
+  known limitations. Set it when you publish — a pipeline published with nothing
+  said to whoever picks it up is usually an oversight, and publish_pipeline says
+  so in its reply.
 - **Before building a workflow, look for one.**
   `search_public_pipelines("rnaseq star")` matches the name, repo, description and
   every process/tool name, so it finds a pipeline whose graph contains the step

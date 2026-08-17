@@ -1156,9 +1156,19 @@ def build_mcp(state: State) -> FastMCP:
         description: str | None = None,
         repo: str | None = None,
         notes: str | None = None,
+        public_notes: str | None = None,
         executor: str | None = None,
     ) -> dict[str, Any]:
         """Create/update a workflow pipeline's identity. ACCOUNT-wide, like servers.
+
+        TWO note fields, separate on purpose:
+          `notes`        — PRIVATE, never published. Machine-specific facts go
+                           here ("egress to EBI 43 B/s, don't download here").
+          `public_notes` — published with the pipeline. What an adopter needs:
+                           resource requirements, what it was tested against,
+                           known limitations.
+        One field with a "share this?" flag would put the private text a single
+        wrong argument away from going public; two fields cannot be confused.
 
         `executor` says what runs it: nextflow | snakemake | script | wdl | cwl |
         make | other (default nextflow). The processes/edges/params model fits a
@@ -1171,7 +1181,8 @@ def build_mcp(state: State) -> FastMCP:
         "which version produced this figure" is a methods-section question."""
         return _pipelines.register_pipeline(state, name=name,
                                             description=description, repo=repo,
-                                            notes=notes, executor=executor)
+                                            notes=notes, public_notes=public_notes,
+                                            executor=executor)
 
     @mcp.tool()
     def register_pipeline_version(
@@ -1208,7 +1219,8 @@ def build_mcp(state: State) -> FastMCP:
             overwrite=overwrite)
 
     @mcp.tool()
-    def publish_pipeline(name: str, published: bool = True) -> dict[str, Any]:
+    def publish_pipeline(name: str, published: bool = True,
+                         public_notes: str | None = None) -> dict[str, Any]:
         """Share a pipeline with other Scivo accounts, or take it back private.
 
         Pipelines are PRIVATE by default and publishing is the only thing that
@@ -1218,9 +1230,15 @@ def build_mcp(state: State) -> FastMCP:
         to the record in future stay private until they are added to the public
         projection on purpose.
 
+        `public_notes` is the note written FOR adopters and IS published — set it
+        here, or beforehand via register_pipeline. It never touches the private
+        `notes`.
+
         Returns what was shared and what was withheld, so you can tell the user
-        exactly what went out."""
-        return _pipelines.publish_pipeline(state, name, published=published)
+        exactly what went out, plus a suggestion when a pipeline is published with
+        nothing said to whoever picks it up."""
+        return _pipelines.publish_pipeline(state, name, published=published,
+                                           public_notes=public_notes)
 
     @mcp.tool()
     def search_public_pipelines(

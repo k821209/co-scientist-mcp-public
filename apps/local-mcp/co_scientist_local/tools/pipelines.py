@@ -64,6 +64,7 @@ def register_pipeline(
     description: str | None = None,
     repo: str | None = None,
     notes: str | None = None,
+    public_notes: str | None = None,
     executor: str | None = None,
 ) -> dict:
     """Create or update the pipeline's stable identity (not its graph).
@@ -71,6 +72,17 @@ def register_pipeline(
     `repo` is where it comes from — `nf-core/rnaseq`, a git URL, or a local path.
     `executor` is what runs it (see EXECUTORS); defaults to "nextflow" for a new
     record, and is left alone on an update that does not mention it.
+
+    TWO note fields, deliberately separate rather than one field with a mode:
+
+      `notes`        — private, never leaves the account. Machine-specific facts
+                       belong here ("egress to EBI 43 B/s, don't download here").
+      `public_notes` — published with the pipeline. What someone adopting it needs
+                       to know: resource requirements, what it was tested against,
+                       known limitations.
+
+    One field with a "share this?" flag would put the private text one wrong
+    argument away from being published. Two fields cannot be confused by a typo.
     """
     pid = _norm(name)
     if executor is not None and executor not in EXECUTORS:
@@ -85,6 +97,9 @@ def register_pipeline(
         else (existing or {}).get("description"),
         "repo": repo if repo is not None else (existing or {}).get("repo"),
         "notes": notes if notes is not None else (existing or {}).get("notes"),
+        # Published with the pipeline (see PUBLIC_FIELDS); `notes` never is.
+        "public_notes": public_notes if public_notes is not None
+        else (existing or {}).get("public_notes"),
         "executor": executor if executor is not None
         else (existing or {}).get("executor") or "nextflow",
         # Private unless explicitly published. Never flipped by a plain update.
@@ -318,7 +333,10 @@ def delete_pipeline(state: State, name: str) -> bool:
 #
 # Same reasoning as the co-author share grant, where enumerating the readable
 # collections beat a recursive wildcard.
-PUBLIC_FIELDS = ("name", "display_name", "description", "repo", "executor")
+PUBLIC_FIELDS = ("name", "display_name", "description", "repo", "executor",
+                 # The note written FOR adopters. Its private sibling `notes`
+                 # is absent by design — see the docstring below.
+                 "public_notes")
 _MAX_PUBLIC_VERSIONS = 20
 
 
@@ -398,28 +416,47 @@ def _sync_public(state: State, name: str) -> dict | None:
     return doc
 
 
-def publish_pipeline(state: State, name: str, *, published: bool = True) -> dict:
+def publish_pipeline(state: State, name: str, *, published: bool = True,
+                     public_notes: str | None = None) -> dict:
     """Make a pipeline visible to other accounts, or take it back private.
 
     Private is the default and stays the default. Publishing copies only
     PUBLIC_FIELDS and the process graphs — `notes` is never included, because
     that is where machine-specific facts live.
+
+    `public_notes` is the note written FOR adopters (resource requirements, what
+    it was tested against, limitations) and IS published. The reply reports
+    whether one is set, since a pipeline published with nothing said to whoever
+    picks it up is usually an oversight rather than a decision.
     """
     pid = _norm(name)
     path = _pipeline_path(state, pid)
     if state.backend.get_doc(path) is None:
         raise NotFound(f"pipeline not found: {pid!r}")
-    state.backend.update_doc(path, {"published": bool(published),
-                                    "updated_at": now_iso()})
+    patch: dict = {"published": bool(published), "updated_at": now_iso()}
+    if public_notes is not None:
+        patch["public_notes"] = public_notes
+    state.backend.update_doc(path, patch)
     public = _sync_public(state, pid)
-    return {
+    record = state.backend.get_doc(path) or {}
+    has_public_note = bool((record.get("public_notes") or "").strip())
+    out = {
         "name": pid,
         "published": bool(published),
         "public_id": _public_id(state.owner_uid, pid) if published else None,
         "shared_fields": list(PUBLIC_FIELDS) + ["versions (graph/params)"],
         "withheld": ["notes"],
+        "public_notes_set": has_public_note,
         "version_count": (public or {}).get("version_count", 0),
     }
+    if published and not has_public_note:
+        out["suggestion"] = (
+            "No public_notes set. Whoever adopts this sees the graph and the "
+            "parameters but nothing about resource requirements, what it was "
+            "tested against, or known limitations. Add one with "
+            "publish_pipeline(name, public_notes=...) — it does NOT touch your "
+            "private notes.")
+    return out
 
 
 def search_public_pipelines(
@@ -459,6 +496,7 @@ def search_public_pipelines(
             "description": d.get("description"),
             "repo": d.get("repo"),
             "executor": d.get("executor"),
+            "public_notes": d.get("public_notes"),
             "latest_version": d.get("latest_version"),
             "version_count": d.get("version_count"),
             "process_count": len((latest or {}).get("processes") or []),
@@ -496,6 +534,8 @@ def import_public_pipeline(
         description=src.get("description"),
         repo=src.get("repo"),
         executor=src.get("executor") or "nextflow",
+        # The author's note to adopters is exactly what a copy should keep.
+        public_notes=src.get("public_notes"),
         notes=(f"imported from published pipeline {public_id} "
                f"(owner {src.get('owner_uid')})"),
     )
