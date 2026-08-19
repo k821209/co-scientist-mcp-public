@@ -315,3 +315,190 @@ def delete_figure(state: State, slug: str, figure_number: int) -> bool:
         state.backend.delete_blob(existing["blob_path"])
     state.backend.delete_doc(path)
     return True
+
+
+# ── multi-panel figures ───────────────────────────────────────────────────────
+#
+# A figure can hold several images under one number — panels A, B, C, or the
+# ordered screenshots of one step in a manual. `panels` is the editable SOURCE
+# list; every change recomposes them into ONE image stored at `blob_path`.
+#
+# Composing rather than stacking at export time is what makes this correct
+# everywhere else: a journal requires one composed figure per number, and nothing
+# downstream (pandoc, python-docx) can compose. It also means the five separate
+# places in exports.py that read `blob_path`, plus the dashboard and the
+# staleness check, need to know nothing about panels at all — there is one image,
+# as there always was.
+_PANEL_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def figure_images(fig: dict) -> list[dict]:
+    """The figure's SOURCE images, as [{label, blob_path, caption}].
+
+    Not what gets rendered — that is the composed `blob_path`. This is the list
+    the composer works from and the dashboard shows for re-editing.
+    """
+    panels = [p for p in (fig.get("panels") or []) if p.get("blob_path")]
+    if panels:
+        return [{"label": p.get("label"), "blob_path": p["blob_path"],
+                 "caption": p.get("caption")} for p in panels]
+    if fig.get("blob_path"):
+        return [{"label": None, "blob_path": fig["blob_path"], "caption": None}]
+    return []
+
+
+
+# Layout for the composed sheet. Deliberately plain: one column, equal widths,
+# the panel letter in the corner. A cleverer packing would look better and would
+# also mean the composed file stops matching what the author arranged.
+_PANEL_GAP = 24
+_PANEL_PAD = 16
+_LABEL_SIZE = 34
+
+
+def compose_panels(images: list[bytes], labels: list[str | None]) -> bytes:
+    """Stack panel images into ONE PNG with (A)/(B)/(C) labels.
+
+    A journal wants a single composed figure per number and nothing downstream
+    can compose, so it happens here, at the moment the panels change.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+
+    opened = [Image.open(io.BytesIO(b)).convert("RGBA") for b in images]
+    # One column at a common width, so panels of different capture sizes line up
+    # instead of stair-stepping.
+    width = max(im.width for im in opened)
+    scaled = [
+        im if im.width == width
+        else im.resize((width, max(1, round(im.height * width / im.width))),
+                       Image.LANCZOS)
+        for im in opened
+    ]
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", _LABEL_SIZE)
+    except OSError:
+        font = ImageFont.load_default()
+
+    total_h = (sum(im.height for im in scaled)
+               + _PANEL_GAP * (len(scaled) - 1) + _PANEL_PAD * 2)
+    sheet = Image.new("RGB", (width + _PANEL_PAD * 2, total_h), "white")
+    draw = ImageDraw.Draw(sheet)
+    y = _PANEL_PAD
+    for im, label in zip(scaled, labels):
+        sheet.paste(im, (_PANEL_PAD, y), im)
+        if label:
+            # Drawn over a white plate so the letter stays readable on a dark
+            # screenshot.
+            box = draw.textbbox((0, 0), f"({label})", font=font)
+            w, h = box[2] - box[0], box[3] - box[1]
+            draw.rectangle([_PANEL_PAD, y, _PANEL_PAD + w + 14, y + h + 14],
+                           fill="white")
+            draw.text((_PANEL_PAD + 7, y + 4), f"({label})", fill="black", font=font)
+        y += im.height + _PANEL_GAP
+
+    out = io.BytesIO()
+    sheet.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _recompose(state: State, slug: str, figure_number: int,
+               panels: list[dict]) -> str | None:
+    """Rebuild the figure's single image from its panels. None when empty."""
+    if not panels:
+        return None
+    if len(panels) == 1:
+        return panels[0]["blob_path"]
+    blobs = [state.backend.get_blob(p["blob_path"]) for p in panels]
+    if any(b is None for b in blobs):
+        raise NotFound("a panel's image is missing; cannot compose the figure")
+    composed = compose_panels(blobs, [p.get("label") for p in panels])
+    path = _figure_blob_path(state, slug, figure_number, "png")
+    # A composed sheet always lands on the .png path, so replacing a two-panel
+    # PNG composite with a three-panel one overwrites rather than orphaning.
+    state.backend.put_blob(path, composed)
+    return path
+
+def _next_panel_label(panels: list[dict]) -> str:
+    used = {str(p.get("label") or "").upper() for p in panels}
+    for ch in _PANEL_LABELS:
+        if ch not in used:
+            return ch
+    return str(len(panels) + 1)
+
+
+def add_figure_panel(
+    state: State,
+    slug: str,
+    figure_number: int,
+    *,
+    local_path: str,
+    label: str | None = None,
+    caption: str | None = None,
+) -> dict:
+    """Add one more image to a figure, as a labelled panel.
+
+    The first panel also becomes the figure's `blob_path`, so a figure that had
+    no image is no longer empty and every existing consumer sees something.
+    """
+    _ensure_paper(state, slug)
+    path = _figure_path(state, slug, figure_number)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(f"figure {figure_number} not found for {slug!r}")
+    p = pathlib.Path(local_path)
+    if not p.is_file():
+        raise FileNotFoundError(f"local figure file not found: {local_path}")
+
+    panels = list(existing.get("panels") or [])
+    # An existing single image becomes panel A, so adding a second panel to a
+    # figure that already had one does not lose the original.
+    if not panels and existing.get("blob_path"):
+        panels.append({"id": "p1", "label": "A",
+                       "blob_path": existing["blob_path"], "caption": None})
+    panel_label = (label or _next_panel_label(panels)).strip()
+    panel_id = f"p{len(panels) + 1}"
+    ext = p.suffix.lstrip(".") or "png"
+    blob_path = state.project_path(
+        "papers", slug, "figures", f"figure_{figure_number}_{panel_id}.{ext}")
+    state.backend.put_blob(blob_path, p.read_bytes())
+    panels.append({"id": panel_id, "label": panel_label,
+                   "blob_path": blob_path, "caption": caption})
+
+    now = now_iso()
+    state.backend.update_doc(path, {
+        "panels": panels,
+        # ONE image, composed from the panels — what every consumer reads.
+        "blob_path": _recompose(state, slug, figure_number, panels),
+        "content_updated_at": now,
+        "updated_at": now,
+        "rerender_pending": False,
+    })
+    return state.backend.get_doc(path)
+
+
+def delete_figure_panel(state: State, slug: str, figure_number: int,
+                        panel_id: str) -> dict:
+    """Remove one panel. The figure's blob_path follows whatever is left first."""
+    _ensure_paper(state, slug)
+    path = _figure_path(state, slug, figure_number)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(f"figure {figure_number} not found for {slug!r}")
+    panels = [p for p in (existing.get("panels") or [])
+              if p.get("id") != panel_id]
+    if len(panels) == len(existing.get("panels") or []):
+        raise NotFound(f"panel {panel_id!r} not found on figure {figure_number}")
+    for gone in (existing.get("panels") or []):
+        if gone.get("id") == panel_id and gone.get("blob_path"):
+            state.backend.delete_blob(gone["blob_path"])
+    now = now_iso()
+    state.backend.update_doc(path, {
+        "panels": panels,
+        # None when the last panel goes: the figure is empty again, and
+        # prepare_export's empty-figure warning should say so.
+        "blob_path": _recompose(state, slug, figure_number, panels),
+        "content_updated_at": now,
+        "updated_at": now,
+    })
+    return state.backend.get_doc(path)

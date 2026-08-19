@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-19b"
+GUIDE_VERSION = "2026-08-19c"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -221,6 +221,12 @@ which is the difference between one step and forty on a screenshot-heavy manual.
   the caption's first draft.
 - `prepare_export` warns about slots still empty: an image-less figure is
   dropped from the exported document, so the hole would otherwise be silent.
+- **Several images under one figure number?** `add_figure_panel(slug, N,
+  local_path=…)` per image. They are the editable source list, and every change
+  COMPOSES them into the single image at the figure's `blob_path` — one column,
+  (A)/(B)/(C) labels. Do not stack panels yourself at export time: a journal
+  wants one composed figure per number, and neither pandoc nor python-docx can
+  compose, so the wrongness would only surface at submission.
 - **A slot can also take a COMMENT with no image** ("re-shoot after the sidebar
   fix"). Those arrive as ordinary open reviews with
   `manuscript_ref = "figure:N"` and no `anchor_text`, so they show up in

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "co-scientist-local"
-version = "0.1.20260819.post1"
+version = "0.1.20260819.post2"
 description = "Local MCP server for co-scientist-cloud (Claude Code <-> Firestore)"
 requires-python = ">=3.11"
 dependencies = [
@@ -27,6 +27,11 @@ dependencies = [
     "google-cloud-storage>=2.16",
     # paper-deck Phase 3 — PPTX export.
     "python-pptx>=1.0",
+    # Composing multi-panel figures into the single image a journal expects.
+    # python-pptx already pulls Pillow in, but this module imports it directly,
+    # and an undeclared transitive dependency is one upstream change away from
+    # breaking figure composition with no warning.
+    "pillow>=10.0",
     # Report/other doc export — native .docx via python-docx (pandoc OOXML
     # crashes Hancom Office). markdown-it-py parses the manuscript markdown.
     "python-docx>=1.1",

@@ -381,10 +381,25 @@ def _figure_alt(fig: dict, *, supplementary: bool) -> str:
 
 
 def _figure_block(fig: dict, *, supplementary: bool) -> str | None:
-    bp = fig.get("blob_path")
-    if not bp:
+    """The figure as markdown: every panel, under ONE caption.
+
+    A multi-panel figure ships as several stacked images with their panel labels,
+    not one composed picture — nothing in this pipeline can compose images, and
+    pretending otherwise would silently drop panels B onward. prepare_export warns
+    when a journal paper does this, because journals require the composed form.
+    """
+    images = _figures.figure_images(fig)
+    if not images:
         return None
-    return f"![{_figure_alt(fig, supplementary=supplementary)}]({pathlib.Path(bp).name})"
+    alt = _figure_alt(fig, supplementary=supplementary)
+    if len(images) == 1:
+        return f"![{alt}]({pathlib.Path(images[0]['blob_path']).name})"
+    blocks = [f"![{alt}]({pathlib.Path(images[0]['blob_path']).name})"]
+    for img in images[1:]:
+        label = f"**({img['label']})** " if img.get("label") else ""
+        cap = img.get("caption") or ""
+        blocks.append(f"![{label}{cap}]({pathlib.Path(img['blob_path']).name})")
+    return "\n\n".join(blocks)
 
 
 def _table_block(tbl: dict, *, supplementary: bool) -> str | None:

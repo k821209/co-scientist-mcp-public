@@ -649,6 +649,36 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
+    def add_figure_panel(
+        slug: str,
+        figure_number: int,
+        local_path: str,
+        label: str | None = None,
+        caption: str | None = None,
+    ) -> dict[str, Any]:
+        """Add one image to a figure as a labelled panel, and RECOMPOSE.
+
+        Panels are the editable source list; every change composes them into a
+        single image at the figure's `blob_path` — one column, equal widths, an
+        (A)/(B)/(C) label per panel. That is what makes it correct downstream: a
+        journal wants one composed figure per number, and neither pandoc nor
+        python-docx can compose, so exporting stacked panels would be wrong in a
+        way you would only find at submission.
+
+        `label` defaults to the next free letter. An existing single image becomes
+        panel A, so adding a second panel never loses the first."""
+        return _figures.add_figure_panel(
+            state, slug, figure_number, local_path=local_path, label=label,
+            caption=caption)
+
+    @mcp.tool()
+    def delete_figure_panel(slug: str, figure_number: int,
+                            panel_id: str) -> dict[str, Any]:
+        """Remove one panel and recompose the rest. Removing the last one leaves
+        the figure empty again, which prepare_export then warns about."""
+        return _figures.delete_figure_panel(state, slug, figure_number, panel_id)
+
+    @mcp.tool()
     def update_figure(
         slug: str,
         figure_number: int,
