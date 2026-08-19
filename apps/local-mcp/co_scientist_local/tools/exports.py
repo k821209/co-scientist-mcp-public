@@ -920,6 +920,21 @@ def prepare_export(
     # falls back to its (usually empty) alt text. So a manual exported with a
     # dozen screenshots still missing produced a document with a dozen holes and
     # not one warning (feedback 35dcd4529d86).
+    # Panels uploaded from the dashboard, never composed. The manuscript and the
+    # export both read `blob_path`, so until this runs the document shows the OLD
+    # composite (or nothing) while the author believes they uploaded the panels.
+    uncomposed = [f for f in (*figs, *supp_figs)
+                  if _figures.panels_need_composing(f)]
+    if uncomposed:
+        labels = ", ".join(
+            _display_label("Figure", f.get("figure_number"),
+                           supplementary=f in supp_figs)
+            for f in uncomposed[:8])
+        warnings.append(
+            f"{len(uncomposed)} figure(s) have panels that were uploaded but "
+            f"never composed ({labels}) — the export still carries the previous "
+            f"image. Run compose_figure_panels(slug) to rebuild them.")
+
     empty_figs = [f for f in (*figs, *supp_figs) if not f.get("blob_path")]
     if empty_figs:
         labels = ", ".join(

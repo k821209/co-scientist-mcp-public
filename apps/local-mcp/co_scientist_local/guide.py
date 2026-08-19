@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-19c"
+GUIDE_VERSION = "2026-08-19d"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -227,6 +227,14 @@ which is the difference between one step and forty on a screenshot-heavy manual.
   (A)/(B)/(C) labels. Do not stack panels yourself at export time: a journal
   wants one composed figure per number, and neither pandoc nor python-docx can
   compose, so the wrongness would only surface at submission.
+- **Images uploaded from the DASHBOARD arrive pending.** The browser cannot
+  compose, and whether a screenshot actually shows what its caption asked for is
+  a judgement you make, not the browser. So a dashboard upload lands as panels
+  (A), (B), … and waits. **Early in a session, check
+  `prepare_export`'s warnings or call `compose_figure_panels(slug)`**: look at
+  each new panel against the caption, fix the caption or ask about the shot if
+  they disagree, then compose. Until you do, the manuscript still shows the
+  previous image.
 - **A slot can also take a COMMENT with no image** ("re-shoot after the sidebar
   fix"). Those arrive as ordinary open reviews with
   `manuscript_ref = "figure:N"` and no `anchor_text`, so they show up in

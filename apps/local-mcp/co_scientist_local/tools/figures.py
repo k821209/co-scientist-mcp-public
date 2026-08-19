@@ -470,12 +470,70 @@ def add_figure_panel(
         "panels": panels,
         # ONE image, composed from the panels — what every consumer reads.
         "blob_path": _recompose(state, slug, figure_number, panels),
+        "panels_updated_at": now,
+        "panels_composed_at": now,
         "content_updated_at": now,
         "updated_at": now,
         "rerender_pending": False,
     })
     return state.backend.get_doc(path)
 
+
+
+def panels_need_composing(fig: dict) -> bool:
+    """Whether this figure's panels have changed since the composite was built.
+
+    `panels_composed_at` stores the `panels_updated_at` VALUE that was composed,
+    so this is an equality check, not a time comparison. That matters: the
+    dashboard stamps panels_updated_at with the BROWSER's clock and the MCP
+    stamps the composed marker with the host's, and any skew between them would
+    leave a composed figure stuck reading "pending" forever — or, worse the other
+    way, mark an uncomposed one done.
+
+    Derived rather than a `dirty` flag someone has to remember to clear. While it
+    is true the manuscript still shows the PREVIOUS image, so this is the only
+    thing that says why the upload appears to have done nothing.
+    """
+    panels = [p for p in (fig.get("panels") or []) if p.get("blob_path")]
+    if not panels:
+        return False
+    return fig.get("panels_updated_at") != fig.get("panels_composed_at")
+
+
+def compose_figure_panels(state: State, slug: str,
+                          figure_number: int | None = None) -> dict:
+    """Build the composite for figures whose panels have changed.
+
+    The dashboard uploads panels but cannot compose them, so this is the step
+    that turns them into the single image the manuscript and every export read.
+    Run it for one figure, or leave `figure_number` off to catch up on all of
+    them at once — the reason the dashboard is allowed to defer.
+    """
+    _ensure_paper(state, slug)
+    todo = ([state.backend.get_doc(_figure_path(state, slug, figure_number))]
+            if figure_number is not None
+            else list_figures(state, slug, supplementary=None))
+    if figure_number is not None and todo[0] is None:
+        raise NotFound(f"figure {figure_number} not found for {slug!r}")
+
+    composed, skipped = [], []
+    for fig in todo:
+        num = fig.get("figure_number")
+        if not panels_need_composing(fig):
+            skipped.append(num)
+            continue
+        panels = [p for p in (fig.get("panels") or []) if p.get("blob_path")]
+        now = now_iso()
+        state.backend.update_doc(_figure_path(state, slug, num), {
+            "blob_path": _recompose(state, slug, num, panels),
+            # The panel revision this composite was built from — see
+            # panels_need_composing for why it is not a timestamp of its own.
+            "panels_composed_at": fig.get("panels_updated_at"),
+            "content_updated_at": now,
+            "updated_at": now,
+        })
+        composed.append({"figure_number": num, "panels": len(panels)})
+    return {"slug": slug, "composed": composed, "already_current": skipped}
 
 def delete_figure_panel(state: State, slug: str, figure_number: int,
                         panel_id: str) -> dict:
@@ -498,6 +556,8 @@ def delete_figure_panel(state: State, slug: str, figure_number: int,
         # None when the last panel goes: the figure is empty again, and
         # prepare_export's empty-figure warning should say so.
         "blob_path": _recompose(state, slug, figure_number, panels),
+        "panels_updated_at": now,
+        "panels_composed_at": now,
         "content_updated_at": now,
         "updated_at": now,
     })

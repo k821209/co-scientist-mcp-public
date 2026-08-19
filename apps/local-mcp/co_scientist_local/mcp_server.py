@@ -672,6 +672,19 @@ def build_mcp(state: State) -> FastMCP:
             caption=caption)
 
     @mcp.tool()
+    def compose_figure_panels(slug: str,
+                              figure_number: int | None = None) -> dict[str, Any]:
+        """Rebuild the composite for figures whose panels changed.
+
+        The dashboard can upload panels but cannot compose them (no Python), so
+        panels added there wait for this. Leave `figure_number` off to catch up on
+        every figure at once — that batching is the reason deferring is
+        acceptable. prepare_export warns while any are outstanding, because until
+        then the document still carries the PREVIOUS image while the author
+        believes the panels are in."""
+        return _figures.compose_figure_panels(state, slug, figure_number)
+
+    @mcp.tool()
     def delete_figure_panel(slug: str, figure_number: int,
                             panel_id: str) -> dict[str, Any]:
         """Remove one panel and recompose the rest. Removing the last one leaves
