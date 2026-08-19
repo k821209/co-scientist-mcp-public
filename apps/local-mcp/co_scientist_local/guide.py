@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-19d"
+GUIDE_VERSION = "2026-08-20a"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -240,6 +240,21 @@ which is the difference between one step and forty on a screenshot-heavy manual.
   `manuscript_ref = "figure:N"` and no `anchor_text`, so they show up in
   `count_open_user_comments` and `list_reviews` like any other comment — read
   them before assuming an empty slot is just waiting on a file.
+
+## Drawn graphs — a `*.graph.json` material is DATA, not a picture
+
+The Materials tab has a node-edge-node editor. What it saves is a material named
+`<title>.graph.json`, so `get_material` hands you `{{nodes: [{{id, label, x, y,
+kind}}], edges: [{{from, to, label}}]}}`.
+
+Read it when a user has drawn one: it is usually an experimental design, a
+workflow, or a concept map they want turned into something. Depending on what it
+describes you can register it as a pipeline (`register_pipeline_version` —
+processes and edges map straight across, and an edge `label` is the format), draw
+it as a figure, or write the Methods paragraph it encodes. The node `kind` field
+("sample" / "step" / "output") is the hint for which.
+
+Positions are the author's arrangement — preserve them if you re-save the file.
 
 ## Analysis provenance — RECORD EVERY RUN (not optional)
 
