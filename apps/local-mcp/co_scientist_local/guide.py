@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-19a"
+GUIDE_VERSION = "2026-08-19b"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -221,6 +221,11 @@ which is the difference between one step and forty on a screenshot-heavy manual.
   the caption's first draft.
 - `prepare_export` warns about slots still empty: an image-less figure is
   dropped from the exported document, so the hole would otherwise be silent.
+- **A slot can also take a COMMENT with no image** ("re-shoot after the sidebar
+  fix"). Those arrive as ordinary open reviews with
+  `manuscript_ref = "figure:N"` and no `anchor_text`, so they show up in
+  `count_open_user_comments` and `list_reviews` like any other comment — read
+  them before assuming an empty slot is just waiting on a file.
 
 ## Analysis provenance — RECORD EVERY RUN (not optional)
 
