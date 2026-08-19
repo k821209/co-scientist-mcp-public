@@ -620,6 +620,16 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """Register a figure. If local_path provided, uploads image bytes to Storage.
 
+        OMIT `local_path` to create a PLACEHOLDER — a numbered figure with a
+        caption and no image yet. In the dashboard the body's `![](figure:N)`
+        then renders as a drop zone the author fills by clicking, dropping or
+        pasting a file, with no agent session in the loop. That is the right
+        shape for a manual or a report where the text is written first and the
+        screenshots are taken later: register every slot with the caption saying
+        what to capture, and the person holding the screenshots fills them in.
+        prepare_export warns about any still unfilled, since an image-less figure
+        is dropped from the exported document.
+
         `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
 
         `caption` and `legend` describe what the item SHOWS: panels, axes,

@@ -898,6 +898,26 @@ def prepare_export(
     # passed too).
     linked_datasets = _datasets.datasets_for_paper(state, slug)
 
+    # A figure registered with no image is a PLACEHOLDER waiting to be filled.
+    # It is a deliberate, useful state — the body and the numbering get written
+    # while the screenshots do not exist yet — but the export DROPS it silently:
+    # _figure_block returns None without a blob, and the inline `![](figure:N)`
+    # falls back to its (usually empty) alt text. So a manual exported with a
+    # dozen screenshots still missing produced a document with a dozen holes and
+    # not one warning (feedback 35dcd4529d86).
+    empty_figs = [f for f in (*figs, *supp_figs) if not f.get("blob_path")]
+    if empty_figs:
+        labels = ", ".join(
+            _display_label("Figure", f.get("figure_number"),
+                           supplementary=f in supp_figs)
+            for f in empty_figs[:8])
+        warnings.append(
+            f"{len(empty_figs)} registered figure(s) have no image yet "
+            f"({labels}{'…' if len(empty_figs) > 8 else ''}) — they are dropped "
+            f"from the export, leaving a hole where the body references them. "
+            f"Fill them by clicking the slot in the dashboard's manuscript view, "
+            f"or with update_figure(slug, N, local_path=…).")
+
     warnings.extend(_stale_artifact_warnings(state, slug, figs + supp_figs,
                                              tbls + supp_tbls))
     # ...and the counterpart: artifacts with no link at all, which the staleness

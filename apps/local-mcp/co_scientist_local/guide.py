@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-17c"
+GUIDE_VERSION = "2026-08-19a"
 
 
 def render_guide(include_video: bool = True) -> str:
@@ -206,6 +206,21 @@ project you run it in, and per-project copies would drift.
   publish_pipeline says so in its reply: whether the original's `license` permits
   a derivative, and whether `public_notes` still describes YOUR version — it was
   inherited from the original author and may now be wrong.
+
+## Figure placeholders — write the text first, shoot the screenshots later
+
+For a manual, a report or any document where a person supplies the images:
+`add_figure(slug, N, title=…, caption="what should be visible")` **without**
+`local_path` registers a numbered slot with no image. Put `![](figure:N)` in the
+body as usual. The dashboard renders each empty slot as a drop zone — click,
+drop or paste a file and it becomes that figure. No agent round-trip per image,
+which is the difference between one step and forty on a screenshot-heavy manual.
+
+- Write the shooting instruction as the `caption`. It is shown in the slot, so
+  the person taking the screenshot reads it exactly when they need it, and it is
+  the caption's first draft.
+- `prepare_export` warns about slots still empty: an image-less figure is
+  dropped from the exported document, so the hole would otherwise be silent.
 
 ## Analysis provenance — RECORD EVERY RUN (not optional)
 
