@@ -123,6 +123,33 @@ def _move_item(state: State, slug: str, kind: str, old: int, new: int, num_field
                 doc["blob_path"] = new_blob
                 state.backend.delete_blob(old_blob)
 
+        # Panel blobs move too. Their names embed the figure number, so without
+        # this a reordered figure keeps panels named after the number it used to
+        # hold — the blobs still resolve, so nothing looks wrong, while the names
+        # now describe a different figure and the originals are orphaned. The
+        # panel ids are unique, so this is a rename for legibility rather than a
+        # correctness fix, and it keeps `panels[].blob_path` honest.
+        panels = doc.get("panels") or []
+        if panels:
+            moved = []
+            for panel in panels:
+                src = panel.get("blob_path")
+                if not src:
+                    moved.append(panel)
+                    continue
+                ext = pathlib.Path(src).suffix.lstrip(".") or "png"
+                dst = state.project_path(
+                    "papers", slug, "figures",
+                    f"figure_{new}_{panel.get('id', 'p')}.{ext}")
+                data = state.backend.get_blob(src)
+                if data is None or dst == src:
+                    moved.append(panel)
+                    continue
+                state.backend.put_blob(dst, data)
+                state.backend.delete_blob(src)
+                moved.append({**panel, "blob_path": dst})
+            doc["panels"] = moved
+
     state.backend.set_doc(new_path, doc)
     state.backend.delete_doc(old_path)
 

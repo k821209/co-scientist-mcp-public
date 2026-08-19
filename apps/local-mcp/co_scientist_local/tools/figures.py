@@ -19,7 +19,7 @@ import pathlib
 
 from ..backends.base import NotFound
 from ..state import State
-from ..util import now_iso
+from ..util import new_id, now_iso
 from . import limits as _limits
 from .papers import _paper_path
 
@@ -457,7 +457,13 @@ def add_figure_panel(
         panels.append({"id": "p1", "label": "A",
                        "blob_path": existing["blob_path"], "caption": None})
     panel_label = (label or _next_panel_label(panels)).strip()
-    panel_id = f"p{len(panels) + 1}"
+    # A UNIQUE id, not p{count+1}. A positional id is reused after a delete, and
+    # since the blob path embeds it, the new panel would overwrite a blob some
+    # OTHER figure is pointing at — reachable as soon as figures are reordered,
+    # because reordering changes which number a figure holds while old panel
+    # paths keep the number they were written under. Silent, and the composite
+    # would then be rebuilt from someone else's image.
+    panel_id = f"p{new_id()[:8]}"
     ext = p.suffix.lstrip(".") or "png"
     blob_path = state.project_path(
         "papers", slug, "figures", f"figure_{figure_number}_{panel_id}.{ext}")
