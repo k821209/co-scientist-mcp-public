@@ -1179,6 +1179,14 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
     being detected is a failure of containment, and no area-ratio floor applies,
     because a label big enough to burst out of a small card would drop under any
     such floor and go quiet exactly when it matters most.
+
+    Measured from the WRAPPED bottom (_effective_text_bottom), not the declared
+    one: an author rarely places a box that already overruns, but routinely
+    underestimates how far text wraps, so the declared box misses the common
+    case. Which container a label belongs to is still decided on the DECLARED
+    box — that is a question about where the author put it, and judging it on
+    the wrapped box would shrink the shared area as the spill grew, dropping the
+    label out of its own container just as the defect got worse.
     """
     try:
         from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore
@@ -1241,7 +1249,24 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
             if getattr(shape, "has_text_frame", False):
                 text = (shape.text_frame.text or "").strip()
                 if text:
-                    labels.append((z, l, t, w, h, text))
+                    # The RENDERED height, not the declared one. A text box is
+                    # declared with a height the author thought was roomy; the
+                    # text then wraps to two or three times that and the last
+                    # line prints outside the card. That is the COMMON way this
+                    # fails — an author rarely places a box that already
+                    # overruns, but they routinely underestimate wrapping — and
+                    # the inner-margin check was reading the declared box, so it
+                    # stayed silent on exactly the frequent case while catching
+                    # the rare one (feedback 24cab5ea139c, reopened).
+                    #
+                    # `_effective_text_bottom` already existed for the text↔text
+                    # overlap detector and was never wired to this path. It is
+                    # conservative by construction: declared height when the box
+                    # shrinks text to fit, when any run lacks an explicit size,
+                    # or when the measurement is within 1.2x — so it extends the
+                    # box only when wrapping clearly did.
+                    eff_h = max(h, _effective_text_bottom(shape, t, w, h) - t)
+                    labels.append((z, l, t, w, h, eff_h, text))
                     if t < header_band:
                         header_texts.append((l, t, w, h))
                     if t >= footer_y:
@@ -1292,7 +1317,18 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
         # the label STARTS inside and overlaps; the winner is the one it sits in
         # most, which keeps a badly-overflowing label attached to its card
         # instead of falling off the end of the list again.
-        for lz, ll, lt, lw, lh, ltext in labels:
+        # Two heights per label, and which one is used where is the whole
+        # point. WHICH container a label belongs to is a question about the
+        # author's intent, so it is answered with the DECLARED box they
+        # positioned. WHETHER the text stays inside it is a question about what
+        # renders, so it is answered with the EFFECTIVE box after wrapping.
+        #
+        # Judging attribution on the effective box looks equivalent and is not:
+        # the further text wraps past its card, the smaller the shared area
+        # becomes, so a fraction-of-overlap test would drop the label out of its
+        # own container precisely as the spill got worse — the same cliff this
+        # check has now had twice, in two different disguises.
+        for lz, ll, lt, lw, lh, leff_h, ltext in labels:
             child_area = max(1, lw * lh)
             # Two candidates, deliberately. `tight` keeps the ORIGINAL rule —
             # fully contained, container ≥ 2× the label — so nothing that used
@@ -1324,10 +1360,12 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                     best_tight = (a_area, (al, at, aw, ah))
 
             def _gaps(box):
+                # Effective height: a last line printed outside the card is
+                # outside the card whether or not the box said it would be.
                 bl, bt, bw, bh = box
                 return {"left": ll - bl, "top": lt - bt,
                         "right": (bl + bw) - (ll + lw),
-                        "bottom": (bt + bh) - (lt + lh)}
+                        "bottom": (bt + bh) - (lt + leff_h)}
 
             over = _gaps(best_over[2]) if best_over else {}
             over = {k: v for k, v in over.items() if v < 0}

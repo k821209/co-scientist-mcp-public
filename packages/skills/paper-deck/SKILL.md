@@ -878,9 +878,16 @@ h.text(slide, label_italic, left=cx_box, top=rail_y + r + Pt(8),
   the text box only hides the spill behind a clipping boundary that
   PowerPoint will not honour.
 
-  This one was inverted until 2026-08-20: overflow was used to
-  disqualify the card as a container, so the worse the spill, the
-  quieter the lint. If you are on an older build, `layout_warnings: []`
+  Overflow is measured from the **wrapped** bottom, not the declared
+  box height — the usual way a card overflows is a roomy-looking box
+  whose text wraps to two or three times it, not a box placed already
+  overrunning.
+
+  Both halves of this were broken until 2026-08-21. First the check
+  was inverted (overflow disqualified the card as a container, so the
+  worse the spill the quieter the lint); then the fix graded only
+  declared heights and stayed silent on wrapping, which is the common
+  case. On any build before 0.1.20260821.post1, `layout_warnings: []`
   does not mean the text is inside its card — check the PNG.
 
 - **Repeat-symbol clusters (I/II/III, ★/★★/★★★, N-bar marks)
