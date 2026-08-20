@@ -998,10 +998,29 @@ def build_mcp(state: State) -> FastMCP:
         doi: str | None = None,
         pmid: str | None = None,
         bibtex: str | None = None,
+        volume: str | None = None,
+        issue: str | None = None,
+        pages: str | None = None,
+        issn: str | None = None,
+        publisher: str | None = None,
+        url: str | None = None,
     ) -> dict[str, Any]:
+        """Register a reference by hand. Use add_reference_by_doi when a DOI
+        exists — it fills every field from CrossRef. This is for works that
+        predate DOI assignment or are absent from CrossRef.
+
+        WHICH SOURCE WINS: if `bibtex` is set, the export emits it VERBATIM and
+        ignores every structured field. So either paste a complete BibTeX entry
+        and let it stand, or leave `bibtex` empty and fill the structured fields
+        (volume/issue/pages/issn/publisher/url are all writable here) — a
+        half-filled `bibtex` silently discards the rest, and the loss shows up
+        only in the finished PDF.
+        """
         return _references.add_reference(
             state, slug, citation_key=citation_key, title=title, authors=authors,
             journal=journal, year=year, doi=doi, pmid=pmid, bibtex=bibtex,
+            volume=volume, issue=issue, pages=pages, issn=issn,
+            publisher=publisher, url=url,
         )
 
     @mcp.tool()
@@ -1015,10 +1034,24 @@ def build_mcp(state: State) -> FastMCP:
         doi: str | None = None,
         pmid: str | None = None,
         bibtex: str | None = None,
+        volume: str | None = None,
+        issue: str | None = None,
+        pages: str | None = None,
+        issn: str | None = None,
+        publisher: str | None = None,
+        url: str | None = None,
     ) -> dict[str, Any]:
+        """Amend a reference. Only the fields you pass are written.
+
+        A set `bibtex` field wins over every structured field at export — see
+        add_reference. To move a reference off a pasted BibTeX blob and onto
+        structured fields, pass bibtex="" along with them.
+        """
         return _references.update_reference(
             state, slug, citation_key, title=title, authors=authors,
             journal=journal, year=year, doi=doi, pmid=pmid, bibtex=bibtex,
+            volume=volume, issue=issue, pages=pages, issn=issn,
+            publisher=publisher, url=url,
         )
 
     @mcp.tool()

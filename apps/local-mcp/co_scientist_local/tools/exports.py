@@ -550,10 +550,17 @@ def _title_to_bibtex(title: str, taxa: list[str] | None = None) -> str:
     return "{" + s + "}"
 
 
+_PLACEHOLDER_PUBLISHERS = {"Temporary Publisher", "temporary publisher"}
+
+
 def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
     """Build an @article BibTeX entry from a reference doc.
 
-    If the ref carries a literal `bibtex` field, return that verbatim.
+    If the ref carries a literal `bibtex` field, return that verbatim — the
+    blob WINS over every structured field. Both tools that write references say
+    so, because a half-filled `bibtex` alongside carefully entered volume/pages
+    silently discards the latter and the loss surfaces only in the final PDF
+    (feedback 7204c641ba04).
     """
     if ref.get("bibtex"):
         return ref["bibtex"].rstrip() + "\n"
@@ -584,10 +591,18 @@ def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
         fields.append(f"  pages = {{{pages}}}")
     if ref.get("issn"):
         fields.append(f"  issn = {{{ref['issn']}}}")
-    if ref.get("publisher"):
+    # "Temporary Publisher" is a JSTOR placeholder that appears across a lot of
+    # its records, not an imprint. Dropped at BUILD time rather than at write
+    # time so the stored record still says what the source said — the export
+    # just does not print a publisher that does not exist.
+    if ref.get("publisher") and str(ref["publisher"]).strip() not in _PLACEHOLDER_PUBLISHERS:
         fields.append(f"  publisher = {{{ref['publisher']}}}")
     if ref.get("doi"):
         fields.append(f"  doi = {{{ref['doi']}}}")
+    elif ref.get("url"):
+        # Only when there is no DOI: a stable URL is how a pre-DOI work is
+        # located, and citeproc prefers the DOI when both are present anyway.
+        fields.append(f"  url = {{{ref['url']}}}")
     body = ",\n".join(fields)
     return f"@article{{{key},\n{body}\n}}\n"
 
@@ -771,6 +786,9 @@ def numbers_supplementary(paper: dict) -> bool:
     return (paper.get("doc_type") or "paper").lower() == "paper"
 
 
+from . import manuscript_lint as _manuscript_lint  # noqa: E402
+
+
 def prepare_export(
     state: State,
     slug: str,
@@ -847,7 +865,20 @@ def prepare_export(
     # comments must carry a rebuttal (response) for the response letter.
     triage = _reviews.review_triage_summary(state, slug)
 
+    # A brace token no resolver handles — {sharma2005} where the guide says
+    # {cite:sharma2005}. It saves clean, lints clean and exports clean, and the
+    # reference is simply absent from the finished bibliography. Checked in the
+    # same pre-flight as placeholders because export is where that becomes
+    # permanent (feedback 3e13dcc07a58).
+    unknown_tokens = _manuscript_lint._unresolved_tokens(manuscript)
+
     warnings: list[str] = []
+    if unknown_tokens:
+        shown = ", ".join(dict.fromkeys(unknown_tokens))[:200]
+        warnings.append(
+            f"{len(unknown_tokens)} unrecognised token(s) — no resolver handles "
+            f"them, so they will vanish from the export instead of failing: "
+            f"{shown}")
     if placeholders:
         warnings.append(f"{len(placeholders)} placeholder marker(s) in manuscript")
     if unresolved:

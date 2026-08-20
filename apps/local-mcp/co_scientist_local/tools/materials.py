@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import unicodedata
 
 from ..backends.base import NotFound
 from ..state import State
@@ -31,8 +32,26 @@ from ..util import new_id, now_iso
 _UNSAFE = re.compile(r"[^\w.\-]+", re.UNICODE)
 
 
+def _nfc(name: str) -> str:
+    """Compose a filename to NFC.
+
+    A Korean name uploaded from macOS arrives NFD (decomposed jamo). Writing it
+    to disk as-is produces a file whose bytes no shell command, heredoc or
+    retyped Python literal will match, because everything downstream composes to
+    NFC — so the path we HAND BACK does not open the file we just wrote. glob
+    finds it (it returns the on-disk bytes), open() does not, and the errors
+    point somewhere else entirely: python-pptx says "Package not found", which
+    reads as a corrupt upload rather than an encoding mismatch. Four tool calls
+    went into that (feedback f3e578291be4), and with Korean-named materials it
+    would have recurred on every download.
+
+    NFC is what Linux tooling assumes, so composing at the boundary makes the
+    returned path and the on-disk name the same bytes."""
+    return unicodedata.normalize("NFC", name or "")
+
+
 def _safe_filename(name: str) -> str:
-    base = pathlib.PurePosixPath(name).name or "file"
+    base = pathlib.PurePosixPath(_nfc(name)).name or "file"
     cleaned = _UNSAFE.sub("_", base).strip("._") or "file"
     return cleaned[:120]
 
@@ -68,7 +87,7 @@ def add_material(
     material_id = new_id()
     # Keep the original UTF-8 name for display; only sanitize the blob key
     # (material_id already makes the key unique, so the safe name is cosmetic).
-    filename = p.name
+    filename = _nfc(p.name)
     blob_path = _material_path(state, f"{material_id}__{_safe_filename(p.name)}")
     state.backend.put_blob(blob_path, data)
 
@@ -141,12 +160,21 @@ def get_material(
     if dest_path:
         out = pathlib.Path(dest_path).expanduser()
     else:
-        out = pathlib.Path(dest_dir).expanduser() / doc.get("filename", material_id)
+        # NFC on the way out — see _nfc. A stored name may predate this and be
+        # decomposed, so normalising at write time (not only at upload) is what
+        # makes the returned path openable for materials already in the project.
+        out = pathlib.Path(dest_dir).expanduser() / _nfc(
+            doc.get("filename") or material_id)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
+    if not out.exists():
+        # Cannot happen for a name we composed ourselves, and that is the point:
+        # this function used to report success for a path that could not be
+        # opened, so the claim is checked rather than assumed.
+        raise OSError(f"wrote {out} but it is not openable by that path")
     return {
         "path": str(out.resolve()),
-        "filename": doc.get("filename"),
+        "filename": _nfc(doc.get("filename") or ""),
         "size_bytes": len(data),
         "content_type": doc.get("content_type"),
     }

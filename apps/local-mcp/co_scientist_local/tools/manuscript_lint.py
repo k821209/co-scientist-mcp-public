@@ -112,6 +112,102 @@ def _numbers(text: str) -> set:
     return {m.group(0).replace(",", "") for m in _SIGNIFICANT_NUMBER.finditer(text or "")}
 
 
+# Citation/reference tokens the system resolves. Anything else in braces is a
+# token that will never resolve.
+#
+# This is the quiet class of failure: {sharma2005} instead of {cite:sharma2005}
+# saves clean, lints clean, and exports clean — the reference simply is not in
+# the bibliography of the finished PDF. Every other citation error here is loud
+# (a hallucinated DOI 404s at registration), and `validate_references` reports
+# the same empty `manuscript_contexts` for "registered but not cited yet",
+# which is a normal state, so the signal was indistinguishable from nothing
+# being wrong (feedback 3e13dcc07a58).
+_KNOWN_TOKEN_PREFIXES = ("doi:", "cite:", "ref:", "fig:", "tab:")
+_BRACE_TOKEN = re.compile(r"\{([^{}\n]{1,120})\}")
+# Math is the one place braces are structural rather than a token — `$\frac{a}{b}$`
+# must not be read as a citation key.
+_MATH_SPAN = re.compile(r"\$\$.*?\$\$|\$[^$\n]{1,200}\$", re.S)
+
+
+def _unresolved_tokens(body: str) -> list[str]:
+    """Brace tokens in `body` that no resolver claims, in order of appearance."""
+    text = re.sub(r"```.*?```", " ", body or "", flags=re.S)
+    text = re.sub(r"`[^`]*`", " ", text)
+    text = _MATH_SPAN.sub(" ", text)
+    out: list[str] = []
+    for m in _BRACE_TOKEN.finditer(text):
+        inner = m.group(1).strip()
+        # Case-sensitive: {Fig:2} is a typo for {fig:2} and resolves to nothing,
+        # so reporting it is the whole point.
+        if any(inner.startswith(pre) for pre in _KNOWN_TOKEN_PREFIXES):
+            continue
+        out.append(m.group(0))
+    return out
+
+
+# Conventional significance thresholds. Stating one is an ANALYSIS PLAN, which
+# is what Methods is for; it is not a measured value that went missing from
+# Results. Scoped to the checks below — a real finding OF 0.05 would be reported
+# with a magnitude alongside it and is not what these two checks look at.
+_ALPHA_LEVELS = {"0.05", "0.01", "0.001"}
+
+# A capitalised or CamelCase word immediately before a number: "STEADi 24",
+# "GENTi 32", "Illumina 6000", "NanoDrop 2000". The number is part of an
+# instrument's NAME, so it can never appear in Results and no amount of writing
+# will clear the warning. Excluded only when the word is not the sentence
+# opener, since "The 24 samples…" starts with a capital for grammar, not naming.
+_NAME_LEAD = re.compile(r"\b(?:[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*|[A-Z]{2,})\s+$")
+
+
+def _partition_numbers(sentences: list[str]) -> tuple[set, set]:
+    """(every number, numbers that ONLY ever appear bound to a proper name).
+
+    The second set is subtracted from the first elsewhere. It is "only ever"
+    rather than "ever" on purpose: if 24 also appears as "24 samples" somewhere,
+    the model-number occurrence must not buy it an exemption."""
+    every: set = set()
+    bound: set = set()
+    free: set = set()
+    for sent in sentences:
+        for m in _SIGNIFICANT_NUMBER.finditer(sent):
+            num = m.group(0).replace(",", "")
+            every.add(num)
+            lead = _NAME_LEAD.search(sent[:m.start()])
+            (bound if (lead and lead.start() > 0) else free).add(num)
+    return every, bound - free
+
+
+# The vocabulary of a statistical ANALYSIS PLAN — what test was applied, at what
+# threshold. "Significant ANOVAs were followed by Tukey's HSD test at p < 0.05"
+# is a correct Methods sentence by any style guide, but it trips the result cue
+# on both `significant` and `p < 0.05`.
+_STAT_PROCEDURE = re.compile(
+    r"""\b(?: ANOVAs? | ANCOVAs? | MANOVAs? | t-tests? | tests? | Tukey | HSD
+           | Bonferroni | Dunnett | Scheff | Kruskal | Wilcoxon | chi-square
+           | post[-\s]?hoc | correction | corrected | threshold | alpha
+           | significance\s+level | considered\s+(?:statistically\s+)?significant
+           | (?:were|was)\s+(?:analy[sz]ed|compared|performed|conducted|used|set)
+        )\b""",
+    re.I | re.X,
+)
+
+
+def _analysis_plan(sent: str) -> bool:
+    """True when a Methods sentence STATES THE TEST rather than a finding.
+
+    Three conditions, all required. The report verb is the load-bearing one:
+    "The treatment showed a significant effect in the ANOVA (p < 0.05)" also
+    names a test and carries only an alpha level, and that sentence IS a result
+    sitting in Methods. Naming the test does not earn an exemption; naming the
+    test *without reporting anything* does."""
+    if not _STAT_PROCEDURE.search(sent):
+        return False
+    if _WEAK_REPORT_VERB.search(sent):
+        return False
+    nums = {m.group(0).replace(",", "") for m in _SIGNIFICANT_NUMBER.finditer(sent)}
+    return nums <= _ALPHA_LEVELS
+
+
 # Figure/Table cited as a noun phrase instead of parenthetically. The author's
 # convention: "…using metric MDS (Figure 4A)", never "The resulting projection is
 # Figure 4A."
@@ -407,9 +503,18 @@ def lint_manuscript(state, slug: str) -> dict:
 
     # Flatten to (section_key, section_title, sentence, token_set) once.
     sents: list[tuple[str, str, str, set]] = []
+    unresolved: list[dict] = []
     for sec in sections:
         key = sec.get("key", "")
         title = sec.get("title", key)
+        for tok in _unresolved_tokens(sec.get("body", "")):
+            unresolved.append({
+                "kind": "unresolved_token", "section": title, "token": tok,
+                "note": ("no resolver handles this token — citations are "
+                         "{doi:10.…} when a DOI exists and {cite:key} when one "
+                         "does not; display items are {fig:N}/{tab:N}. It will "
+                         "vanish from the export instead of failing"),
+            })
         body = _strip_markdown(sec.get("body", ""), drop_quotes=corr_by_key.get(key, False))
         for sent in _sentences(body):
             toks = _tokens(sent)
@@ -466,11 +571,25 @@ def lint_manuscript(state, slug: str) -> dict:
     leakage: list[dict] = []
     for key, title, sent, _t in sents:
         if key in _METHODS_KEYS and _result_cue(sent):
-            leakage.append({
-                "kind": "results_in_methods", "section": title, "sentence": sent[:220],
-                "note": ("a finding/statistic in Methods — Methods states what you "
-                         "DID (past tense, procedures); move results to Results"),
-            })
+            if _analysis_plan(sent):
+                # Recorded, not dropped: the exemption stays auditable, and an
+                # unfixable warning must not sit in the bucket that gates
+                # `clean` — a gate that can never close teaches everyone to
+                # wave the list through, which costs more than the noise.
+                suppressed.append({
+                    "kind": "results_in_methods", "section": title,
+                    "sentence": sent[:180],
+                    "why": ("states the statistical test and its significance "
+                            "level — an analysis plan belongs in Methods"),
+                })
+            else:
+                leakage.append({
+                    "kind": "results_in_methods", "section": title,
+                    "sentence": sent[:220],
+                    "note": ("a finding/statistic in Methods — Methods states what "
+                             "you DID (past tense, procedures); move results to "
+                             "Results"),
+                })
         elif key in _METHODS_KEYS and (mm := _measured_magnitude(sent)):
             leakage.append({
                 "kind": "measurement_in_methods", "section": title,
@@ -508,9 +627,24 @@ def lint_manuscript(state, slug: str) -> dict:
         except Exception:      # display items are optional context, never fatal
             display_text_parts = []
         display_nums = _numbers(" ".join(display_text_parts))
-        orphaned = sorted((_numbers(methods_text) & display_nums)
-                          - _numbers(results_text))
-        for num in orphaned[:10]:
+        methods_sents = [s_ for k_, _t, s_, _x in sents if k_ in _METHODS_KEYS]
+        every_num, name_bound = _partition_numbers(methods_sents)
+        orphaned = sorted((every_num & display_nums) - _numbers(results_text))
+        real: list[str] = []
+        for num in orphaned:
+            why = None
+            if num in _ALPHA_LEVELS:
+                why = ("a conventional significance threshold, not a measured "
+                       "value — stating it is what Methods is for")
+            elif num in name_bound:
+                why = ("part of an instrument/product name, not a measurement — "
+                       "it cannot appear in Results")
+            if why:
+                suppressed.append({"kind": "result_only_in_methods",
+                                   "value": num, "why": why})
+            else:
+                real.append(num)
+        for num in real[:10]:
             leakage.append({
                 "kind": "result_only_in_methods", "value": num,
                 "note": (f"{num} appears in Methods and in a figure/table, but "
@@ -624,7 +758,9 @@ def lint_manuscript(state, slug: str) -> dict:
     leakage = leakage[:_MAX_PER_KIND]
     style = style[:_MAX_PER_KIND]
     insider = insider[:_MAX_PER_KIND]
-    total = len(duplication) + len(leakage) + len(style) + len(insider)
+    unresolved = unresolved[:_MAX_PER_KIND]
+    total = (len(duplication) + len(leakage) + len(style) + len(insider)
+             + len(unresolved))
     return {
         "slug": slug,
         "duplication": duplication,
@@ -635,6 +771,10 @@ def lint_manuscript(state, slug: str) -> dict:
         # withdraw the original explanation" is fine — the reviewer read the
         # original). Advisory, never a gate.
         "insider_context": insider,
+        # Counts toward `total`, unlike insider_context: this is not a judgement
+        # call. A token no resolver handles is a reference that will be missing
+        # from the finished document, and export is where that becomes permanent.
+        "unresolved_tokens": unresolved,
         # Findings a document-kind profile deliberately withheld. Surfaced rather
         # than dropped: a silent exemption makes the lint unauditable, and this
         # list is exactly what you would want to see if a profile were wrong.
@@ -655,6 +795,7 @@ def lint_manuscript(state, slug: str) -> dict:
                 "section_leakage": len(leakage),
                 "style": len(style),
                 "insider_context": len(insider),
+                "unresolved_tokens": len(unresolved),
             },
             "suppressed_by_profile": len(suppressed),
             "display_items": display_items["total"],

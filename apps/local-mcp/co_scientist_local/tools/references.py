@@ -309,6 +309,7 @@ def add_reference(
     pages: str | None = None,
     issn: str | None = None,
     publisher: str | None = None,
+    url: str | None = None,
 ) -> dict:
     _ensure_paper(state, slug)
     if not citation_key or not citation_key.strip():
@@ -332,6 +333,7 @@ def add_reference(
         "pages": pages,
         "issn": issn,
         "publisher": publisher,
+        "url": url,
         "cited_in": list(cited_in or []),
         "created_at": now,
         "updated_at": now,
@@ -358,6 +360,7 @@ def update_reference(
     pages: str | None = None,
     issn: str | None = None,
     publisher: str | None = None,
+    url: str | None = None,
 ) -> dict:
     _ensure_paper(state, slug)
     path = _ref_path(state, slug, citation_key)
@@ -377,6 +380,7 @@ def update_reference(
     if pages is not None: fields["pages"] = pages
     if issn is not None: fields["issn"] = issn
     if publisher is not None: fields["publisher"] = publisher
+    if url is not None: fields["url"] = url
     state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
 
@@ -702,6 +706,27 @@ def _adjacent_dois(matches: list[re.Match], i: int, body: str) -> list[str]:
     return [d for d in out if d != self_doi]
 
 
+def _citation_state(key, doi, ctxs, body_text: str) -> str:
+    """"cited" | "malformed_token" | "not_cited".
+
+    `malformed_token` means the manuscript names this work but in a form no
+    resolver handles — {sharma2005} where the guide says {cite:sharma2005}, or
+    {Doi:10.x}. That is the quiet failure: it exports without complaint and the
+    reference is simply absent from the bibliography."""
+    if ctxs:
+        return "cited"
+    text = body_text or ""
+    for needle in (key, doi):
+        if not needle:
+            continue
+        for m in re.finditer(r"\{([^{}\n]{1,120})\}", text):
+            inner = m.group(1).strip()
+            if needle.lower() in inner.lower() and not inner.startswith(
+                    ("doi:", "cite:", "ref:", "fig:", "tab:")):
+                return "malformed_token"
+    return "not_cited"
+
+
 def validate_references(state: State, slug: str) -> dict:
     """Gather everything the AGENT needs to judge whether each citation
     is correct. The MCP itself does NOT decide context fit — word-overlap
@@ -737,6 +762,9 @@ def validate_references(state: State, slug: str) -> dict:
     from . import verification as _verification
 
     contexts = _extract_doi_contexts(state, slug)
+    from . import sections as _sections_mod
+    body_text = " ".join((x.get("body") or "")
+                         for x in _sections_mod.list_sections(state, slug))
     refs = list_references(state, slug)
     results: list[dict] = []
     unresolved: list[dict] = []
@@ -788,6 +816,13 @@ def validate_references(state: State, slug: str) -> dict:
                 k: v for k, v in meta.items() if k != "crossref_raw"
             },
             "manuscript_contexts": ctxs,
+            # WHY the context list is empty, when it is. Both states used to
+            # surface identically as `manuscript_contexts: []`, and one of them
+            # is a normal intermediate state ("registered, not cited yet") while
+            # the other is a citation that will be missing from the finished
+            # bibliography. An agent reading the same output for both moves on
+            # (feedback 3e13dcc07a58).
+            "citation_state": _citation_state(key, doi, ctxs, body_text),
             "signals": {
                 "stored_title": stored_title,
                 "title_overlap_words": shared_title,
