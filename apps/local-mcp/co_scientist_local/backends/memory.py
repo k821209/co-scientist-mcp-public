@@ -44,6 +44,9 @@ class InMemoryBackend(Backend):
     def delete_doc(self, path: str) -> bool:
         return self._docs.pop(path, None) is not None
 
+    def query_collection(self, path: str, field: str, value) -> list[tuple[str, dict]]:
+        return [(k, v) for k, v in self.list_collection(path) if v.get(field) == value]
+
     def list_collection(self, path: str) -> list[tuple[str, dict]]:
         parts = _split(path)
         if len(parts) % 2 == 0:

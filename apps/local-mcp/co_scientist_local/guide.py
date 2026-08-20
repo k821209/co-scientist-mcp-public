@@ -441,6 +441,30 @@ Once you've figured out what a file is, record it with
 `update_material(material_id, ai_note=…)` so it shows in the dashboard; never
 touch `user_note`.
 
+## Your OTHER projects — readable, for reference
+
+This session writes to ONE project. But the user's projects are not
+independent: methods carry over, a dataset is the same dataset next door,
+and the phrasing that survived review last time is the phrasing to reuse.
+
+- `list_my_projects()` — every project this account owns, active one first.
+- `search_my_papers(query)` — WHICH project a paper lives in. Start here when
+  the user says "like we did in the rice paper" and you do not know where that
+  is.
+- `read_project_paper(project_id, slug, section_key="methods")` — **pass
+  `section_key`.** A Methods paragraph you are adapting is usually all you
+  want, and pulling a whole manuscript to get it is a lot of context.
+- `read_project_memory(project_id)` — often the fastest way to recall how a
+  decision was made over there.
+- `list_project_materials(project_id)` / `get_project_material(...)`.
+
+**These are READ-ONLY and the refusal is enforced, not promised** — a write
+through one of them raises. To reuse something, read it here and WRITE it with
+the normal tools, so it lands in the ACTIVE project's activity log. Never try
+to "fix" a sentence in a project the user is not looking at.
+
+Only projects this account OWNS. Another user's project is refused by name.
+
 ## Project memory
 
 `get_project_memory()` returns this project's durable knowledge — a

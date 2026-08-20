@@ -50,6 +50,7 @@ from .tools import manuscript_lint as _manuscript_lint
 from .tools import legend_lint as _legend_lint
 from .tools import images as _images
 from .tools import assets as _assets
+from .tools import cross_project as _cross
 from .tools import graphs as _graphs
 from .tools import materials as _materials
 from .tools import memory as _memory
@@ -843,6 +844,68 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def delete_material(material_id: str) -> dict[str, Any]:
         return {"deleted": _materials.delete_material(state, material_id)}
+
+    # ─── other projects (READ-ONLY reference across your own account) ───────
+    @mcp.tool()
+    def list_my_projects() -> list[dict[str, Any]]:
+        """Every project this account owns, with the active one first.
+
+        Use when the user refers to work in another project ("like we did in
+        the rice paper"). Everything else in this group needs a project_id from
+        here."""
+        return _cross.list_my_projects(state)
+
+    @mcp.tool()
+    def search_my_papers(query: str) -> list[dict[str, Any]]:
+        """Find papers across ALL your projects by title/slug/journal substring.
+
+        The lookup for "I wrote this somewhere but I forget where" — it answers
+        WHICH project, which every other cross-project tool assumes you know."""
+        return _cross.search_my_papers(state, query)
+
+    @mcp.tool()
+    def list_project_papers(project_id: str) -> list[dict[str, Any]]:
+        """Papers in another of your projects (slug, title, type, status)."""
+        return _cross.list_project_papers(state, project_id)
+
+    @mcp.tool()
+    def read_project_paper(
+        project_id: str, slug: str, section_key: str = "",
+    ) -> dict[str, Any]:
+        """Read a paper from another of YOUR projects, for reference.
+
+        READ-ONLY: this session can only write to its own project, and a write
+        through this view raises rather than silently doing nothing. To reuse
+        something, read it here and WRITE it with the normal tools — then it
+        lands in the active project's activity log, where it belongs.
+
+        Pass `section_key` (e.g. "methods") for one section. Prefer that: a
+        Methods paragraph you are adapting is usually all you want, and the
+        whole manuscript is a lot of context to spend to get it."""
+        return _cross.read_project_paper(
+            state, project_id, slug, section_key=section_key or None)
+
+    @mcp.tool()
+    def read_project_memory(project_id: str) -> dict[str, Any]:
+        """Another of your projects' memory document — its working notes. Often
+        the fastest way to recall how a decision was made over there."""
+        return _cross.read_project_memory(state, project_id)
+
+    @mcp.tool()
+    def list_project_materials(project_id: str) -> list[dict[str, Any]]:
+        """Materials in another of your projects. Fetch with
+        get_project_material."""
+        return _cross.list_project_materials(state, project_id)
+
+    @mcp.tool()
+    def get_project_material(
+        project_id: str, material_id: str,
+        dest_dir: str = ".", dest_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Download a material from another of your projects to local disk.
+        The cloud side stays read-only; your working directory does not."""
+        return _cross.get_project_material(
+            state, project_id, material_id, dest_dir=dest_dir, dest_path=dest_path)
 
     # ─── graphs (node-edge-node diagrams, stored as .graph.json materials) ───
     @mcp.tool()

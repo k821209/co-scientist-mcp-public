@@ -53,6 +53,15 @@ class Backend(Protocol):
         """
         ...
 
+    def query_collection(self, path: str, field: str, value) -> list[tuple[str, dict]]:
+        """[(doc_id, data), ...] for children of `path` where `field` == `value`.
+
+        Distinct from list_collection because the top-level `projects`
+        collection is NOT listable: the security rule grants a project only to
+        its owner, so an unfiltered stream is denied outright. The filter is
+        what makes the query satisfiable, not merely tidier."""
+        ...
+
     # --- blobs ---------------------------------------------------------------
 
     def put_blob(self, path: str, content: bytes | str) -> None:
