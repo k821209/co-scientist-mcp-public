@@ -50,6 +50,7 @@ from .tools import manuscript_lint as _manuscript_lint
 from .tools import legend_lint as _legend_lint
 from .tools import images as _images
 from .tools import assets as _assets
+from .tools import graphs as _graphs
 from .tools import materials as _materials
 from .tools import memory as _memory
 from .tools import papers as _papers
@@ -842,6 +843,69 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def delete_material(material_id: str) -> dict[str, Any]:
         return {"deleted": _materials.delete_material(state, material_id)}
+
+    # ─── graphs (node-edge-node diagrams, stored as .graph.json materials) ───
+    @mcp.tool()
+    def list_graphs() -> list[dict[str, Any]]:
+        """List the project's node-edge-node graphs — the diagrams the user
+        draws in the dashboard's Materials tab, and the ones you write there.
+        Cheap; read one with read_graph."""
+        return _graphs.list_graphs(state)
+
+    @mcp.tool()
+    def read_graph(material_id: str) -> dict[str, Any]:
+        """Read a graph as DATA: nodes (with `incoming`/`outgoing` adjacency),
+        edges, labels, kinds. Use this when the user says "the graph I drew" —
+        it is a workflow/model you can turn into a methods paragraph, a
+        pipeline, or a figure, not a picture."""
+        return _graphs.read_graph(state, material_id)
+
+    @mcp.tool()
+    def write_graph(
+        title: str,
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]] | None = None,
+        ai_note: str | None = None,
+    ) -> dict[str, Any]:
+        """Draw a NEW graph for the user, visible and editable in the Materials
+        tab. Good for making an analysis flow, a sample/cross design, or a
+        pathway concrete enough to correct.
+
+        `nodes`: [{"label": "Raw reads", "kind": "input"}, ...] — `label` is all
+        that's required. `kind` is free text ("input", "step", "output", ...).
+        `edges`: [{"from": "Raw reads", "to": "Trimming", "label": "fastq.gz"}]
+        — endpoints may be node labels or ids. Positions are laid out for you;
+        the user rearranges them and that arrangement is then preserved.
+        """
+        return _graphs.write_graph(
+            state, title=title, nodes=nodes, edges=edges, ai_note=ai_note,
+        )
+
+    @mcp.tool()
+    def edit_graph(
+        material_id: str,
+        title: str | None = None,
+        add_nodes: list[dict[str, Any]] | None = None,
+        rename_nodes: dict[str, Any] | None = None,
+        remove_nodes: list[str] | None = None,
+        add_edges: list[dict[str, Any]] | None = None,
+        remove_edges: list[dict[str, Any]] | None = None,
+        ai_note: str | None = None,
+    ) -> dict[str, Any]:
+        """Amend an existing graph. Anything you don't mention is left exactly
+        as it is — including where the user dragged each box, which is why you
+        should edit rather than rewrite a graph the user has touched.
+
+        `rename_nodes`: {"trimming": "Trimming (fastp)"} or
+        {"trimming": {"label": "...", "kind": "step"}}.
+        `remove_edges`: [{"from": "a", "to": "b"}] or [{"id": "e1234abcd"}].
+        Removing a node removes its edges too.
+        """
+        return _graphs.edit_graph(
+            state, material_id, title=title, add_nodes=add_nodes,
+            rename_nodes=rename_nodes, remove_nodes=remove_nodes,
+            add_edges=add_edges, remove_edges=remove_edges, ai_note=ai_note,
+        )
 
     # ─── tables ──────────────────────────────────────────────────────────────
     @mcp.tool()

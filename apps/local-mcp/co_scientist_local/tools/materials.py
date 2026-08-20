@@ -106,7 +106,10 @@ def update_material(state: State, material_id: str, *, ai_note: str) -> dict:
 
 
 def list_materials(state: State) -> list[dict]:
-    """List the project's reference materials, newest first."""
+    """List the project's reference materials, newest first.
+
+    A `*.graph.json` entry is a node-edge-node graph, not a file to download:
+    read it with `read_graph` to get nodes and edges as data."""
     pairs = state.backend.list_collection(_materials_collection(state))
     mats = [data for _, data in pairs]
     mats.sort(key=lambda m: m.get("created_at", ""), reverse=True)
