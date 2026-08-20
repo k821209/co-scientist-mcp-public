@@ -869,6 +869,20 @@ h.text(slide, label_italic, left=cx_box, top=rail_y + r + Pt(8),
   (their text has built-in padding); this targets bespoke coordinate
   labels. Fix by re-anchoring to the rail, not by nudging pixels.
 
+  A label that CROSSES its container's edge — text rendering outside
+  the card border — is **`inner_margin_overflow`** (with the side and
+  how far past, in pt). It replaces `inner_margin_tight` on that label
+  rather than adding to it. Unlike `tight`, it fires on snug
+  containers too, including a hand-built card its body text nearly
+  fills. Fix by cutting content or growing the container — shrinking
+  the text box only hides the spill behind a clipping boundary that
+  PowerPoint will not honour.
+
+  This one was inverted until 2026-08-20: overflow was used to
+  disqualify the card as a container, so the worse the spill, the
+  quieter the lint. If you are on an older build, `layout_warnings: []`
+  does not mean the text is inside its card — check the PNG.
+
 - **Repeat-symbol clusters (I/II/III, ★/★★/★★★, N-bar marks)
   must anchor to their cluster's HORIZONTAL CENTER, not to the
   left-most element** (todo 021). Drawing the first bar at

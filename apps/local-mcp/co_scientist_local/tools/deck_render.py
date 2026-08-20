@@ -1142,6 +1142,15 @@ _FOOTER_BAND_FRAC = 0.93  # text/shape below this y-fraction sits in the footer 
 
 _CORNER_LOGO_IN = 1.5  # a small image hugging the top-right corner = a logo
 _INNER_MARGIN_PT = 8   # a label closer than this to its container's inner edge reads as cramped
+# How much of the smaller box the two must share for one to be the other's
+# container. Deliberately NOT an area RATIO: a ratio floor ("the card must be
+# at least 1.05x the label") re-creates the exact cliff this check had — a
+# label overflowing so badly that it is LARGER than its card would fall back
+# under the floor and go silent again, and that is the worst case, not the
+# least. An overlap fraction has no such cliff: the more the label covers the
+# card, the more certainly the card is its container. 0.7 still excludes a
+# caption that merely starts on top of a small icon (~0.6 there).
+_CONTAINER_OVERLAP = 0.7
 _EMU_PER_PT = 12700
 
 
@@ -1161,6 +1170,15 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
     ≥ 2× its area (a band/card) — but not a full-bleed background (≤ 90% of the
     slide). Helper cards/text_blocks aren't flagged: their text box ~fills the
     band (< 2× area), so they fall below the container-size threshold.
+
+    inner_margin_overflow: the same relationship gone WRONG — the label crosses
+    its container's edge and renders outside the card/band border. Reported
+    instead of `inner_margin_tight` for that label, since it is the worse of
+    the two and one defect should produce one finding. Its container test is
+    looser on purpose: containment cannot qualify a container when the thing
+    being detected is a failure of containment, and no area-ratio floor applies,
+    because a label big enough to burst out of a small card would drop under any
+    such floor and go quiet exactly when it matters most.
     """
     try:
         from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore
@@ -1252,29 +1270,85 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                              "title block or shrink/relocate it"),
                 })
 
-        # Inner-margin: a label hugging the inside edge of a band/card.
+        # Inner-margin: a label hugging — or bursting through — the inside edge
+        # of a band/card.
+        #
+        # This check used to run BACKWARDS, and the report that caught it named
+        # the shape of the bug better than any comment could: the worse the
+        # defect, the quieter the check (feedback 24cab5ea139c). A label
+        # stopping 0.4pt short of the card's edge was flagged; the same label
+        # overrunning the edge by 6.6pt — text rendering outside the card
+        # border, visible to anyone looking at the slide — produced no warning
+        # at all. Two filters did it, both assuming the answer:
+        #
+        #   1. containment qualified the CONTAINER. Overflow past the 2pt slack
+        #      meant "this card is not this label's container", so the check was
+        #      skipped entirely. Overflow was being used as a reason not to look
+        #      for overflow.
+        #   2. `0 <= v` then dropped every negative gap — and a negative gap IS
+        #      the overflow.
+        #
+        # So containment no longer decides eligibility. A container is a shape
+        # the label STARTS inside and overlaps; the winner is the one it sits in
+        # most, which keeps a badly-overflowing label attached to its card
+        # instead of falling off the end of the list again.
         for lz, ll, lt, lw, lh, ltext in labels:
             child_area = max(1, lw * lh)
-            best = None  # (area, (l, t, w, h)) — the smallest qualifying container
+            # Two candidates, deliberately. `tight` keeps the ORIGINAL rule —
+            # fully contained, container ≥ 2× the label — so nothing that used
+            # to be flagged changes. `over` uses the looser rule, because text
+            # spilling out of a chip that only just wraps it is still text
+            # outside its box, and the 2× threshold hid exactly those (the
+            # report's point (a): a hand-built card that its body text fills).
+            best_over = None   # (-overlap, area, box)
+            best_tight = None  # (area, box)
             for az, al, at, aw, ah in autoshapes:
                 if az >= lz:
                     continue  # container must be drawn BEHIND the label
                 a_area = aw * ah
-                if a_area < child_area * 2 or a_area > 0.9 * slide_area:
-                    continue  # too small to be a band, or a full-bleed background
-                contains = (ll >= al - inner_tol and lt >= at - inner_tol
-                            and ll + lw <= al + aw + inner_tol
-                            and lt + lh <= at + ah + inner_tol)
-                if contains and (best is None or a_area < best[0]):
-                    best = (a_area, (al, at, aw, ah))
-            if best is None:
+                if a_area > 0.9 * slide_area:
+                    continue  # full-bleed background, not a card
+                starts_inside = (ll >= al - inner_tol and lt >= at - inner_tol
+                                 and ll < al + aw and lt < at + ah)
+                if starts_inside:
+                    ov = _overlap_area((ll, lt, lw, lh), (al, at, aw, ah))
+                    if ov >= _CONTAINER_OVERLAP * min(child_area, a_area):
+                        cand = (-ov, a_area, (al, at, aw, ah))
+                        if best_over is None or cand[:2] < best_over[:2]:
+                            best_over = cand
+                fully = (starts_inside
+                         and ll + lw <= al + aw + inner_tol
+                         and lt + lh <= at + ah + inner_tol)
+                if (fully and a_area >= child_area * 2
+                        and (best_tight is None or a_area < best_tight[0])):
+                    best_tight = (a_area, (al, at, aw, ah))
+
+            def _gaps(box):
+                bl, bt, bw, bh = box
+                return {"left": ll - bl, "top": lt - bt,
+                        "right": (bl + bw) - (ll + lw),
+                        "bottom": (bt + bh) - (lt + lh)}
+
+            over = _gaps(best_over[2]) if best_over else {}
+            over = {k: v for k, v in over.items() if v < 0}
+            if over:
+                side = min(over, key=over.get)
+                out_pt = round(-over[side] / _EMU_PER_PT, 1)
+                issues.append({
+                    "kind": "inner_margin_overflow",
+                    "sides": sorted(over, key=lambda k: over[k]),
+                    "over_pt": out_pt,
+                    "label": ltext[:40],
+                    "note": (f"label overruns its container's {side} edge by "
+                             f"{out_pt}pt — the text renders OUTSIDE the "
+                             "card/band border. Shrink the text box, cut "
+                             "content, or grow the container"),
+                })
+                continue  # overflow supersedes tightness on the same label
+            if best_tight is None:
                 continue
-            al, at, aw, ah = best[1]
-            gaps = {
-                "left": ll - al, "top": lt - at,
-                "right": (al + aw) - (ll + lw), "bottom": (at + ah) - (lt + lh),
-            }
-            tight = {k: v for k, v in gaps.items() if 0 <= v < inner_thr}
+            tight = {k: v for k, v in _gaps(best_tight[1]).items()
+                     if 0 <= v < inner_thr}
             if tight:
                 side = min(tight, key=tight.get)
                 issues.append({
