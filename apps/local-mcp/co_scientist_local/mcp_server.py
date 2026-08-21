@@ -51,6 +51,7 @@ from .tools import legend_lint as _legend_lint
 from .tools import images as _images
 from .tools import assets as _assets
 from .tools import cross_project as _cross
+from .tools import discussion as _discussion
 from .tools import graphs as _graphs
 from .tools import materials as _materials
 from .tools import memory as _memory
@@ -906,6 +907,61 @@ def build_mcp(state: State) -> FastMCP:
         The cloud side stays read-only; your working directory does not."""
         return _cross.get_project_material(
             state, project_id, material_id, dest_dir=dest_dir, dest_path=dest_path)
+
+    # ─── discussion: comments on a graph, and the decisions that came out ───
+    @mcp.tool()
+    def list_decisions(include_superseded: bool = False) -> list[dict[str, Any]]:
+        """Decisions this project has already settled, newest first.
+
+        READ THIS AT SESSION START, with the project memory. It is the standing
+        record of what has been argued and closed — re-opening a settled
+        question is the most expensive thing you can do here, and proposing
+        something already rejected is worse than proposing nothing.
+
+        `include_superseded=True` adds reversed decisions, each carrying
+        `superseded_by` so you can see WHAT replaced it."""
+        return _discussion.list_decisions(
+            state, include_superseded=include_superseded)
+
+    @mcp.tool()
+    def record_decision(
+        text: str,
+        rationale: str | None = None,
+        from_graph: str | None = None,
+        supersedes: str | None = None,
+    ) -> dict[str, Any]:
+        """Write down what the discussion decided, so it appears on the
+        Discussion tab's bulletin.
+
+        Record a decision when the USER settles something, not when you form an
+        opinion — this is the project's record, not your notes; project memory
+        is where your own reading belongs.
+
+        `rationale` is the line worth having in a year: the text says WHAT was
+        decided, the rationale says why the alternatives lost. `from_graph` is
+        the graph material_id being discussed. `supersedes` reverses an earlier
+        decision — the old one is kept and marked, never deleted."""
+        return _discussion.record_decision(
+            state, text=text, rationale=rationale, from_graph=from_graph,
+            supersedes=supersedes)
+
+    @mcp.tool()
+    def list_discussion(graph_id: str = "") -> list[dict[str, Any]]:
+        """Comments on the drawn graphs, oldest first. Pass `graph_id` for one
+        graph's thread. Read the graph itself with read_graph."""
+        return _discussion.list_discussion(state, graph_id or None)
+
+    @mcp.tool()
+    def post_comment(
+        graph_id: str, body: str, parent_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Say something in a graph's discussion thread, or reply to a comment.
+
+        You are a participant here, and it is marked as such — everything you
+        post is attributed to the agent, so a reader can always tell which
+        arguments in the record were yours."""
+        return _discussion.post_comment(
+            state, graph_id=graph_id, body=body, parent_id=parent_id)
 
     # ─── graphs (node-edge-node diagrams, stored as .graph.json materials) ───
     @mcp.tool()

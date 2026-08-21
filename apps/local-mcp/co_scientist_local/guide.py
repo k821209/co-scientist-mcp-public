@@ -241,6 +241,29 @@ which is the difference between one step and forty on a screenshot-heavy manual.
   `count_open_user_comments` and `list_reviews` like any other comment — read
   them before assuming an empty slot is just waiting on a file.
 
+## Decisions — the standing record, and the first thing to read
+
+`list_decisions()` returns what this project has already settled, newest first.
+**Read it at session start, with the project memory.** Re-opening a settled
+question is the most expensive thing you can do here, and proposing something
+already rejected is worse than proposing nothing.
+
+`record_decision(text, rationale=, from_graph=, supersedes=)` writes one down.
+Record when the USER settles something, not when you form an opinion — this is
+the project's record, not your notes; project memory is where your own reading
+belongs. The `text` says WHAT, the `rationale` says why the alternatives lost,
+and the rationale is the part worth having in a year.
+
+`supersedes` REVERSES an earlier decision. The old one is kept and marked, never
+deleted, and a decision that was already superseded cannot be superseded again —
+two decisions claiming to replace the same one forks the chain, and "what stands
+now?" stops having one answer.
+
+`list_discussion(graph_id)` / `post_comment(graph_id, body, parent_id=)` are the
+thread beside the drawing. You are a participant and everything you post is
+attributed to the agent, so a reader can always tell which arguments in the
+record were yours.
+
 ## Drawn graphs — a `*.graph.json` material is DATA, not a picture
 
 The **Discussion** tab has a node-edge-node editor. What it saves is still a
