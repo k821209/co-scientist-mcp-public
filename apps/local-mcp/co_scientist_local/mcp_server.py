@@ -52,6 +52,7 @@ from .tools import images as _images
 from .tools import assets as _assets
 from .tools import cross_project as _cross
 from .tools import discussion as _discussion
+from .tools import publications as _publications
 from .tools import graphs as _graphs
 from .tools import materials as _materials
 from .tools import memory as _memory
@@ -915,6 +916,103 @@ def build_mcp(state: State) -> FastMCP:
         The cloud side stays read-only; your working directory does not."""
         return _cross.get_project_material(
             state, project_id, material_id, dest_dir=dest_dir, dest_path=dest_path)
+
+    # ─── published pages (unlisted URL, optional per-person passcodes) ──────
+    @mcp.tool()
+    def publish_page(
+        title: str,
+        html: str | None = None,
+        material_id: str | None = None,
+        require_passcode: bool = True,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """Publish a page at an UNLISTED url, for people with no Scivo account.
+
+        Give exactly one of `html` (the page source) or `material_id` (an HTML
+        material already uploaded). Returns the url.
+
+        The page runs in the dashboard's origin and is handed a scoped
+        `window.scivo` client — see the guide. It can read anything under its
+        own publication and write responses, and it can reach NOTHING else in
+        the project.
+
+        `require_passcode` defaults True. Issue one code per person with
+        `add_passcode(label=...)`: the label rides in their token and the rules
+        require every response to carry it, so two reviewers can never be
+        confused for each other and neither can write as the other. A page with
+        NO passcode can read but not write — an unattributable response is not
+        evidence of anything, so it is refused rather than merged into one
+        anonymous bucket."""
+        return _publications.publish_page(
+            state, title=title, html=html, material_id=material_id,
+            require_passcode=require_passcode, description=description)
+
+    @mcp.tool()
+    def update_publication(
+        pub_id: str,
+        html: str | None = None,
+        title: str | None = None,
+        active: bool | None = None,
+        require_passcode: bool | None = None,
+    ) -> dict[str, Any]:
+        """Amend a published page. `active=False` UNPUBLISHES it — checked when
+        a visitor's token is minted, so it stops the next visitor even though
+        links already sent out cannot be recalled."""
+        return _publications.update_publication(
+            state, pub_id, html=html, title=title, active=active,
+            require_passcode=require_passcode)
+
+    @mcp.tool()
+    def list_publications() -> list[dict[str, Any]]:
+        """Every published page in this project, with its url and whether it is
+        still live."""
+        return _publications.list_publications(state)
+
+    @mcp.tool()
+    def add_passcode(pub_id: str, label: str) -> dict[str, Any]:
+        """Issue a passcode for ONE person and return it once.
+
+        `label` is how their responses are attributed — a name or a role. Give
+        each collaborator their own: which code opened the link is the only
+        record of who did the work, and the label is enforced on every write.
+
+        The plaintext is in this return value and NOWHERE else: it is stored
+        only as a PBKDF2 hash, so it cannot be recovered. Hand it to the person
+        now; if it is lost, revoke it and issue another."""
+        return _publications.add_passcode(state, pub_id, label=label)
+
+    @mcp.tool()
+    def list_passcodes(pub_id: str) -> list[dict[str, Any]]:
+        """Issued passcodes — labels, whether active, and how often used. Never
+        the codes themselves."""
+        return _publications.list_passcodes(state, pub_id)
+
+    @mcp.tool()
+    def revoke_passcode(pub_id: str, code_id: str) -> dict[str, Any]:
+        """Deactivate one passcode. Responses it already produced are KEPT —
+        the person stops getting in; what they already judged is evidence."""
+        return _publications.revoke_passcode(state, pub_id, code_id)
+
+    @mcp.tool()
+    def put_page_data(
+        pub_id: str, collection: str, doc_id: str, data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Write a document the published page will READ — the items to review,
+        its config, whatever it needs. Use collection "items" or "content".
+
+        Anything under a publication is published; that is the whole rule, and
+        it is why the page's data goes here rather than being granted piecemeal
+        out of the project."""
+        return _publications.put_page_data(
+            state, pub_id, collection=collection, doc_id=doc_id, data=data)
+
+    @mcp.tool()
+    def list_responses(pub_id: str, collection: str = "responses") -> list[dict[str, Any]]:
+        """What the published page wrote back. Each response carries the
+        `reviewer` label of the passcode that produced it, enforced at write
+        time — so independent judgements can be split apart and compared
+        without trusting anything the page said about itself."""
+        return _publications.list_responses(state, pub_id, collection=collection)
 
     # ─── discussion: comments on a graph, and the decisions that came out ───
     @mcp.tool()

@@ -241,6 +241,40 @@ which is the difference between one step and forty on a screenshot-heavy manual.
   `count_open_user_comments` and `list_reviews` like any other comment — read
   them before assuming an empty slot is just waiting on a file.
 
+## Publishing a page to people with no account
+
+`publish_page(title, html=…)` returns an UNLISTED url. The audience is an
+external reviewer or a collaborator at another institute — no Scivo account.
+
+The page runs in the dashboard's origin and is handed a scoped client:
+
+```js
+await window.scivo.list("items", {{orderBy: "n", limit: 50}})
+await window.scivo.get("items", "i1")
+await window.scivo.put("responses", "i1", {{verdict: "supported", note: "…"}})
+window.scivo.reviewer   // the label of the passcode used
+```
+
+It reaches **its own publication and nothing else** — not another publication,
+not the project around it, and never the passcodes. Write the items with
+`put_page_data(pub_id, collection="items", …)`; read the answers with
+`list_responses(pub_id)`.
+
+**Issue one passcode per person** (`add_passcode(pub_id, label="Reviewer A")`).
+The label rides in their token and the rules require every response to carry it,
+so two reviewers can never be confused and neither can write as the other —
+which is what makes an agreement statistic between them mean anything. `reviewer`
+is stamped from the token on every write, so whatever the page passes for it is
+overwritten; do not bother sending one.
+
+A page with **no** passcode can read but not write: an unattributable response
+is not evidence, so it is refused rather than merged into one anonymous bucket.
+
+`update_publication(pub_id, active=False)` closes the link. Checked when a
+visitor's token is minted, so it stops the next arrival — but a link already
+sent cannot be recalled, so closing is the end of the task, not a way to undo
+having shared it.
+
 ## Decisions — the standing record, and the first thing to read
 
 `list_decisions()` returns what this project has already settled, newest first.
