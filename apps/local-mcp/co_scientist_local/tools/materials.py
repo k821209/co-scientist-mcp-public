@@ -128,7 +128,9 @@ def list_materials(state: State) -> list[dict]:
     """List the project's reference materials, newest first.
 
     A `*.graph.json` entry is a node-edge-node graph, not a file to download:
-    read it with `read_graph` to get nodes and edges as data."""
+    read it with `read_graph` to get nodes and edges as data. Those appear in
+    the dashboard's Discussion tab rather than in Materials, though they are
+    stored here."""
     pairs = state.backend.list_collection(_materials_collection(state))
     mats = [data for _, data in pairs]
     mats.sort(key=lambda m: m.get("created_at", ""), reverse=True)

@@ -243,18 +243,31 @@ which is the difference between one step and forty on a screenshot-heavy manual.
 
 ## Drawn graphs — a `*.graph.json` material is DATA, not a picture
 
-The Materials tab has a node-edge-node editor. What it saves is a material named
-`<title>.graph.json`, so `get_material` hands you `{{nodes: [{{id, label, x, y,
-kind}}], edges: [{{from, to, label}}]}}`.
+The **Discussion** tab has a node-edge-node editor. What it saves is still a
+material named `<title>.graph.json` (the tab moved, the storage did not), so
+`list_graphs` / `read_graph` reach it, and `read_graph` hands back nodes with
+their adjacency already resolved.
 
 Read it when a user has drawn one: it is usually an experimental design, a
 workflow, or a concept map they want turned into something. Depending on what it
 describes you can register it as a pipeline (`register_pipeline_version` —
 processes and edges map straight across, and an edge `label` is the format), draw
-it as a figure, or write the Methods paragraph it encodes. The node `kind` field
-("sample" / "step" / "output") is the hint for which.
+it as a figure, or write the Methods paragraph it encodes.
+
+Two fields carry the author's meaning and are worth reading before you decide:
+
+- `shape` is the node's ROLE — `diamond` a branch, `cylinder` a data store,
+  `parallelogram` in/out, `hexagon` prep, `round` start/end, `box` a step. A
+  graph with diamonds in it is describing a decision, not a straight line.
+- `kind` is free text ("sample" / "step" / "output") — a finer hint.
+
+An edge `label` names what MOVES along the edge (a format, a count, a
+condition), and it renders in a break in the line, so it is written to be read
+there.
 
 Positions are the author's arrangement — preserve them if you re-save the file.
+`edit_graph` does that for you; a full `write_graph` over an existing drawing
+does not.
 
 ## Analysis provenance — RECORD EVERY RUN (not optional)
 

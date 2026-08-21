@@ -911,7 +911,7 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def list_graphs() -> list[dict[str, Any]]:
         """List the project's node-edge-node graphs — the diagrams the user
-        draws in the dashboard's Materials tab, and the ones you write there.
+        draws in the dashboard's Discussion tab, and the ones you write there.
         Cheap; read one with read_graph."""
         return _graphs.list_graphs(state)
 
@@ -930,8 +930,8 @@ def build_mcp(state: State) -> FastMCP:
         edges: list[dict[str, Any]] | None = None,
         ai_note: str | None = None,
     ) -> dict[str, Any]:
-        """Draw a NEW graph for the user, visible and editable in the Materials
-        tab. Good for making an analysis flow, a sample/cross design, or a
+        """Draw a NEW graph for the user, visible and editable in the
+        Discussion tab. Good for making an analysis flow, a sample/cross design, or a
         pathway concrete enough to correct.
 
         `nodes`: [{"label": "Raw reads", "kind": "input", "shape": "cylinder"},
