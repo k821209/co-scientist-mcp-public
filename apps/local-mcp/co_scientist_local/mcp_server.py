@@ -970,21 +970,21 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def add_passcode(pub_id: str, label: str) -> dict[str, Any]:
-        """Issue a passcode for ONE person and return it once.
+        """Issue a passcode for ONE person.
 
         `label` is how their responses are attributed — a name or a role. Give
         each collaborator their own: which code opened the link is the only
         record of who did the work, and the label is enforced on every write.
 
-        The plaintext is in this return value and NOWHERE else: it is stored
-        only as a PBKDF2 hash, so it cannot be recovered. Hand it to the person
-        now; if it is lost, revoke it and issue another."""
+        The code stays readable via `list_passcodes`, so it can be re-sent to
+        someone who mislaid it. A page visitor cannot read it — the rules refuse
+        the `passcodes` collection outright."""
         return _publications.add_passcode(state, pub_id, label=label)
 
     @mcp.tool()
     def list_passcodes(pub_id: str) -> list[dict[str, Any]]:
-        """Issued passcodes — labels, whether active, and how often used. Never
-        the codes themselves."""
+        """Issued passcodes — label, the code, whether active, and how often
+        used. Owner-side only; the published page cannot read this."""
         return _publications.list_passcodes(state, pub_id)
 
     @mcp.tool()

@@ -9,11 +9,13 @@ collaborator at another institute. They get a link; the link is the secret.
 
 Three things this module is careful about.
 
-**A passcode is stored as a hash, never as itself.** The dashboard shows a code
-exactly once, at creation. If codes were readable, anyone who could read the
-project could impersonate any reviewer — and impersonation is the one thing the
-codes exist to prevent, because WHICH code was used is how responses are
-attributed to a person.
+**A passcode is verified against a hash and readable by the owner.** The hash is
+what the Cloud Function checks, so the verification path never handles the
+plaintext. The plaintext is kept alongside it because the people who can read it
+are the project owner and their own MCP — the visitors it protects against are
+refused by the security rules, not by the storage format — and an owner who
+cannot re-read a code they issued has to revoke and re-send it to a reviewer
+mid-task, which costs more than it protects.
 
 **Attribution is server-side.** The code's label rides in the minted token as a
 claim, and the security rules require a response's `reviewer` field to equal it.
@@ -163,15 +165,16 @@ def list_publications(state: State) -> list[dict]:
 
 
 def add_passcode(state: State, pub_id: str, *, label: str) -> dict:
-    """Issue a passcode for one person, and return it ONCE.
+    """Issue a passcode for one person.
 
     `label` is how their responses are attributed — a name, an initial, a role.
     It is written into the token when they sign in and the rules require it to
     match what a response claims, so two reviewers can never be confused for
     each other and neither can write as the other.
 
-    The plaintext is in this return value and nowhere else. It is not stored,
-    so it cannot be recovered: if it is lost, revoke and issue another."""
+    The code is readable afterwards with `list_passcodes`, so it can be re-sent
+    to someone who lost it. Only the owner and this MCP can read it: a page
+    visitor is refused the `passcodes` collection outright by the rules."""
     _require(state, pub_id)
     text = (label or "").strip()
     if not text:
@@ -190,6 +193,9 @@ def add_passcode(state: State, pub_id: str, *, label: str) -> dict:
         "label": text,
         "salt": salt,
         "hash": hash_passcode(code, salt),
+        # Kept so the owner can re-send it. Verification still goes through the
+        # hash, so the checking path never touches this field.
+        "code_plain": code,
         "rounds": PBKDF2_ROUNDS,
         "active": True,
         "use_count": 0,
@@ -201,17 +207,23 @@ def add_passcode(state: State, pub_id: str, *, label: str) -> dict:
         "label": text,
         "passcode": code,
         "url": _public_url(state, pub_id),
-        "note": "shown once — it is stored only as a hash and cannot be recovered",
     }
 
 
 def list_passcodes(state: State, pub_id: str) -> list[dict]:
-    """Issued passcodes — labels and usage, never the codes themselves."""
+    """Issued passcodes — label, the code itself, and usage.
+
+    Owner-side only. The `hash`/`salt` are stripped because they are the
+    verifier's business and nobody reading this list has any use for them."""
     _require(state, pub_id)
     rows = [d for _, d in state.backend.list_collection(
         state.project_path("publications", pub_id, "passcodes"))]
     rows.sort(key=lambda r: r.get("created_at") or "")
-    return [{k: v for k, v in r.items() if k not in ("hash", "salt")} for r in rows]
+    return [
+        {("passcode" if k == "code_plain" else k): v
+         for k, v in r.items() if k not in ("hash", "salt")}
+        for r in rows
+    ]
 
 
 def revoke_passcode(state: State, pub_id: str, code_id: str) -> dict:
