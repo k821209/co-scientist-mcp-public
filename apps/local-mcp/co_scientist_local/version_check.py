@@ -111,6 +111,40 @@ def git_sha() -> str | None:
     return sha
 
 
+def runtime_info() -> dict:
+    """WHERE this code is running from, and under which interpreter.
+
+    `pip show` reports the metadata frozen at install time — for an editable
+    install that is 0.0.1 forever, no matter how many times the checkout is
+    pulled. So the user updates the source, believes they are on the new build,
+    and keeps running whatever the session actually imported. There was no way
+    to answer "what is running right now?" from inside a session at all, and on
+    a remote session there is no terminal to go and check with
+    (feedback 70b9a76cb2cf).
+
+    Three facts settle it: the directory the module was imported from, the
+    interpreter that imported it, and whether that is an editable checkout or a
+    copy in site-packages. With `git_sha` alongside, "is my update live?" is a
+    single tool call."""
+    import pathlib as _pl
+    import sys
+
+    pkg_dir = _pl.Path(__file__).resolve().parent
+    editable = (pkg_dir.parent / "pyproject.toml").exists()
+    out = {
+        "package_path": str(pkg_dir),
+        "python_executable": sys.executable,
+        "install_mode": "editable" if editable else "site-packages",
+    }
+    if editable:
+        # The interpreter is what .mcp.json's `command` has to name. A bare
+        # `python3` resolves through PATH, so the server silently fails to start
+        # under any shell whose PATH finds a different interpreter — and the
+        # user sees "it worked yesterday".
+        out["mcp_json_command"] = sys.executable
+    return out
+
+
 def fetch_latest_version(timeout: float = 2.0) -> str | None:
     try:
         req = urllib.request.Request(

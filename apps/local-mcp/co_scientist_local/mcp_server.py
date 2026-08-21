@@ -88,6 +88,13 @@ def build_mcp(state: State) -> FastMCP:
         the one your CLAUDE.md mentions. Mismatch means the user mixed
         `.mcp.json` and `CLAUDE.md` from different dashboard projects —
         stop and tell them.
+
+        Also answers "what is actually running?" — `package_path`,
+        `python_executable`, `install_mode` and `git_sha`. For an editable
+        install `pip show` reports the version frozen at install time (0.0.1
+        forever), so a user who pulled the source and restarted has no other way
+        to tell whether the new code is live. If they ask whether an update took
+        effect, read these, not the version alone.
         """
         info: dict[str, Any] = {
             "project_id": state.project_id,
@@ -104,8 +111,9 @@ def build_mcp(state: State) -> FastMCP:
         # Staleness check: nudge the user to update if this install is behind
         # the latest published build (recently-fixed bugs may already be gone).
         try:
-            from .version_check import check_version
+            from .version_check import check_version, runtime_info
             info.update(check_version())
+            info.update(runtime_info())
         except Exception:
             pass
         # Record the build this project last ran, so dashboard/human-filed
