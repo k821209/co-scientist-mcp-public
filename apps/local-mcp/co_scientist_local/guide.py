@@ -246,19 +246,35 @@ which is the difference between one step and forty on a screenshot-heavy manual.
 `publish_page(title, html=…)` returns an UNLISTED url. The audience is an
 external reviewer or a collaborator at another institute — no Scivo account.
 
-The page runs in the dashboard's origin and is handed a scoped client:
+The page runs in the dashboard's origin and is handed a scoped client. It is
+installed BEFORE the page's own scripts run, so no waiting is needed:
 
 ```js
 await window.scivo.list("items", {{orderBy: "n", limit: 50}})
 await window.scivo.get("items", "i1")
 await window.scivo.put("responses", "i1", {{verdict: "supported", note: "…"}})
+await window.scivo.list("responses")   // THIS reviewer's answers only
 window.scivo.reviewer   // the label of the passcode used
 ```
 
-It reaches **its own publication and nothing else** — not another publication,
-not the project around it, and never the passcodes. Write the items with
-`put_page_data(pub_id, collection="items", …)`; read the answers with
-`list_responses(pub_id)`.
+Two things about writing the page itself:
+
+- **`DOMContentLoaded` and `load` have already fired** by the time the page is
+  injected. Both are re-dispatched after its scripts run, so the ordinary
+  `document.addEventListener('DOMContentLoaded', init)` works — but if you are
+  writing fresh code, just call `init()` at the end of the script.
+- `window.scivoReady` is a resolved promise holding the same client, for pages
+  that would rather `await` than assume.
+
+The page reaches **its own publication and nothing else** — not another
+publication, not the project around it, and never the passcodes. And within it,
+`responses` are scoped to the reviewer: the client adds that filter for you,
+because the rules give each reviewer their OWN answers and no one else's.
+Reviewers must not see each other — agreement between independent judgements is
+the measurement, and it is worthless if one can read the other.
+
+Write the items with `put_page_data(pub_id, collection="items", …)`; read
+everyone's answers, from the owner side, with `list_responses(pub_id)`.
 
 **Issue one passcode per person** (`add_passcode(pub_id, label="Reviewer A")`).
 The label rides in their token and the rules require every response to carry it,
