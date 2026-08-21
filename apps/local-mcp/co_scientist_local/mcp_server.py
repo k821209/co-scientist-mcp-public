@@ -934,11 +934,24 @@ def build_mcp(state: State) -> FastMCP:
         tab. Good for making an analysis flow, a sample/cross design, or a
         pathway concrete enough to correct.
 
-        `nodes`: [{"label": "Raw reads", "kind": "input"}, ...] — `label` is all
-        that's required. `kind` is free text ("input", "step", "output", ...).
+        `nodes`: [{"label": "Raw reads", "kind": "input", "shape": "cylinder"},
+        ...] — `label` is all that's required. `kind` is free text ("input",
+        "step", ...). `shape` carries the node's ROLE and a reader takes that
+        meaning whether or not you meant it, so pick deliberately:
+
+          box (default) a process or action      round      entry / terminal
+          diamond       a branch — the edges out are its outcomes
+          cylinder      a dataset, file or store
+          parallelogram material in, or a result out
+          hexagon       setup, sampling or preparation
+
         `edges`: [{"from": "Raw reads", "to": "Trimming", "label": "fastq.gz"}]
-        — endpoints may be node labels or ids. Positions are laid out for you;
-        the user rearranges them and that arrangement is then preserved.
+        — endpoints may be node labels or ids. An edge label is drawn ON the
+        line, in a break in it, so name what MOVES along the edge (a format, a
+        count, a condition), not the step it arrives at.
+
+        Positions are laid out for you; the user rearranges them and that
+        arrangement is then preserved.
         """
         return _graphs.write_graph(
             state, title=title, nodes=nodes, edges=edges, ai_note=ai_note,
@@ -960,7 +973,7 @@ def build_mcp(state: State) -> FastMCP:
         should edit rather than rewrite a graph the user has touched.
 
         `rename_nodes`: {"trimming": "Trimming (fastp)"} or
-        {"trimming": {"label": "...", "kind": "step"}}.
+        {"trimming": {"label": "...", "kind": "step", "shape": "diamond"}}.
         `remove_edges`: [{"from": "a", "to": "b"}] or [{"id": "e1234abcd"}].
         Removing a node removes its edges too.
         """

@@ -40,6 +40,23 @@ _ROW_STEP = NODE_H + 36
 _ORIGIN_X = 40
 _ORIGIN_Y = 40
 
+# Shapes, and what each one MEANS. Mirrors apps/web/src/lib/nodeShape.ts.
+#
+# A shape is not decoration: in every flowchart convention a diamond is a branch
+# and a cylinder is a store, and a reader takes that meaning whether or not
+# anyone wrote it down. So it is written down, and it round-trips — a graph
+# whose diamonds come back as plain boxes has lost what the person drawing it
+# said.
+NODE_SHAPES = {
+    "box": "a process or action",
+    "round": "an entry or terminal point",
+    "diamond": "a branch — the edges out are the outcomes",
+    "cylinder": "a dataset, file or store",
+    "parallelogram": "material in, or a result out",
+    "hexagon": "setup, sampling or preparation",
+}
+DEFAULT_SHAPE = "box"
+
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
@@ -79,7 +96,17 @@ def _norm_nodes(raw: list[dict], *, taken: set[str] | None = None) -> list[dict]
                 f"duplicate node id {nid!r} — ids must be unique within a graph"
             )
         used.add(nid)
-        node = {"id": nid, "label": label, "kind": n.get("kind") or None}
+        shape = str(n.get("shape") or DEFAULT_SHAPE).strip().lower()
+        if shape not in NODE_SHAPES:
+            # Refused, not silently defaulted. A typo'd shape means the node's
+            # ROLE is wrong in the drawing, and a box where a decision belongs
+            # reads as a step — wrong, not merely plain.
+            raise ValueError(
+                f"node {label!r}: unknown shape {n.get('shape')!r}. "
+                + "One of: " + ", ".join(f"{k} ({v})" for k, v in NODE_SHAPES.items())
+            )
+        node = {"id": nid, "label": label, "kind": n.get("kind") or None,
+                "shape": shape}
         # Absent position means "place it for me"; an explicitly given one is
         # honoured exactly, including 0.
         for axis in ("x", "y"):
@@ -356,8 +383,9 @@ def edit_graph(
     """Amend an existing graph in place, leaving everything not mentioned alone.
 
     `rename_nodes` maps node id (or current label) → new label, or → a dict of
-    fields (`label`, `kind`). `remove_edges` entries are `{"from","to"}` pairs
-    or `{"id"}`. Removing a node also removes every edge touching it.
+    fields (`label`, `kind`, `shape`). `remove_edges` entries are
+    `{"from","to"}` pairs or `{"id"}`. Removing a node also removes every edge
+    touching it.
     """
     doc, graph = _load(state, material_id)
     nodes = _norm_nodes(graph["nodes"])
@@ -380,6 +408,14 @@ def edit_graph(
                 target["label"] = str(patch["label"]).strip()
             if "kind" in patch:
                 target["kind"] = patch["kind"] or None
+            if patch.get("shape"):
+                sh = str(patch["shape"]).strip().lower()
+                if sh not in NODE_SHAPES:
+                    raise ValueError(
+                        f"unknown shape {patch['shape']!r}. One of: "
+                        + ", ".join(NODE_SHAPES)
+                    )
+                target["shape"] = sh
 
     if add_nodes:
         nodes = nodes + _norm_nodes(add_nodes, taken={n["id"] for n in nodes})
