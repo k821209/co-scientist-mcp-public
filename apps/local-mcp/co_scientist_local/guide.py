@@ -327,6 +327,19 @@ describes you can register it as a pipeline (`register_pipeline_version` —
 processes and edges map straight across, and an edge `label` is the format), draw
 it as a figure, or write the Methods paragraph it encodes.
 
+Every graph carries a **`graph_kind`** — `structure`, `measurement`, `plan`,
+`concept`, `other` — and the Discussion tab groups by it. They change on
+different rhythms (a structure when the design moves, a measurement map with
+every result), so set it when you write one: a flat list hides which drawing is
+due for a look.
+
+A graph can also **supersede** an earlier one, exactly like a decision:
+`write_graph(supersedes=<material_id>)` records a revision, the old drawing is
+kept and marked, and `list_graphs` shows `superseded_by` on it. **If a graph has
+`superseded_by`, read the one it points at instead** — the old one is kept only
+so the change stays followable. Use this for a new version of the SAME drawing;
+a different drawing is just a new graph.
+
 Two fields carry the author's meaning and are worth reading before you decide:
 
 - `shape` is the node's ROLE — `diamond` a branch, `cylinder` a data store,

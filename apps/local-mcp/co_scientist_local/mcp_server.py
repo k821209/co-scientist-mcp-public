@@ -1074,7 +1074,10 @@ def build_mcp(state: State) -> FastMCP:
     def list_graphs() -> list[dict[str, Any]]:
         """List the project's node-edge-node graphs — the diagrams the user
         draws in the dashboard's Discussion tab, and the ones you write there.
-        Cheap; read one with read_graph."""
+
+        Each carries `graph_kind` and, if a later revision took over,
+        `superseded_by` — read THAT one instead, the old drawing is kept only so
+        the revision stays followable. Cheap; read one with read_graph."""
         return _graphs.list_graphs(state)
 
     @mcp.tool()
@@ -1091,6 +1094,8 @@ def build_mcp(state: State) -> FastMCP:
         nodes: list[dict[str, Any]],
         edges: list[dict[str, Any]] | None = None,
         ai_note: str | None = None,
+        graph_kind: str | None = None,
+        supersedes: str | None = None,
     ) -> dict[str, Any]:
         """Draw a NEW graph for the user, visible and editable in the
         Discussion tab. Good for making an analysis flow, a sample/cross design, or a
@@ -1112,11 +1117,25 @@ def build_mcp(state: State) -> FastMCP:
         line, in a break in it, so name what MOVES along the edge (a format, a
         count, a condition), not the step it arrives at.
 
+        `graph_kind` says what the drawing IS, and the Discussion tab groups by
+        it: `structure` (how parts connect), `measurement` (where numbers come
+        from and what they are now), `plan` (branch points and outputs),
+        `concept` (a model being worked out), `other`. They update on different
+        rhythms — a structure when the design changes, a measurement map with
+        every result — so a flat list hides which one is due for a look.
+
+        `supersedes` marks this as the REVISION of an earlier graph, the same
+        way `record_decision(supersedes=…)` does. The old drawing is kept and
+        marked rather than deleted, so v1 stays followable from v2. Use it for a
+        new version of the SAME drawing; a different drawing is just a new
+        graph.
+
         Positions are laid out for you; the user rearranges them and that
         arrangement is then preserved.
         """
         return _graphs.write_graph(
             state, title=title, nodes=nodes, edges=edges, ai_note=ai_note,
+            graph_kind=graph_kind, supersedes=supersedes,
         )
 
     @mcp.tool()
@@ -1129,6 +1148,7 @@ def build_mcp(state: State) -> FastMCP:
         add_edges: list[dict[str, Any]] | None = None,
         remove_edges: list[dict[str, Any]] | None = None,
         ai_note: str | None = None,
+        graph_kind: str | None = None,
     ) -> dict[str, Any]:
         """Amend an existing graph. Anything you don't mention is left exactly
         as it is — including where the user dragged each box, which is why you
@@ -1143,6 +1163,7 @@ def build_mcp(state: State) -> FastMCP:
             state, material_id, title=title, add_nodes=add_nodes,
             rename_nodes=rename_nodes, remove_nodes=remove_nodes,
             add_edges=add_edges, remove_edges=remove_edges, ai_note=ai_note,
+            graph_kind=graph_kind,
         )
 
     # ─── tables ──────────────────────────────────────────────────────────────

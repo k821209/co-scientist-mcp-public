@@ -57,6 +57,33 @@ NODE_SHAPES = {
 }
 DEFAULT_SHAPE = "box"
 
+# What a drawing IS. One project held a structure diagram, a measurement map
+# whose numbers change with every result, a roadmap, and two revisions of one of
+# them — flat in a single list, five drawings read as five versions of one, and
+# nothing said which was due for a look. The workaround was prefixing titles by
+# hand, which works exactly as long as everyone remembers (feedback 2ff72988fbe8).
+#
+# Few on purpose: a vocabulary nobody can hold is used inconsistently, and
+# inconsistent labels sort worse than none. Mirrors apps/web/src/lib/graphKind.ts.
+GRAPH_KINDS = {
+    "structure": "how the parts are built and connected",
+    "measurement": "where numbers come from, and what they are now",
+    "plan": "branch points and what each one produces",
+    "concept": "a model or an argument being worked out",
+    "other": "anything else",
+}
+DEFAULT_GRAPH_KIND = "other"
+
+
+def _check_graph_kind(kind: str | None) -> str:
+    k = (kind or DEFAULT_GRAPH_KIND).strip().lower()
+    if k not in GRAPH_KINDS:
+        raise ValueError(
+            f"unknown graph_kind {kind!r}. One of: "
+            + ", ".join(f"{n} ({w})" for n, w in GRAPH_KINDS.items())
+        )
+    return k
+
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
@@ -288,6 +315,9 @@ def read_graph(state: State, material_id: str) -> dict:
     return {
         "material_id": material_id,
         "filename": doc.get("filename"),
+        "graph_kind": doc.get("graph_kind") or DEFAULT_GRAPH_KIND,
+        "supersedes": doc.get("supersedes"),
+        "superseded_by": doc.get("superseded_by"),
         "title": graph.get("title"),
         "nodes": [
             {**n,
@@ -310,6 +340,10 @@ def list_graphs(state: State) -> list[dict]:
         {
             "material_id": data.get("material_id"),
             "filename": data.get("filename"),
+            "graph_kind": data.get("graph_kind") or DEFAULT_GRAPH_KIND,
+            "supersedes": data.get("supersedes"),
+            # Set means a later revision has taken over; read that one instead.
+            "superseded_by": data.get("superseded_by"),
             "user_note": data.get("user_note"),
             "ai_note": data.get("ai_note"),
             "updated_at": data.get("updated_at"),
@@ -328,14 +362,34 @@ def write_graph(
     nodes: list[dict],
     edges: list[dict] | None = None,
     ai_note: str | None = None,
+    graph_kind: str | None = None,
+    supersedes: str | None = None,
 ) -> dict:
-    """Create a new graph material from nodes and edges."""
+    """Create a new graph material from nodes and edges.
+
+    `supersedes` marks this as the REVISION of an earlier graph. The old one is
+    kept and marked, never deleted — same rule as `record_decision`, and for the
+    same reason: a record that can quietly lose an entry is one nobody can rely
+    on."""
     ns = _norm_nodes(nodes)
     if not ns:
         raise ValueError("a graph needs at least one node")
     es = _norm_edges(edges or [], ns)
     _check(ns, es)
     _layout(ns, es)
+
+    kind = _check_graph_kind(graph_kind)
+    prior = None
+    if supersedes:
+        prior = state.backend.get_doc(_material_path(state, supersedes))
+        if prior is None:
+            raise NotFound(f"graph {supersedes!r} not found")
+        if prior.get("superseded_by"):
+            raise ValueError(
+                f"graph {supersedes!r} was already superseded by "
+                f"{prior['superseded_by']!r} — revise the one that stands now, "
+                "so the chain has a single answer"
+            )
 
     material_id = new_id()
     filename = _filename(title)
@@ -354,14 +408,24 @@ def write_graph(
         "ai_note": ai_note,
         "user_note": None,
         "uploaded_by": "agent",
+        "graph_kind": kind,
+        "supersedes": supersedes or None,
+        "superseded_by": None,
+        "superseded_at": None,
         "created_at": now,
         "updated_at": now,
     }
     state.backend.set_doc(_material_path(state, material_id), doc)
+    if prior is not None:
+        state.backend.update_doc(_material_path(state, supersedes), {
+            "superseded_by": material_id, "superseded_at": now,
+        })
     return {
         "material_id": material_id,
         "filename": filename,
         "title": title,
+        "graph_kind": kind,
+        "supersedes": supersedes or None,
         "nodes": ns,
         "edges": es,
         "dashboard_url": state.dashboard_url("materials"),
@@ -379,6 +443,7 @@ def edit_graph(
     add_edges: list[dict] | None = None,
     remove_edges: list[dict] | None = None,
     ai_note: str | None = None,
+    graph_kind: str | None = None,
 ) -> dict:
     """Amend an existing graph in place, leaving everything not mentioned alone.
 
@@ -447,6 +512,8 @@ def edit_graph(
     data = _serialize(new_title, nodes, edges)
     state.backend.put_blob(doc["blob_path"], data)
     fields = {"size_bytes": len(data), "updated_at": now_iso()}
+    if graph_kind is not None:
+        fields["graph_kind"] = _check_graph_kind(graph_kind)
     if ai_note is not None:
         fields["ai_note"] = ai_note
         fields["description"] = ai_note
@@ -454,6 +521,7 @@ def edit_graph(
     return {
         "material_id": material_id,
         "filename": doc.get("filename"),
+        "graph_kind": fields.get("graph_kind", doc.get("graph_kind")),
         "title": new_title,
         "nodes": nodes,
         "edges": edges,
