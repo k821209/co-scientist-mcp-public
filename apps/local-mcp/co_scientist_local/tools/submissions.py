@@ -112,6 +112,10 @@ def register_submission(
     doc = {
         "submission_id": sid,
         "slug": slug,
+        # Denormalized for the Papers list's collectionGroup query — the
+        # security rule matches on it, so a submission written without it is
+        # invisible there.
+        "project_id": state.project_id,
         "venue": venue.strip(),
         "submitted_on": submitted_on.strip(),
         "label": (label or "").strip() or None,
