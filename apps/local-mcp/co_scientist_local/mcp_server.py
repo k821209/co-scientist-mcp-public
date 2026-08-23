@@ -949,21 +949,24 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def register_submission(
         slug: str,
-        venue: str,
-        submitted_on: str,
         export_id: str | None = None,
         local_path: str | None = None,
+        venue: str | None = None,
+        submitted_on: str | None = None,
         label: str | None = None,
         note: str | None = None,
     ) -> dict[str, Any]:
         """Archive the file the journal received. Give exactly one of
         `export_id` or `local_path`.
 
-        **Only when the USER has told you which file it was. Never infer it**
+        **Only when the USER has told you WHICH FILE it was. Never infer that**
         from filenames or dates — the newest export sorts first and looks the
-        most authoritative, and that is exactly the trap. `venue` and
-        `submitted_on` (YYYY-MM-DD, the date it was SENT) are required because
-        only a person knows them.
+        most authoritative, and that is exactly the trap.
+
+        `venue` defaults to the paper's registered journal and `submitted_on` to
+        today; pass them only to override. Those two are not worth asking about:
+        the journal is already recorded, and a submission is normally registered
+        when it is sent.
 
         Prefer `local_path` when the user edited the export before sending it,
         which is the ordinary case. The bytes are copied, so a later export

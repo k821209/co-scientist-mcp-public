@@ -22,9 +22,11 @@ is not one.
 is a NEW submission, and the earlier one stays — the history of what was sent
 when IS the record.
 
-**The user is the authority.** The agent may register what the user confirms
-and must not infer it from filenames or dates. `submitted_on` and `venue` are
-required precisely because only a person knows them.
+**The user is the authority on WHICH FILE.** The agent may register what the
+user confirms and must not infer the file from filenames or dates. The
+surrounding facts are not worth the same friction: the journal comes from the
+paper's own record, and the date defaults to today — a submission is normally
+registered when it is sent, and both are editable when it is not.
 """
 from __future__ import annotations
 
@@ -62,8 +64,8 @@ def register_submission(
     state: State,
     slug: str,
     *,
-    venue: str,
-    submitted_on: str,
+    venue: str | None = None,
+    submitted_on: str | None = None,
     export_id: str | None = None,
     local_path: str | None = None,
     label: str | None = None,
@@ -76,12 +78,19 @@ def register_submission(
     export before sending it — which is the ordinary case, and the reason this
     cannot be inferred from our own records at all.
     """
-    _require_paper(state, slug)
-    if not (venue or "").strip():
-        raise ValueError("venue is required — which journal received it")
-    if not _DATE_RX.match((submitted_on or "").strip()):
-        raise ValueError("submitted_on must be YYYY-MM-DD (the date it was SENT, "
-                         "which is not necessarily today)")
+    paper = state.backend.get_doc(state.project_path("papers", slug))
+    if paper is None:
+        raise NotFound(f"paper not found: {slug!r}")
+    # The journal is already recorded on the paper; asking again is a second
+    # place for it to be wrong. Given explicitly, the argument wins — a paper
+    # can be re-submitted elsewhere without its `journal` having been updated
+    # yet.
+    venue = (venue or "").strip() or (paper.get("journal") or "").strip() or None
+    # Today, because a submission is normally registered when it is sent.
+    # Editable for when it is not, and validated when given.
+    submitted_on = (submitted_on or "").strip() or now_iso()[:10]
+    if not _DATE_RX.match(submitted_on):
+        raise ValueError("submitted_on must be YYYY-MM-DD (the date it was SENT)")
     if bool(export_id) == bool(local_path):
         raise ValueError("give exactly one of export_id= or local_path=")
 
@@ -116,8 +125,8 @@ def register_submission(
         # security rule matches on it, so a submission written without it is
         # invisible there.
         "project_id": state.project_id,
-        "venue": venue.strip(),
-        "submitted_on": submitted_on.strip(),
+        "venue": venue,
+        "submitted_on": submitted_on,
         "label": (label or "").strip() or None,
         "note": (note or "").strip() or None,
         "filename": filename,
