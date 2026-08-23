@@ -255,6 +255,28 @@ you wrote and passes. Three real traps, each with its own fix:
 - `십일일`/`이십일일` are mis-**heard** however you spell them (11일 sounds like
   12일) → drop the day from the VO, keep it on the card.
 
+**Read the whole script too** — `qc.lint_copy(beats)`, also run by
+`build_beat_short`. `lint_vo` reads HOW a line is spoken and `narration_match`
+compares SOUNDS; **neither asks whether the sentence makes sense**, and two
+episodes shipped that passed both. A listener asked "proposed to WHOM?" — the
+person had been compressed out of the script — and then "reconciled with whom,
+everyone's dead?". The same mistake twice: a counterpart deleted while
+tightening.
+- `no_counterpart` — 청혼/화해/맹약/복수 and friends with nobody named in this
+  sentence or the one before.
+- `no_antecedent` — 그들/그것/거기 with no noun to point back at.
+- `money_scale_mix` — a lone 만-원 figure in a script otherwise counted in
+  억/조. "삼만 육천구백 원" came back as `36,900억 원`: not a mis-pronunciation,
+  a mis-HEARING dragged by the earlier beats. **This one needs the whole
+  script** — the figure and the beats that dragged it were in different beats,
+  so `lint_vo` cannot see it however good its rules get. Prescription is the
+  same as `ambiguous_day`: take the precise number out of the VO, leave it on
+  the card. One real episode went 0.9638 → 0.9909 that way with nothing lost,
+  because the card already had the exact figure.
+
+A hit is a place to re-read, not a verdict — a correct `28만 1500원` gets
+flagged, and should.
+
 **If any stage REGENERATES the voice** — a generative lip-sync (LTX and
 friends), a voice conversion, a re-dub — it may change the WORDS, not just the
 timbre: a real episode shipped-to-review had "7월 14일" come back as
