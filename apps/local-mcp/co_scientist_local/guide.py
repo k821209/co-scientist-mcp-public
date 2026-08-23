@@ -241,6 +241,35 @@ which is the difference between one step and forty on a screenshot-heavy manual.
   `count_open_user_comments` and `list_reviews` like any other comment — read
   them before assuming an empty slot is just waiting on a file.
 
+## Study documents — explainers, and why not `add_material`
+
+`write_study(title, html, summary=…, sources=[…])` publishes a document that
+reads INLINE in the dashboard's Study tab.
+
+**A material is what the PAPER refers to; a study is what a PERSON reads.** An
+explainer filed as a material can only be opened by downloading it, which is why
+one ended up published in two places that then drifted apart. If you are writing
+prose for someone to read, it is a study.
+
+**Set `sources` whenever the document contains a measured value.**
+
+```python
+write_study(title="Reading bits/bp", html=…,
+            summary="what the MLM number means and what it does not",
+            sources=[{{"kind": "analysis", "ref": "mlm-eval", "label": "bits/bp"}}])
+```
+
+Recording a source stamps "read now". When that analysis is next updated — or a
+cited decision is reversed — `list_studies()` shows the document as `stale` and
+names WHICH source moved, without anyone having to remember. **Read
+`list_studies()` before quoting a number out of one of these.** Passing new
+`html` to `update_study` re-stamps the sources, because rewriting the tables is
+what makes them current again.
+
+`status` is `confirmed` or `provisional`. There is no `stale` status: it is
+computed, because a flag someone has to remember to set is the same memory that
+already failed. `follows` chains a series so the tab lists it in reading order.
+
 ## Publishing a page to people with no account
 
 `publish_page(title, html=…)` returns an UNLISTED url. The audience is an

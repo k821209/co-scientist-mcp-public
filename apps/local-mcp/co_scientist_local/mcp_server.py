@@ -53,6 +53,7 @@ from .tools import assets as _assets
 from .tools import cross_project as _cross
 from .tools import discussion as _discussion
 from .tools import publications as _publications
+from .tools import studies as _studies
 from .tools import graphs as _graphs
 from .tools import materials as _materials
 from .tools import memory as _memory
@@ -916,6 +917,81 @@ def build_mcp(state: State) -> FastMCP:
         The cloud side stays read-only; your working directory does not."""
         return _cross.get_project_material(
             state, project_id, material_id, dest_dir=dest_dir, dest_path=dest_path)
+
+    # ─── study documents (explainers, read inline in the dashboard) ─────────
+    @mcp.tool()
+    def write_study(
+        title: str,
+        html: str,
+        summary: str | None = None,
+        status: str | None = None,
+        sources: list[dict[str, Any]] | None = None,
+        follows: str | None = None,
+    ) -> dict[str, Any]:
+        """Publish an explainer that READS INLINE in the dashboard's Study tab.
+
+        Use this, not `add_material`, for a document written to be read. A
+        material is what the paper REFERS to; a study is what a person reads,
+        and filing an explainer as a material means it can only be opened by
+        downloading it.
+
+        `summary` is for the READER — a sentence or two saying what this
+        explains, shown in the list. Your own caveats and reasoning belong in a
+        material's `ai_note`; keeping them apart is why both exist.
+
+        `sources` is WHERE THE NUMBERS CAME FROM:
+        `[{"kind": "analysis", "ref": "mlm-eval", "label": "bits/bp"}]`
+        (kinds: analysis, decision, graph, paper, run). Recording one stamps
+        "read now"; when that source next changes the document shows as out of
+        date on its own. Set this whenever the document contains a measured
+        value — it is the difference between noticing a stale table and quoting
+        it.
+
+        `status` is `confirmed` or `provisional`. There is no `stale` status:
+        staleness is computed from `sources`, because a flag someone has to
+        remember to set is the same memory that already failed.
+
+        `follows` is the study this one continues; the tab lists a series in
+        reading order.
+        """
+        return _studies.write_study(
+            state, title=title, html=html, summary=summary, status=status,
+            sources=sources, follows=follows)
+
+    @mcp.tool()
+    def update_study(
+        study_id: str,
+        html: str | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        status: str | None = None,
+        sources: list[dict[str, Any]] | None = None,
+        follows: str | None = None,
+    ) -> dict[str, Any]:
+        """Amend a study. Passing `html` replaces the document AND re-stamps its
+        sources as read now — rewriting the tables is what makes them current,
+        so the document should not stay flagged afterwards."""
+        return _studies.update_study(
+            state, study_id, html=html, title=title, summary=summary,
+            status=status, sources=sources, follows=follows)
+
+    @mcp.tool()
+    def list_studies() -> list[dict[str, Any]]:
+        """Every study, each with `stale` and which source moved.
+
+        **Read this before quoting a number out of one of these documents.**
+        `stale` means a source has changed since the document last read it, so
+        the tables in it may no longer say what the analysis says."""
+        return _studies.list_studies(state)
+
+    @mcp.tool()
+    def read_study(study_id: str) -> dict[str, Any]:
+        """One study's metadata and its HTML."""
+        return _studies.read_study(state, study_id)
+
+    @mcp.tool()
+    def delete_study(study_id: str) -> dict[str, Any]:
+        return {"deleted": _studies.delete_study(state, study_id)}
 
     # ─── published pages (unlisted URL, optional per-person passcodes) ──────
     @mcp.tool()
