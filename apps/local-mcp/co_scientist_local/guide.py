@@ -609,38 +609,35 @@ why, approaches tried and rejected, domain gotchas, target-journal
 history — knowledge NOT recoverable from the papers / sections /
 reviews / figures themselves.
 
-### The SUBMITTED BASELINE pointer (record this — it is not derivable)
+### The SUBMITTED BASELINE (it has a structured home now)
 
-Nothing in the structured data records **which file the journal actually
-received**. The user keeps that snapshot in **Materials**; the pointer to
-it belongs HERE, because memory is read at every session start while a
-material note is only seen by whoever lists materials.
+`list_submissions(slug)` returns what was SENT, most recent first. The first
+entry is the current baseline — the OLD document for `/tracked-changes-export`,
+the manuscript the reviewers hold for `/reviewer-frame-check`.
 
-This matters because the failure is silent: a marked-up copy built against
-the wrong baseline passes every validation check and diffs against a
-document nobody read. It shipped once, against an n=69 package that was
-prepared and then superseded before it was ever submitted — and the newest
-archived export is the classic trap, because it sorts first and looks the
-most authoritative.
+**Read it before either skill, and if it is empty, ASK.** Do not substitute the
+current manuscript and do not pick an export: that substitution silently
+defeats both skills, and the failure is quiet — a marked-up copy built against
+the wrong baseline passes every validation check and diffs against a document
+nobody read. It shipped once, against a package that was prepared and then
+superseded before it was ever submitted. **The newest export is the classic
+trap**, because it sorts first and looks the most authoritative.
 
-So, ONCE per submission, when you learn which file it was:
+The user registers one from the dashboard's paper page (Exports → Submitted),
+either from an export or by uploading the file they actually sent — usually the
+latter, since the export normally gets edited before it goes. If they ask you to
+do it: `register_submission(slug, venue=…, submitted_on="YYYY-MM-DD",
+export_id=… | local_path=…)`. **Only from what the user tells you. Never infer
+it from filenames or dates.**
 
-1. `list_materials()` — find the candidates. Read `user_note` first: the
-   user is the authority on what was submitted, and their note is never
-   written by an agent.
-2. **Ask the user to confirm, and wait.** One question. Do not infer from
-   filenames or dates.
-3. Stamp both:
-   - `update_material(material_id, ai_note="SUBMITTED BASELINE — <slug>,
-     <journal>, submitted <YYYY-MM-DD>. The OLD document for
-     /tracked-changes-export; the manuscript the reviewers hold for
-     /reviewer-frame-check.")`
-   - `append_project_memory("Submitted baseline for <slug>: material
-     <material_id> (<filename>), <journal>, <YYYY-MM-DD>.")`
+The bytes are copied, not referenced, so a later export cannot change what the
+record says was submitted, and a sha256 is stored and re-verified on download.
+There is no edit — a resubmission is a NEW registration and the earlier one
+stays, because what was sent and when IS the record.
 
-Then no later session has to guess. If no such material exists, say so and
-ask the user to upload it rather than substituting the current manuscript —
-that substitution silently defeats both skills.
+Older projects may still carry this as a `SUBMITTED BASELINE` note on a material
+plus a memory line. Those still count; read them if `list_submissions` is empty,
+and offer to register the file properly.
 
 WHAT does NOT belong here — each of these has a structured home; put it
 there, never in memory:

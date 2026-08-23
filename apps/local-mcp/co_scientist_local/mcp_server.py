@@ -54,6 +54,7 @@ from .tools import cross_project as _cross
 from .tools import discussion as _discussion
 from .tools import publications as _publications
 from .tools import studies as _studies
+from .tools import submissions as _submissions
 from .tools import graphs as _graphs
 from .tools import materials as _materials
 from .tools import memory as _memory
@@ -917,6 +918,70 @@ def build_mcp(state: State) -> FastMCP:
         The cloud side stays read-only; your working directory does not."""
         return _cross.get_project_material(
             state, project_id, material_id, dest_dir=dest_dir, dest_path=dest_path)
+
+    # ─── the submitted baseline (what the journal actually received) ────────
+    @mcp.tool()
+    def list_submissions(slug: str) -> list[dict[str, Any]]:
+        """What was SENT for this paper, most recent first — the first entry is
+        the current baseline.
+
+        **Read this before /tracked-changes-export or /reviewer-frame-check.**
+        Those two need the document the reviewers hold, and it is not the
+        current manuscript and not the newest export. If this is empty, ASK the
+        user which file was sent rather than substituting anything — that
+        substitution silently defeats both skills and produces a marked-up copy
+        that diffs against a document nobody read."""
+        return _submissions.list_submissions(state, slug)
+
+    @mcp.tool()
+    def get_submission(
+        slug: str,
+        submission_id: str | None = None,
+        dest_dir: str = ".",
+        dest_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Download a submitted file (latest if no id). The checksum recorded at
+        registration is re-verified, so the copy can be trusted without being
+        re-read."""
+        return _submissions.get_submission(
+            state, slug, submission_id, dest_dir=dest_dir, dest_path=dest_path)
+
+    @mcp.tool()
+    def register_submission(
+        slug: str,
+        venue: str,
+        submitted_on: str,
+        export_id: str | None = None,
+        local_path: str | None = None,
+        label: str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Archive the file the journal received. Give exactly one of
+        `export_id` or `local_path`.
+
+        **Only when the USER has told you which file it was. Never infer it**
+        from filenames or dates — the newest export sorts first and looks the
+        most authoritative, and that is exactly the trap. `venue` and
+        `submitted_on` (YYYY-MM-DD, the date it was SENT) are required because
+        only a person knows them.
+
+        Prefer `local_path` when the user edited the export before sending it,
+        which is the ordinary case. The bytes are copied, so a later export
+        cannot change what this says was submitted, and a sha256 is recorded so
+        the copy can be proven to be the copy.
+
+        Registering is normally the user's own act from the dashboard's Exports
+        card; this tool is for when they ask you to do it."""
+        return _submissions.register_submission(
+            state, slug, venue=venue, submitted_on=submitted_on,
+            export_id=export_id, local_path=local_path, label=label, note=note)
+
+    @mcp.tool()
+    def delete_submission(slug: str, submission_id: str) -> dict[str, Any]:
+        """Remove a registration made in error — the only way to change one.
+        There is no edit: a submission that could be amended would stop being a
+        record of what was sent."""
+        return {"deleted": _submissions.delete_submission(state, slug, submission_id)}
 
     # ─── study documents (explainers, read inline in the dashboard) ─────────
     @mcp.tool()

@@ -117,15 +117,15 @@ fold it into a reviewer run.
 There is no manuscript version history in this system — nothing in
 `tools/sections.py`, `tools/papers.py` or `tools/exports.py` stores a
 point-in-time manuscript, and `get_manuscript(slug)` returns only the current
-assembled blob. **By project convention the submitted snapshot lives in
-Materials, and the pointer to it lives in project memory.**
+assembled blob.
 
-1. `get_project_memory()` — look for the `Submitted baseline for <slug>:`
-   line. It is recorded once per submission precisely so you don't re-derive it.
-2. If it isn't there: `list_materials()` and read `user_note` first — the user is
-   the authority on what was submitted, and that field is never agent-written.
-   Then **ask the user to confirm and wait**, and record the answer per
-   "The SUBMITTED BASELINE pointer" in `project_guide()` so the next run is free.
+1. `list_submissions(slug)` — the first entry IS the manuscript the reviewers
+   hold. `get_submission(slug)` downloads it, checksum verified.
+2. If it is empty: **ask the user and wait.** Have them register it from the
+   paper page (Exports → Submitted) — usually by uploading the file they sent,
+   since the export normally gets edited before it goes. Older projects may
+   still keep it as a `Submitted baseline for <slug>:` line in
+   `get_project_memory()` with the snapshot in Materials; that still counts.
 
 Never infer it from filenames or dates. The newest export is often wrong — a
 superseded revision package sorts to the top and looks the most authoritative;
