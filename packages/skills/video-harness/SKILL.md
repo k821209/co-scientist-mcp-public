@@ -277,6 +277,13 @@ tightening.
 A hit is a place to re-read, not a verdict — a correct `28만 1500원` gets
 flagged, and should.
 
+The two word lists are guarded from OPPOSITE ends, and it is not an accident.
+A missed person (친아버지) makes the check noisy; a missed relation word makes it
+SILENT. So person words are guarded at the head — 신 must not match inside
+정신 — and relation words at the tail — 계약 must not match inside 자유계약선수,
+while 재계약을 and 청혼자 still must. If you extend either list, extend it in
+the same direction.
+
 **If any stage REGENERATES the voice** — a generative lip-sync (LTX and
 friends), a voice conversion, a re-dub — it may change the WORDS, not just the
 timbre: a real episode shipped-to-review had "7월 14일" come back as
