@@ -1049,7 +1049,13 @@ def build_mcp(state: State) -> FastMCP:
 
         **Read this before quoting a number out of one of these documents.**
         `stale` means a source has changed since the document last read it, so
-        the tables in it may no longer say what the analysis says."""
+        the tables in it may no longer say what the analysis says.
+
+        `decisions_since` is a DIFFERENT and weaker signal: decisions recorded
+        after the document was written that it does not cite. Often irrelevant,
+        never a verdict — but it is the only thing that catches "the numbers are
+        still right and the interpretation reversed", which no citation-tracking
+        can see. Judge it; do not treat it as staleness."""
         return _studies.list_studies(state)
 
     @mcp.tool()
@@ -1190,7 +1196,14 @@ def build_mcp(state: State) -> FastMCP:
         `rationale` is the line worth having in a year: the text says WHAT was
         decided, the rationale says why the alternatives lost. `from_graph` is
         the graph material_id being discussed. `supersedes` reverses an earlier
-        decision — the old one is kept and marked, never deleted."""
+        decision — the old one is kept and marked, never deleted, and every
+        study that CITED it goes out of date automatically.
+
+        The reply carries `studies_to_review`: explainers that now cite
+        something that moved, or that were written before decisions you have
+        since recorded. **Read it.** A study's tables can stay perfectly correct
+        while the way to read them reverses, and that is the failure this
+        surfaces at the one moment someone can act on it."""
         return _discussion.record_decision(
             state, text=text, rationale=rationale, from_graph=from_graph,
             supersedes=supersedes)

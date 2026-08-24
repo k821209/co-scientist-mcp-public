@@ -148,7 +148,24 @@ def record_decision(
         state.backend.update_doc(_decision_path(state, supersedes), {
             "superseded_by": did, "superseded_at": now,
         })
-    return {**doc, "dashboard_url": state.dashboard_url("discussion")}
+    # Reversing a decision makes every study that cited it out of date. That
+    # already shows up in `list_studies`, but saying it HERE puts it in front of
+    # whoever just did the reversing, which is the one moment they can act on
+    # it without being told twice.
+    affected = []
+    try:
+        from . import studies as _studies
+        for st in _studies.list_studies(state):
+            if st.get("stale") or st.get("decisions_since_count"):
+                affected.append({
+                    "study_id": st.get("study_id"), "title": st.get("title"),
+                    "stale": bool(st.get("stale")),
+                    "decisions_since_count": st.get("decisions_since_count", 0),
+                })
+    except Exception:
+        affected = []
+    return {**doc, "studies_to_review": affected,
+            "dashboard_url": state.dashboard_url("discussion")}
 
 
 def get_decision(state: State, decision_id: str) -> dict:

@@ -266,6 +266,15 @@ names WHICH source moved, without anyone having to remember. **Read
 `html` to `update_study` re-stamps the sources, because rewriting the tables is
 what makes them current again.
 
+**`decisions_since` is a second, weaker signal — do not read it as the same
+thing.** `stale` only catches "what I quoted changed". It cannot catch "what was
+decided next reverses how to read this", where the numbers stay correct and the
+interpretation inverts. So `list_studies()` also counts decisions recorded after
+each document was written that it does not cite. Often irrelevant; never a
+verdict; the only thing that would have caught a retraction nobody thought to
+link. `record_decision` returns `studies_to_review` for the same reason, at the
+one moment someone can act on it.
+
 `status` is `confirmed` or `provisional`. There is no `stale` status: it is
 computed, because a flag someone has to remember to set is the same memory that
 already failed. `follows` chains a series so the tab lists it in reading order.

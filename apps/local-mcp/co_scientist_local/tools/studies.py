@@ -9,6 +9,21 @@ accuracy and traceability, the second needs readability and freshness, and one
 drawer does not serve both — an HTML explainer filed as a material could only be
 read by downloading it, so it ended up published twice, in two places, drifting.
 
+There are TWO signals here and they are deliberately not the same word.
+
+`stale` means something this document CITED has moved — strong, specific, and
+the document is probably wrong.
+
+`decisions_since` means something NEW was decided after this was written that
+the document does not cite — weak, and it may well be irrelevant. It exists
+because the first signal only catches "what I quoted changed" and not "what was
+decided next overturns what I wrote". A study's tables can stay perfectly
+correct while the way to read them reverses (feedback 47c76a000302).
+
+Crucially it is DERIVED, like the first one. Being told which studies a decision
+affects would work only when someone remembers to say so, and this whole feature
+exists to not depend on that.
+
 The load-bearing part is `sources`. An explainer carries tables of measured
 values and those values move; the failure worth preventing is quoting one after
 it changed. So a study records what it drew numbers from and when it last
@@ -233,21 +248,57 @@ def _moved(study: dict, clock: dict[str, str]) -> list[dict]:
     return out
 
 
-def list_studies(state: State) -> list[dict]:
-    """Every study, each with `stale` and WHICH source moved.
+def _decisions_since(state: State, study: dict, decisions: list[dict]) -> list[dict]:
+    """Decisions recorded after this was written that it does not cite.
 
-    `stale` is computed here, not stored. Read it before quoting a number out of
-    one of these documents."""
+    Not staleness — a prompt to look. The document may be untouched by any of
+    them, and that judgement is a person's. What it removes is having to
+    remember that anything happened at all."""
+    written = study.get("updated_at") or study.get("created_at") or ""
+    cited = {s.get("ref") for s in (study.get("sources") or [])
+             if s.get("kind") == "decision"}
+    out = []
+    for d in decisions:
+        did = d.get("decision_id")
+        when = d.get("decided_at") or ""
+        if not did or did in cited or not when or when <= written:
+            continue
+        out.append({"decision_id": did, "text": d.get("text"),
+                    "decided_at": when,
+                    "supersedes": d.get("supersedes")})
+    out.sort(key=lambda x: x["decided_at"], reverse=True)
+    return out
+
+
+def list_studies(state: State) -> list[dict]:
+    """Every study, with two DIFFERENT signals — do not read them as one.
+
+    `stale` — something this document CITED has moved. Strong: the numbers in
+    it probably no longer say what the source says. Read it before quoting.
+
+    `decisions_since` — decisions recorded after this was written that it does
+    not cite. Weak, and often irrelevant: a prompt to re-read, not a verdict.
+    It is here because `stale` only catches "what I quoted changed" and misses
+    "what was decided next reversed how to read it" — the tables stay correct
+    while the interpretation inverts."""
     clock = _source_clock(state)
+    try:
+        decisions = [d for _, d in state.backend.list_collection(
+            state.project_path("decisions"))]
+    except Exception:
+        decisions = []
     rows = [d for _, d in state.backend.list_collection(_studies_col(state))]
     rows.sort(key=lambda r: r.get("created_at") or "")
     out = []
     for r in rows:
         moved = _moved(r, clock)
+        since = _decisions_since(state, r, decisions)
         out.append({
             **{k: v for k, v in r.items() if k != "blob_path"},
             "stale": bool(moved),
             "stale_sources": moved,
+            "decisions_since": since,
+            "decisions_since_count": len(since),
             "url": f"{state.dashboard_url('study')}?doc={r.get('study_id')}",
         })
     return out
@@ -258,11 +309,19 @@ def read_study(state: State, study_id: str) -> dict:
     doc = _require(state, study_id)
     blob = state.backend.get_blob(doc.get("blob_path") or "")
     moved = _moved(doc, _source_clock(state))
+    try:
+        decisions = [d for _, d in state.backend.list_collection(
+            state.project_path("decisions"))]
+    except Exception:
+        decisions = []
+    since = _decisions_since(state, doc, decisions)
     return {
         **{k: v for k, v in doc.items() if k != "blob_path"},
         "html": blob.decode("utf-8", errors="replace") if blob else "",
         "stale": bool(moved),
         "stale_sources": moved,
+        "decisions_since": since,
+        "decisions_since_count": len(since),
     }
 
 
