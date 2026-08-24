@@ -427,6 +427,29 @@ def _next_panel_label(panels: list[dict]) -> str:
     return str(len(panels) + 1)
 
 
+def _relabel_panels(panels: list[dict]) -> list[dict]:
+    """Re-letter panels A, B, C… by position, leaving everything else alone.
+
+    Panels compose in ARRAY ORDER and the label is only what gets drawn on the
+    sheet, so a gap in the letters produces a figure that renders perfectly and
+    is still wrong: (A)(C) with no B, or a lone (B). Nothing on screen looks
+    broken, which is why this survives until the figure is sitting in an
+    exported manuscript next to a caption that refers to a panel that isn't
+    there.
+
+    Safe to do because the letter is presentation and the id is identity — the
+    stored blob keeps its own id-based path, so re-lettering never moves bytes.
+    Mirrors the dashboard's deleteFigurePanel (apps/web/src/lib/figureUpload.ts),
+    which has done this since it was written; the two disagreeing is the actual
+    bug (feedback 5b8e2cd3f63b).
+    """
+    out = []
+    for i, p in enumerate(panels):
+        label = _PANEL_LABELS[i] if i < len(_PANEL_LABELS) else str(i + 1)
+        out.append({**p, "label": label})
+    return out
+
+
 def add_figure_panel(
     state: State,
     slug: str,
@@ -543,7 +566,12 @@ def compose_figure_panels(state: State, slug: str,
 
 def delete_figure_panel(state: State, slug: str, figure_number: int,
                         panel_id: str) -> dict:
-    """Remove one panel. The figure's blob_path follows whatever is left first."""
+    """Remove one panel. The figure's blob_path follows whatever is left first.
+
+    Remaining panels are RE-LETTERED A, B, C… — removing B from A/B/C leaves
+    A/B, not A/C. The composite is rebuilt from what's left, so the sheet and
+    the labels always agree.
+    """
     _ensure_paper(state, slug)
     path = _figure_path(state, slug, figure_number)
     existing = state.backend.get_doc(path)
@@ -553,6 +581,8 @@ def delete_figure_panel(state: State, slug: str, figure_number: int,
               if p.get("id") != panel_id]
     if len(panels) == len(existing.get("panels") or []):
         raise NotFound(f"panel {panel_id!r} not found on figure {figure_number}")
+    # Close the gap the removal left, or deleting B from A/B/C leaves A/C.
+    panels = _relabel_panels(panels)
     for gone in (existing.get("panels") or []):
         if gone.get("id") == panel_id and gone.get("blob_path"):
             state.backend.delete_blob(gone["blob_path"])
