@@ -40,13 +40,48 @@ the MCP links Claude Code's into `<project>/.claude/skills`, and the MCP now
 leaves `.claude/` alone entirely unless the project already has one (so a Pi-only
 project stays clean).
 
-## 1. The MCP server
+## 1. What to install, and what each one buys you
+
+One extension is required. The other two are per-skill: without them those
+skills fail at the moment you run them, not at setup, so they are listed here
+rather than left to be discovered.
 
 ```bash
-pi install npm:pi-mcp-adapter
+pi install npm:pi-mcp-adapter   # required — every tool call goes through it
+pi install npm:pi-subagents     # /reviewer-frame-check, and /paper-revision +
+                                # /response-letter, which call it
+pi install npm:pi-web-access    # /journal-requirements, /news-short,
+                                # /science-short
 ```
 
-The adapter reads `mcpServers` from `.mcp.json` — the same file the co-scientist
+3 of the 25 skills need each of the latter two; the remaining 19 need neither.
+
+`pi-subagents` is the unscoped package. `@tintinweb/pi-subagents` is a
+**different** extension that also exists on npm — the two are not
+interchangeable, and the name in this file is the one the skills were written
+against.
+
+### What you do not need
+
+- **`pi-memory`** — project memory is already server-side, in
+  `get_project_memory` / `append_project_memory`, so it survives a machine
+  change and a host change. Installing a second memory gives you two places
+  where a decision might be recorded and one of them is invisible to the
+  dashboard and to every other session.
+- **`pi-lens`, `pi-sandbox`** and the rest of the catalog — general Pi
+  extensions, unaffected by and unrelated to this package. Install them because
+  you want them, not because co-scientist asks.
+
+  One interaction worth knowing before you reach for `pi-sandbox`: this harness
+  deliberately runs heavy compute on your own machine and ssh's to servers you
+  registered. If you sandbox the Bash path, `launch_local_job` and
+  `submit_remote_job` are exactly the things that will need permitting, and the
+  `block-untracked-ssh` guard (§5) already covers the case sandboxing is usually
+  reached for here.
+
+## 2. The MCP server
+
+The adapter (installed in §1) reads `mcpServers` from `.mcp.json` — the same file the co-scientist
 setup script already writes for Claude Code, so if you have set this project up
 once there is nothing to create:
 
@@ -62,7 +97,7 @@ once there is nothing to create:
 }
 ```
 
-## 2. Two adapter settings that are NOT optional
+## 3. Two adapter settings that are NOT optional
 
 ```json
 {
@@ -83,7 +118,7 @@ Verify before trusting it: run `/mcp` (or ask the agent to list its tools) and
 confirm you see `mcp__co_scientist__whoami`. If you see `co_scientist_whoami`,
 the prefix setting has not taken effect.
 
-## 3. What differs from Claude Code
+## 4. What differs from Claude Code
 
 | | |
 |---|---|
@@ -91,10 +126,10 @@ the prefix setting has not taken effect.
 | MCP tools | identical names, via the adapter settings above |
 | The ssh/provenance guard | ported as a Pi extension (`block-untracked-ssh`), same aliases file, same `# setup` / `# allow-untracked` overrides |
 | `session_start` banner | **not ported.** Claude Code's SessionStart hook surfaced open comments at startup; on Pi, call `whoami` + `list_papers` + `count_open_user_comments` yourself, as `project_guide()` step 3 describes |
-| `/reviewer-frame-check` | needs a subagent. Install `pi install npm:pi-subagents`, or run the check in a separate Pi session with only the bundle files open — the isolation is the point, not the mechanism |
-| Skills using `WebFetch` (`/news-short`, `/science-short`, `/journal-requirements`) | need web access: `pi install npm:pi-web-access` |
+| `/reviewer-frame-check` (and `/paper-revision`, `/response-letter`, which call it) | needs `pi-subagents` (§1) — or run the check in a separate Pi session with only the bundle files open. The isolation is the point, not the mechanism |
+| Skills using `WebFetch` (`/news-short`, `/science-short`, `/journal-requirements`) | need `pi-web-access` (§1) |
 
-## 4. What the guard does
+## 5. What the guard does
 
 `block-untracked-ssh` refuses a backgrounded `ssh` to a **registered** server
 (`nohup`, `disown`, or a trailing `&`) and points you at
