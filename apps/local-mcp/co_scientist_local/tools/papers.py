@@ -179,6 +179,16 @@ def get_paper_state(state: State, slug: str) -> dict:
     ]
     sections.sort(key=lambda s: s.get("sort_order", 999))
     manuscript_bytes = state.backend.get_blob(_manuscript_blob_path(state, slug))
+    if not paper.get("submission_sync"):
+        # Papers whose submission was registered before the flag existed have
+        # nothing here, and would read as "no submission to reconcile" — the
+        # opposite of true. Derived on read, not backfilled on write: a
+        # migration would stamp `unreconciled` over papers someone had already
+        # reconciled by hand, re-asking a question they had answered.
+        from .submissions import _derive_sync
+        derived = _derive_sync(state, slug)
+        if derived:
+            paper["submission_sync"] = derived
     return {
         "paper": paper,
         "sections": sections,

@@ -670,7 +670,11 @@ So registering a submission sets `submission_sync.state` on the paper doc, which
 `get_paper_state(slug)["paper"]` returns. When it reads `unreconciled`:
 
 1. `diff_submission(slug)` — read-only. `missing_from_sections` is the list that
-   matters: paragraphs the journal has and this project does not.
+   matters: paragraphs the journal has and this project does not. `rendering_only`
+   holds the pairs whose WORDS match and only the rendering differs (a citation
+   key printed as a number, an em-dash, a bullet turned into "1.") — those
+   normally outnumber the real changes several times over, so skim them rather
+   than working through them.
 2. **Show them and ASK.** Which differences were deliberate is the user's to
    say. Do not sync silently, and do not assume the file always wins — text cut
    before sending should stay cut, text written since should not be reverted.

@@ -992,8 +992,13 @@ def build_mcp(state: State) -> FastMCP:
         written on them starts from a document that exists nowhere.
 
         Read `missing_from_sections` first: those are the paragraphs the journal
-        has and this project does not. Show them to the user and ASK before
-        writing anything — which differences were deliberate is theirs to say,
+        has and this project does not. `rendering_only` is set aside separately
+        — paragraphs whose WORDS match on both sides, differing only in how they
+        were rendered (a citation key printed as a number, an em-dash, a bullet
+        turned into "1."). Those are not changes and normally outnumber the real
+        ones several times over; skim them, do not work through them.
+
+        Show the real ones to the user and ASK before writing anything — which differences were deliberate is theirs to say,
         not yours to infer. Apply what they confirm with `update_section`, then
         call `acknowledge_submission_sync`."""
         return _submissions.diff_submission(state, slug, submission_id)

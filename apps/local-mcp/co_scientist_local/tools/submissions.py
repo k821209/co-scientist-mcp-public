@@ -340,6 +340,15 @@ def diff_submission(
         })
 
     missing = [raw for n, raw in sub_paras if n not in sec_norm]
+
+    # A paragraph that shows up on BOTH sides is one paragraph rendered twice,
+    # not a difference. Citation keys become numbers (`[@lam2024]` → `[6]`),
+    # em-dashes become `---`, a bullet becomes `1.`, a phrase picks up italics —
+    # none of which a person needs to look at, and all of which drown the ones
+    # they do. A real run reported 70 and 39 when six passages had actually
+    # changed.
+    rendering_only, missing, per_section = _fold_rerenderings(missing, per_section)
+
     return {
         "slug": slug,
         "submission_id": got["submission_id"],
@@ -352,6 +361,13 @@ def diff_submission(
         # The hand-edits: what the journal has and this project does not.
         "missing_from_sections": [_clip(r) for r in missing[:20]],
         "missing_from_sections_total": len(missing),
+        # Paired paragraphs whose WORDS match — kept, because "we set 43 aside
+        # as formatting" is checkable and "43 differences vanished" is not.
+        "rendering_only": [{"submission": _clip(a), "sections": _clip(b)}
+                           for a, b in rendering_only[:10]],
+        "rendering_only_total": len(rendering_only),
+        # Formatting is not a difference in wording, so it does not stop this
+        # being "the same manuscript".
         "identical": not missing and all(
             s["not_in_submission_total"] == 0 for s in per_section),
         "local_path": local,
@@ -380,6 +396,13 @@ def acknowledge_submission_sync(
     paper = state.backend.get_doc(path)
     sync = dict((paper or {}).get("submission_sync") or {})
     if not sync:
+        # The stamp only exists for submissions registered after the flag was
+        # added, and the people it fails are exactly the ones who need this:
+        # they submitted, then went to reconcile. Derive it from the submission
+        # itself rather than making them re-register, which would leave two
+        # baseline records for one file — a worse state than the missing flag.
+        sync = _derive_sync(state, slug)
+    if not sync:
         raise NotFound(f"no registered submission to reconcile for {slug!r}")
     sync.update({
         "state": "reconciled",
@@ -388,3 +411,107 @@ def acknowledge_submission_sync(
     })
     state.backend.update_doc(path, {"submission_sync": sync, "updated_at": now_iso()})
     return sync
+
+
+def _derive_sync(state: State, slug: str) -> dict:
+    """The `submission_sync` a paper WOULD have if its submission were
+    registered today. Empty dict when nothing has been submitted.
+
+    Read-only, and derived rather than backfilled on write: a migration would
+    have to guess, for every paper in every project, whether someone had already
+    reconciled by hand — and stamping `unreconciled` over that would raise a
+    question the user already answered.
+    """
+    subs = list_submissions(state, slug)
+    if not subs:
+        return {}
+    latest = subs[0]
+    return {
+        "submission_id": latest.get("submission_id"),
+        "filename": latest.get("filename"),
+        "registered_at": latest.get("created_at"),
+        "source": latest.get("source"),
+        "state": "from_export" if latest.get("source") == "export" else "unreconciled",
+        "note": None,
+        "reconciled_at": None,
+        # So a reader can tell "nobody has looked" from "this predates the
+        # flag" — the two mean the same thing here, but only one of them is
+        # something the user did.
+        "derived": True,
+    }
+
+
+# A bullet that became "1." is formatting, and its number is not a number the
+# reader cares about — left in, it would block every folded list item.
+_LIST_MARK = re.compile(r"^\s*(?:[-*+•]|\d{1,3}[.)])\s+", re.M)
+
+
+def _words(text: str) -> str:
+    """Letters and digits only — what survives a round-trip through Word.
+
+    Citation markers go too: the sections store `{doi:…}` / `[@key]` and the
+    rendered document has `[6]`, so leaving digits attached to brackets would
+    make every cited paragraph differ.
+    """
+    stripped = re.sub(r"\[[^\]]{0,40}\]|\{[^}]{0,80}\}", " ", _LIST_MARK.sub("", text))
+    return re.sub(r"[^0-9a-z가-힣]+", "", stripped.lower())
+
+
+def _nums(text: str) -> list[str]:
+    """The numbers a reader would care about, citation markers excluded.
+
+    Formatting never changes a number. 44.7 becoming 61.2 is a result changing,
+    and it is a four-character edit inside a long paragraph — close enough on
+    wording alone to fold, which is the one thing that must never happen here.
+    Brackets go first because `[@lam2024]` renders as `[6]` and that IS
+    formatting.
+    """
+    return re.findall(
+        r"\d+(?:[.,]\d+)*",
+        re.sub(r"\[[^\]]{0,40}\]|\{[^}]{0,80}\}", " ", _LIST_MARK.sub("", text)))
+
+
+def _fold_rerenderings(
+    missing: list[str], per_section: list[dict],
+) -> tuple[list[tuple[str, str]], list[str], list[dict]]:
+    """Pair each submission-only paragraph with a section-only one that says the
+    same thing, and take both out of the difference lists.
+
+    Matched on words alone, at 0.92 — high enough that a real edit (a changed
+    number, an added clause) stays a difference, low enough to absorb what
+    formatting does. The pairs are RETURNED, not dropped: a tool that quietly
+    decides 43 of your 70 findings were noise has to show its work.
+    """
+    from difflib import SequenceMatcher
+    pool = []
+    for sec in per_section:
+        for raw in sec["not_in_submission"]:
+            pool.append((sec, raw, _words(raw)))
+
+    pairs, kept, used = [], [], set()
+    for raw in missing:
+        w = _words(raw)
+        best, best_ratio = None, 0.0
+        for i, (sec, other_raw, other_w) in enumerate(pool):
+            if i in used or not w or not other_w:
+                continue
+            # Cheap reject before the expensive compare.
+            if abs(len(w) - len(other_w)) > 0.25 * max(len(w), len(other_w)):
+                continue
+            ratio = SequenceMatcher(None, w, other_w).ratio()
+            if ratio > best_ratio:
+                best, best_ratio, best_i = (sec, other_raw), ratio, i
+        # Same numbers is a HARD condition, not part of the score: a changed
+        # figure is a few characters inside a long paragraph and scores as a
+        # re-rendering on wording alone.
+        if best and best_ratio >= 0.92 and _nums(raw) == _nums(best[1]):
+            used.add(best_i)
+            pairs.append((raw, best[1]))
+            sec = best[0]
+            sec["not_in_submission"] = [r for r in sec["not_in_submission"]
+                                        if r != best[1]]
+            sec["not_in_submission_total"] -= 1
+            sec["matched"] += 1
+        else:
+            kept.append(raw)
+    return pairs, kept, per_section
