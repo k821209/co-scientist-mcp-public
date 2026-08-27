@@ -980,6 +980,35 @@ def build_mcp(state: State) -> FastMCP:
             export_id=export_id, local_path=local_path, label=label, note=note)
 
     @mcp.tool()
+    def diff_submission(
+        slug: str, submission_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Compare this project's sections against the file that was SENT.
+
+        Read-only. **Run it when `get_paper_state(slug)["paper"]
+        ["submission_sync"]["state"]` is `unreconciled`, and before any revision
+        work** — the sent file is usually the one the user hand-edited on its
+        way out, so the sections are not what the reviewers hold, and a revision
+        written on them starts from a document that exists nowhere.
+
+        Read `missing_from_sections` first: those are the paragraphs the journal
+        has and this project does not. Show them to the user and ASK before
+        writing anything — which differences were deliberate is theirs to say,
+        not yours to infer. Apply what they confirm with `update_section`, then
+        call `acknowledge_submission_sync`."""
+        return _submissions.diff_submission(state, slug, submission_id)
+
+    @mcp.tool()
+    def acknowledge_submission_sync(
+        slug: str, note: str | None = None,
+    ) -> dict[str, Any]:
+        """Mark the sections reconciled with the submitted file, so the question
+        stops being raised. Call it after the differences have been applied — or
+        looked at with the user and deliberately left, with `note` saying why.
+        Clearing it without looking is worse than never having asked."""
+        return _submissions.acknowledge_submission_sync(state, slug, note=note)
+
+    @mcp.tool()
     def delete_submission(slug: str, submission_id: str) -> dict[str, Any]:
         """Remove a registration made in error — the only way to change one.
         There is no edit: a submission that could be amended would stop being a

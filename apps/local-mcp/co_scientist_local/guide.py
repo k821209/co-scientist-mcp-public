@@ -639,6 +639,27 @@ do it: `register_submission(slug, venue=…, submitted_on="YYYY-MM-DD",
 export_id=… | local_path=…)`. **Only from what the user tells you. Never infer
 it from filenames or dates.**
 
+**The sent file is usually NOT what these sections say.** The export normally
+gets hand-edited on its way out, so the wording the reviewers hold exists only
+in that file. A revision written on the sections starts from a document that
+exists nowhere — not the sent copy, not the reviewers' copy — and nothing about
+it looks wrong.
+
+So registering a submission sets `submission_sync.state` on the paper doc, which
+`get_paper_state(slug)["paper"]` returns. When it reads `unreconciled`:
+
+1. `diff_submission(slug)` — read-only. `missing_from_sections` is the list that
+   matters: paragraphs the journal has and this project does not.
+2. **Show them and ASK.** Which differences were deliberate is the user's to
+   say. Do not sync silently, and do not assume the file always wins — text cut
+   before sending should stay cut, text written since should not be reverted.
+3. Apply what they confirm with `update_section`, then
+   `acknowledge_submission_sync(slug)` so the question is asked once.
+
+Nothing compares bytes to prose on its own: the flag records that the comparison
+has NOT been made, not that the two differ. A timestamp check would report "in
+sync" without having looked, which is the failure this exists to prevent.
+
 The bytes are copied, not referenced, so a later export cannot change what the
 record says was submitted, and a sha256 is stored and re-verified on download.
 There is no edit — a resubmission is a NEW registration and the earlier one

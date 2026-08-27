@@ -33,10 +33,12 @@ from __future__ import annotations
 import hashlib
 import pathlib
 import re
+import tempfile
 
 from ..backends.base import NotFound
 from ..state import State
 from ..util import new_id, now_iso
+from . import imports
 
 _DATE_RX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _UNSAFE = re.compile(r"[^\w.\-]+", re.UNICODE)
@@ -141,6 +143,37 @@ def register_submission(
         "created_at": now_iso(),
     }
     state.backend.set_doc(_path(state, slug, sid), doc)
+
+    # Record that nobody has yet checked this file against the sections.
+    #
+    # The file the journal received is USUALLY hand-edited on its way out — the
+    # guide says so, and the user says so. Which means the sections are not what
+    # was sent, and every revision built on them starts from a document that
+    # does not exist anywhere: not the sent copy, not the reviewers' copy.
+    #
+    # This is a state bit, not a guess. Nothing here compares the bytes to the
+    # prose; claiming "in sync" from a timestamp would be exactly the kind of
+    # check that passes without looking. It says only that the comparison has
+    # not been made, which is true at this moment and stays true until someone
+    # makes it (`diff_submission`, then `acknowledge_submission_sync`).
+    #
+    # A submission built from an EXPORT came out of these sections, so there is
+    # no hand-edit to reconcile unless the sections moved afterwards.
+    state.backend.update_doc(
+        state.project_path("papers", slug),
+        {
+            "submission_sync": {
+                "submission_id": sid,
+                "filename": filename,
+                "registered_at": doc["created_at"],
+                "source": doc["source"],
+                "state": "from_export" if export_id else "unreconciled",
+                "note": None,
+                "reconciled_at": None,
+            },
+            "updated_at": now_iso(),
+        },
+    )
     return {**doc, "dashboard_url": state.dashboard_url("papers", slug)}
 
 
@@ -213,3 +246,145 @@ def delete_submission(state: State, slug: str, submission_id: str) -> bool:
         state.backend.delete_blob(doc["blob_path"])
     state.backend.delete_doc(_path(state, slug, submission_id))
     return True
+
+
+# ── reconciling the sections with what was actually sent ────────────────────
+
+_PARA_MIN = 40   # chars; below this a "paragraph" is a heading or a stray line
+
+
+def _paras(text: str) -> list[str]:
+    """Paragraphs, normalized for comparison.
+
+    Whitespace and case are collapsed because a docx round-trip changes both
+    without changing a word — comparing raw text would report every paragraph
+    as different and the report would be worth nothing.
+    """
+    out = []
+    for block in re.split(r"\n\s*\n", text or ""):
+        norm = re.sub(r"\s+", " ", block).strip().lower()
+        # Markdown emphasis and heading marks survive the conversion unevenly.
+        norm = re.sub(r"[*_`#>\[\]()]", "", norm)
+        if len(norm) >= _PARA_MIN:
+            out.append((norm, re.sub(r"\s+", " ", block).strip()))
+    return out
+
+
+def diff_submission(
+    state: State,
+    slug: str,
+    submission_id: str | None = None,
+) -> dict:
+    """Compare the sections against the file that was actually SENT.
+
+    Read-only. Writes nothing, changes nothing — the point is to give the user
+    something to decide from, because the decision is theirs: the sent file is
+    usually the one they hand-edited, so its wording is the authority, but only
+    they know which differences were deliberate.
+
+    Reports BOTH directions, because only one of them is obvious:
+      - `missing_from_sections` — paragraphs in the sent file that appear in no
+        section. These are the hand-edits. This is the direction that matters
+        and the one a one-way "is the manuscript current?" check never asks.
+      - `not_in_submission` — section paragraphs absent from the sent file, i.e.
+        written after submission, or cut before it went.
+
+    Paragraph containment rather than a similarity score: "8 of 9 paragraphs
+    match, here is the one that does not" is something a person can act on,
+    where "0.94 similar" is not.
+    """
+    _require_paper(state, slug)
+    got = get_submission(state, slug, submission_id, dest_dir=tempfile.mkdtemp())
+    local = got["path"]
+    suffix = pathlib.Path(local).suffix.lower()
+    if suffix in {".md", ".markdown", ".txt"}:
+        # Already text. import_document would send it through pandoc, which
+        # converts markdown to markdown and makes the comparison depend on a
+        # binary it does not need — so a project that submitted a .md could not
+        # be diffed on a machine without pandoc, for no reason.
+        conv = {
+            "markdown": pathlib.Path(local).read_text(encoding="utf-8", errors="replace"),
+            "source_format": suffix.lstrip("."),
+            "warnings": [],
+        }
+    else:
+        try:
+            conv = imports.import_document(state, local_path=local)
+        except Exception as exc:                               # noqa: BLE001
+            raise ValueError(
+                f"could not read the submitted {suffix or 'file'}: {exc}. "
+                f"Download it with get_submission and compare by hand."
+            ) from exc
+
+    sub_paras = _paras(conv.get("markdown") or "")
+    sub_norm = {n for n, _ in sub_paras}
+
+    sections = [
+        data for _, data in state.backend.list_collection(
+            state.project_path("papers", slug, "sections"))
+    ]
+    sections.sort(key=lambda s: s.get("sort_order", 999))
+
+    per_section, sec_norm = [], set()
+    for sec in sections:
+        paras = _paras(sec.get("body") or "")
+        sec_norm.update(n for n, _ in paras)
+        absent = [raw for n, raw in paras if n not in sub_norm]
+        per_section.append({
+            "key": sec.get("key"),
+            "title": sec.get("title"),
+            "paragraphs": len(paras),
+            "matched": len(paras) - len(absent),
+            "not_in_submission": [_clip(r) for r in absent[:5]],
+            "not_in_submission_total": len(absent),
+        })
+
+    missing = [raw for n, raw in sub_paras if n not in sec_norm]
+    return {
+        "slug": slug,
+        "submission_id": got["submission_id"],
+        "filename": got.get("filename"),
+        "submitted_on": got.get("submitted_on"),
+        "source_format": conv.get("source_format"),
+        "warnings": conv.get("warnings") or [],
+        "submission_paragraphs": len(sub_paras),
+        "sections": per_section,
+        # The hand-edits: what the journal has and this project does not.
+        "missing_from_sections": [_clip(r) for r in missing[:20]],
+        "missing_from_sections_total": len(missing),
+        "identical": not missing and all(
+            s["not_in_submission_total"] == 0 for s in per_section),
+        "local_path": local,
+    }
+
+
+def _clip(text: str, n: int = 300) -> str:
+    return text if len(text) <= n else f"{text[:n]}…"
+
+
+def acknowledge_submission_sync(
+    state: State,
+    slug: str,
+    *,
+    note: str | None = None,
+) -> dict:
+    """Mark the sections as reconciled with the submitted file.
+
+    Call this once the differences have been dealt with — either applied to the
+    sections or looked at and deliberately left. The flag exists so the question
+    is asked once rather than every session; clearing it without looking puts it
+    back to being asked by nobody.
+    """
+    _require_paper(state, slug)
+    path = state.project_path("papers", slug)
+    paper = state.backend.get_doc(path)
+    sync = dict((paper or {}).get("submission_sync") or {})
+    if not sync:
+        raise NotFound(f"no registered submission to reconcile for {slug!r}")
+    sync.update({
+        "state": "reconciled",
+        "reconciled_at": now_iso(),
+        "note": (note or "").strip() or None,
+    })
+    state.backend.update_doc(path, {"submission_sync": sync, "updated_at": now_iso()})
+    return sync
