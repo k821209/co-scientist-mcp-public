@@ -51,7 +51,17 @@ first so a clean current `.docx` exists.
   `mcp__co_scientist__list_exports(slug)`; submitted files are usually archived
   under `exports/.<label>/`. If the previous submission was never exported to
   `.docx`, say so and stop — there is nothing to compare against.
-- **NEW** — the current clean export from `/paper-export`.
+- **NEW** — the revised document. **Edit a COPY of the OLD file; do not export a
+  fresh one from co-scientist.** The submitted `.docx` carries material that never
+  existed in the sections and cannot be regenerated: Key Points, a Biographical
+  Note, the journal's author/affiliation formatting, content controls from a
+  reference manager. A `/paper-export` looks complete and silently omits all of
+  it. That shipped: a R2 revision was started from a fresh export and the Key
+  Points and Biographical Note were simply gone — the user caught it by reading
+  the file ("제출본의 키포인트 같은것들이 다 빠지네").
+
+  So the revision is applied TO the submitted document. Use `/paper-export` for a
+  fresh manuscript, not for a revision of one that has already been sent.
 
 **STOP and confirm the pairing with the user before running — this is a gate.**
 Name both files and wait for an answer; do not proceed on your own inference.

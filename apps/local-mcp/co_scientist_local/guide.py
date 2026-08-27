@@ -681,6 +681,21 @@ Nothing compares bytes to prose on its own: the flag records that the comparison
 has NOT been made, not that the two differ. A timestamp check would report "in
 sync" without having looked, which is the failure this exists to prevent.
 
+**Why the sync is never automatic.** Applying the sent file over the sections
+would destroy things the sections hold and the `.docx` cannot give back:
+citations are rendered numbers there (`[18]`, not `[@szklarczyk2024]`), the
+markdown conventions (`**Figure N.**`) have become Word styles, and content
+controls hide text from a naive extraction. It has to be read and applied by
+someone who can tell a deliberate cut from a lost one.
+
+**And the reverse direction, which is the one that shipped.** When a revision
+goes BACK to the journal, edit the submitted `.docx` — do not export a new one.
+The sent file carries Key Points, a Biographical Note, the journal's
+author/affiliation formatting and reference-manager fields, none of which ever
+existed in the sections. `/paper-export` produces a document that looks complete
+and is missing all of it. Two different failures with one shape: the sections can
+be behind what was sent, and a re-export can be missing what was sent.
+
 The bytes are copied, not referenced, so a later export cannot change what the
 record says was submitted, and a sha256 is stored and re-verified on download.
 There is no edit — a resubmission is a NEW registration and the earlier one

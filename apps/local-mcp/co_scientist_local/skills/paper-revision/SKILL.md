@@ -53,6 +53,27 @@ is empty. For each:
 unaddressed rejection blocks a clean export. Do this pass before you tell the
 author the revision is done, and again right before any export / submission.
 
+## If this paper has been SUBMITTED, read this before editing anything
+
+`get_paper_state(slug)["paper"]["submission_sync"]` says whether the sections have
+ever been checked against the file the journal received. When it reads
+`unreconciled`, do that first with `diff_submission(slug)` — the export is usually
+hand-edited on its way out, so the sections are not what the reviewers hold, and a
+revision written on them revises a document that exists nowhere. Show
+`missing_from_sections`, ask which differences were deliberate, then
+`acknowledge_submission_sync(slug)`.
+
+**And when the revision goes back to the journal, it is applied to the submitted
+`.docx` — not to a fresh `/paper-export`.** That file carries material that never
+existed in the sections and cannot be regenerated from them: Key Points, a
+Biographical Note, the journal's author/affiliation formatting, reference-manager
+fields. An export looks complete and drops all of it silently. That shipped once,
+and the user found it by reading the file.
+
+Two different failures, and this skill sits between them: the sections can be
+behind what was sent, and a re-export can be missing what was sent. Neither
+announces itself.
+
 ## Flow
 
 1. `mcp__co_scientist__list_reviews(slug, status='open', source='user')`
