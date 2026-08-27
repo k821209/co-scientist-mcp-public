@@ -3008,10 +3008,23 @@ def build_mcp(state: State) -> FastMCP:
         title: str,
         body: str | None = None,
     ) -> dict[str, Any]:
-        """File a bug / error / feature report for this project so the
-        developer can triage it. `type` is one of bug | error | feature |
-        other. Use when you hit a tool bug or limitation, or the user describes
-        a problem worth reporting. Appears in the dashboard's Feedback tab."""
+        """File a bug / error / feature report about **co-scientist / Scivo**
+        — this harness, its tools, its skills, or the dashboard.
+
+        **This is the only channel that reaches the people who maintain it.**
+        When the user says "report this to the developer", "개발자한테 보내줘"
+        or similar, they mean THIS tool. Do not use the host agent's own
+        bug-reporting command: that goes to whoever makes Claude Code or Pi,
+        who cannot see this project, this tool surface, or this dashboard —
+        and the report is then gone from the user's side with nothing to show
+        for it. It has happened.
+
+        Lands in the dashboard's Feedback tab for this project, where the user
+        can see it, and in the maintainer's cross-project triage view.
+
+        `type` is one of bug | error | feature | other. Use it when you hit a
+        tool bug or limitation, or the user describes a problem worth
+        reporting."""
         return _feedback.report_feedback(state, type=type, title=title, body=body)
 
     @mcp.tool()

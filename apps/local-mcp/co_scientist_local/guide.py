@@ -578,6 +578,27 @@ Once you've figured out what a file is, record it with
 `update_material(material_id, ai_note=…)` so it shows in the dashboard; never
 touch `user_note`.
 
+## Reporting a problem with THIS harness — `report_feedback`
+
+When something here is broken or missing — a tool, a skill, the dashboard, this
+guide — file it with `report_feedback(type=…, title=…, body=…)`. It lands in the
+dashboard's Feedback tab, where the user can see it, and in the maintainer's
+triage view.
+
+**"개발자한테 보내줘" / "report this to the developer" means THIS tool.** Not the
+host agent's own bug-reporting command. Claude Code's and Pi's report channels go
+to the people who make Claude Code and Pi — who have no view of this project,
+these tools or this dashboard — and the report then exists nowhere the user can
+see it. That has happened: a report meant for Scivo went to Anthropic and the
+user only found out because it never appeared in the Feedback tab.
+
+Anything the user can point at inside this product is in scope. Check with
+`list_feedback()` first so a known issue is not filed twice.
+
+Write it so it can be acted on without you: the smallest reproduction you have,
+what you expected, what happened, and WHY it matters — especially whether it
+fails loudly or silently. `operating_version` is stamped for you.
+
 ## Your OTHER projects — readable, for reference
 
 This session writes to ONE project. But the user's projects are not
