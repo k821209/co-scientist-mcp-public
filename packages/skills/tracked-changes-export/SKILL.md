@@ -29,8 +29,16 @@ first so a clean current `.docx` exists.
 2. **Edit OOXML with `lxml`, never with regular expressions.** A regex pass that
    unwrapped `<w:ins>` produced a `mismatched tag` document. LibreOffice still
    opened it, so "it opens" proves nothing.
-3. **Validate before shipping.** See the checklist at the end.
-4. **Never pick the baseline yourself — ask, and wait for an answer.** Every
+3. **Never conclude text is MISSING from a `.docx` on python-docx's word.**
+   `paragraph.text` and `paragraph.runs` do not expose runs inside `w:sdt`
+   (structured document tags / content controls) — Zotero and Mendeley citation
+   fields are exactly that, so a journal manuscript is where this is likeliest.
+   The text is present, renders in Word, and is invisible to the reader you used.
+   Read raw `w:t` before you believe any absence. See "Absence is a claim about
+   your reader" below; this is rule 2 applied to READING, and it has shipped a
+   duplicated sentence into a submitted manuscript.
+4. **Validate before shipping.** See the checklist at the end.
+5. **Never pick the baseline yourself — ask, and wait for an answer.** Every
    validation check in this skill is blind to which OLD file you chose, so a wrong
    baseline ships a file that passes all seven checks and diffs against a document
    the reviewers never saw. See step 1; this is a gate, not advice.
@@ -424,6 +432,7 @@ Repackage with `[Content_Types].xml` written first.
 | Every mark attributed **to a real name** | `Counter(e.get(W+"author") for e in ins + dele)` — **print the set**, and FAIL when it is empty, contains `None`, or contains any of `Unknown Author` / `Unknown` / `Author` / `""`. A marked-up copy normally has exactly one author |
 | Media accounted for | `word/media/` count matches **the input you compared** — normally every figure, since you compare the real documents. 0 is only correct if you took the `strip_images()` fallback, which must then be stated in the response letter |
 | No empty tables | every `w:tbl` has text or graphics |
+| **python-docx sees the whole document** | compare its text against raw `w:t` — see below. Run this BEFORE any edit premised on something being absent |
 
 Report the insertion / deletion counts to the user **and the author set** —
 `authors: {'Yang Jae Kang': 848}`. Printing the value is as important as failing on
@@ -437,6 +446,59 @@ failing intent. Test the value, and show it.
 
 The ratio is informative too: insertions far exceeding deletions means the revision
 mostly *added* material, which is worth stating in the response letter.
+
+### Absence is a claim about your reader, not about the document
+
+Before you report anything as missing, truncated or divergent — and before you
+"restore" it — check that the reader you used can see the whole document:
+
+```python
+import zipfile
+import lxml.etree as ET
+from docx import Document
+
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+def readable_text(path):
+    """What python-docx shows, and what is actually in the file."""
+    pd = "\n".join(p.text for p in Document(path).paragraphs)
+    raw = "".join(
+        t.text or ""
+        for t in ET.fromstring(
+            zipfile.ZipFile(path).read("word/document.xml")).iter(W + "t"))
+    return pd, raw
+
+pd, raw = readable_text(src)
+# Not equality: python-docx drops table and header text by this measure too.
+# A LARGE shortfall is the signal — sdt, text boxes, or anything else it skips.
+assert len(raw) - len(pd) < 0.02 * len(raw), (
+    f"python-docx sees {len(pd)} chars of {len(raw)}; something is hidden from "
+    f"it. Search the raw text before concluding anything is missing.")
+```
+
+To check one specific string, search `raw`, never `pd`:
+
+```python
+raw.count("independently constructed")     # the answer
+pd.count("independently constructed")      # a fact about python-docx
+```
+
+> **Recorded: a caption "restored" that was never broken** (GeneReL,
+> DATABASE-2026-0057.R1, 2026-08-27). A Figure 4 legend read as truncated
+> mid-sentence — the rest of it sat in a `w:sdt` between two runs, so
+> `paragraph.text` skipped it. It was reported to the user as a defect in their
+> submitted file, "repaired", and shipped: the same sentence appeared TWICE in
+> the clean and tracked-changes documents, and the user caught it by eye. The
+> same blind spot also produced three confident false reports — `44.7` "absent"
+> (present twice), `independently constructed` "absent" (present), and a
+> manuscript/submission "divergence" that did not exist — which cost the user a
+> pointless which-file-is-real question and reversed a revision decision on a
+> false premise.
+>
+> Same lesson as the images retraction above, from the other direction: **"I
+> cannot see it" is evidence about the instrument.** The skill already forbade
+> editing OOXML with the wrong tool; nothing said the same about reading it, and
+> reading is where the damage started.
 
 ### 7. Upload
 
