@@ -107,6 +107,19 @@ once there is nothing to create:
 }
 ```
 
+## 2b. One command instead of two files
+
+The dashboard's Setup tab (Pi panel) hands out a setup script that writes both
+`.mcp.json` and `CLAUDE.md` into the current directory and adds `.mcp.json` to
+`.gitignore` — the same script the Claude Code path uses, with the two adapter
+settings already in the config and no `.claude/` directory written (Pi reads
+skills from the installed package, so one here would be a directory nothing
+reads).
+
+Every download there has a **Copy as command** beside it, which puts the file on
+the machine your terminal is already on — over ssh a download lands on the
+laptop and then has to be moved.
+
 ## 3. CLAUDE.md — the same file both hosts read
 
 Pi loads `AGENTS.md` or `CLAUDE.md` from the project directory as a **context
