@@ -145,6 +145,39 @@ def _unresolved_tokens(body: str) -> list[str]:
     return out
 
 
+# Citation syntaxes this project does NOT use, but that a writer reaches for by
+# habit: pandoc/BibTeX `[@key]`, LaTeX `\cite{key}`, and a bare numeric `[12]`
+# that was typed rather than rendered from a token.
+#
+# These are worse than an unknown brace token, because nothing about them looks
+# broken. `[@kim2026]` is the most standard citation syntax in markdown; it
+# renders as literal text, it is invisible to the numbering pass, and
+# validate_references finds no `{doi:}` occurrence to check context against — so
+# the manuscript reads fine on screen and silently has no citations at all.
+_FOREIGN_CITATION = [
+    ("pandoc", re.compile(r"\[@[A-Za-z][\w:.#$%&+?<>~/-]*(?:\s*;\s*@[\w:.#$%&+?<>~/-]+)*\]")),
+    ("latex", re.compile(r"\\(?:cite|citep|citet|autocite)\s*(?:\[[^\]]*\])?\{[^}]+\}")),
+]
+# Bare `[12]` / `[3,4]` / `[7-10]`. Only flagged when the manuscript has NO
+# tokens anywhere: in a paper that uses tokens properly, a stray bracketed
+# number is far more likely to be a range or an array index than a citation.
+_BARE_NUMERIC_CITATION = re.compile(r"(?<![\w\]])\[\d{1,3}(?:\s*[,\u2013-]\s*\d{1,3})*\](?!\()")
+
+
+def _foreign_citations(body: str, tokens_used: bool) -> list[tuple[str, str]]:
+    """(syntax, matched text) for citations written in another system's syntax."""
+    text = re.sub(r"```.*?```", " ", body or "", flags=re.S)
+    text = re.sub(r"`[^`]*`", " ", text)
+    text = _MATH_SPAN.sub(" ", text)
+    # Markdown links and images own their brackets — [text](url) and ![](figure:1)
+    # are not citations.
+    text = re.sub(r"!?\[[^\]]*\]\([^)]*\)", " ", text)
+    out = [(name, m.group(0)) for name, rx in _FOREIGN_CITATION for m in rx.finditer(text)]
+    if not tokens_used:
+        out += [("numeric", m.group(0)) for m in _BARE_NUMERIC_CITATION.finditer(text)]
+    return out
+
+
 # Conventional significance thresholds. Stating one is an ANALYSIS PLAN, which
 # is what Methods is for; it is not a measured value that went missing from
 # Results. Scoped to the checks below — a real finding OF 0.05 would be reported
@@ -504,9 +537,27 @@ def lint_manuscript(state, slug: str) -> dict:
     # Flatten to (section_key, section_title, sentence, token_set) once.
     sents: list[tuple[str, str, str, set]] = []
     unresolved: list[dict] = []
+    # Whether the manuscript uses the real convention ANYWHERE, which decides
+    # how a bare `[12]` should be read.
+    tokens_used = any(
+        re.search(r"\{(?:doi|cite|ref):", sec.get("body", "") or "")
+        for sec in sections)
     for sec in sections:
         key = sec.get("key", "")
         title = sec.get("title", key)
+        for syntax, match in _foreign_citations(sec.get("body", ""), tokens_used):
+            unresolved.append({
+                "kind": "foreign_citation_syntax", "section": title,
+                "token": match, "syntax": syntax,
+                "note": (
+                    f"{match} is {syntax} citation syntax, which this project "
+                    "does not resolve — citations are {doi:10.…} when a DOI "
+                    "exists and {cite:key} when one does not. Nothing about "
+                    "this looks broken: it renders as literal text, the "
+                    "numbering pass does not see it, and validate_references "
+                    "has no occurrence to check, so the paper reads as cited "
+                    "and exports with no bibliography entry for it."),
+            })
         for tok in _unresolved_tokens(sec.get("body", "")):
             unresolved.append({
                 "kind": "unresolved_token", "section": title, "token": tok,
