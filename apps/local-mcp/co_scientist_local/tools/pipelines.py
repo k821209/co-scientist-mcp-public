@@ -141,6 +141,13 @@ def _norm_processes(processes) -> list[dict]:
             "container": (str(p["container"]).strip()
                           if p.get("container") else None),
             "tool": str(p["tool"]).strip() if p.get("tool") else None,
+            # WHICH MACHINE it runs on. `repo` is a path, and a path alone does
+            # not say whose disk it is on — a pipeline that hops between a
+            # laptop, a GPU node and a render box reads as one filesystem
+            # without this, and the reader cannot re-run a single step.
+            # Hostnames were being stuffed into `container`, which is for the
+            # image, not the host.
+            "host": str(p["host"]).strip() if p.get("host") else None,
         })
     return out
 
@@ -169,6 +176,13 @@ def _norm_edges(edges, process_names: set[str]) -> list[dict]:
             # What actually moves along this edge. The point of showing it.
             "format": (str(e["format"]).strip() if e.get("format") else None),
             "label": str(e["label"]).strip() if e.get("label") else None,
+            # A REPEAT, not a circular dependency. A pipeline that generates 65
+            # frames at a time and feeds the last five into the next call is six
+            # passes over the same processes with a different offset each time;
+            # nothing waits on its own output. Refusing it forced the loop to be
+            # folded into one opaque box, which removed from the graph the one
+            # thing the graph was there to show.
+            "loop_back": bool(e.get("loop_back")),
         })
     return out
 
@@ -232,6 +246,7 @@ def register_pipeline_version(
     engine_version: str | None = None,
     nextflow_version: str | None = None,
     description: str | None = None,
+    commit: str | None = None,
     overwrite: bool = False,
 ) -> dict:
     """Register one version's process graph, edge formats and parameters.
@@ -239,6 +254,12 @@ def register_pipeline_version(
     A version is IMMUTABLE by default — `overwrite=True` is required to replace
     one. "Which version produced this figure" is a methods-section question, and
     quietly editing a released version's graph makes every past answer wrong.
+
+    When is overwrite legitimate? While NOTHING has referenced the version yet.
+    Filling in a field you forgot minutes after registering is fine — no run, no
+    figure and no methods paragraph points at it, so nothing that was true
+    becomes false. Once a run record or a manuscript names the version, register
+    a NEW one instead: the old answer has to keep meaning what it meant.
     """
     pid = _norm(name)
     if state.backend.get_doc(_pipeline_path(state, pid)) is None:
@@ -257,7 +278,10 @@ def register_pipeline_version(
 
     procs = _norm_processes(processes)
     edge_list = _norm_edges(edges, {p["name"] for p in procs})
-    topological_order(procs, edge_list)      # raises on a cycle
+    # Loop-back edges are excluded: they are the only edges allowed to close a
+    # cycle, and they are declared, not inferred. Every other edge is still
+    # checked, so a genuine circular dependency is still refused.
+    topological_order(procs, [e for e in edge_list if not e.get("loop_back")])
 
     now = now_iso()
     doc = {
@@ -268,6 +292,12 @@ def register_pipeline_version(
         # `nextflow_version=` is still accepted so records written before the
         # registry covered other executors keep working.
         "engine_version": engine_version or nextflow_version,
+        # The commit that IS this version. `repo` names a path; a path is
+        # mutable, so without this the record silently stops describing the code
+        # that produced the result the moment anyone edits the repo. Stored
+        # rather than copied: a second copy of the code in the dashboard is the
+        # drift this is meant to prevent.
+        "commit": str(commit).strip() if commit else None,
         "processes": procs,
         "edges": edge_list,
         "params": _norm_params(params),

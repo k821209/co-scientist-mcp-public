@@ -1795,12 +1795,14 @@ def build_mcp(state: State) -> FastMCP:
         engine_version: str | None = None,
         nextflow_version: str | None = None,
         description: str | None = None,
+        commit: str | None = None,
         overwrite: bool = False,
     ) -> dict[str, Any]:
         """Register one version's process graph, edge formats and parameters.
 
             processes=[{"name":"fastp","label":"fastp","tool":"fastp",
-                        "container":"biocontainers/fastp:0.23.4"}, …]
+                        "container":"biocontainers/fastp:0.23.4",
+                        "host":"spark-d8b7"}, …]
             edges=[{"from":"fastp","to":"star","format":"fastq.gz"}, …]
             params=[{"name":"--genome","default":"GRCh38","required":true,
                      "description":"iGenomes key"}, …]
@@ -1808,15 +1810,33 @@ def build_mcp(state: State) -> FastMCP:
         `format` on an edge is what actually moves between two steps — the thing
         you need when wiring a new dataset in.
 
-        Versions are IMMUTABLE by default: `overwrite=True` only to fix a
-        mis-registration, never to edit a released version, or every past
-        "produced by v1.2" becomes wrong. An edge naming an undeclared process is
-        rejected rather than silently dropped, and a cycle is rejected with the
-        processes named."""
+        `host` on a process is WHICH MACHINE it runs on. The pipeline's `repo` is
+        a path, and a path does not say whose disk it is on — a workflow that
+        hops between a laptop, a GPU node and a render box reads as one
+        filesystem without it. Not `container`, which is the image.
+
+        **A REPEAT is not a cycle.** For a step that feeds back into an earlier
+        one — 65 frames at a time, the tail of each call seeding the next — mark
+        that edge `{"from":"chain","to":"animate","loop_back":true}`. It is
+        excluded from the cycle check and drawn as a repeat. Without it the loop
+        has to be folded into one opaque box, which removes from the graph the
+        thing the graph is for. Every other edge is still checked, so a genuine
+        circular dependency is still refused.
+
+        `commit` is the revision this version IS. `repo` names a mutable path, so
+        without it the record stops describing the code that produced the result
+        as soon as anyone edits the repo.
+
+        Versions are IMMUTABLE by default. `overwrite=True` is legitimate while
+        NOTHING references the version yet — filling in a field you forgot
+        minutes after registering changes no past answer. Once a run record or a
+        manuscript names it, register a NEW version instead. An edge naming an
+        undeclared process is rejected rather than silently dropped, and a cycle
+        is rejected with the processes named."""
         return _pipelines.register_pipeline_version(
             state, name, version, processes=processes, edges=edges, params=params,
             engine_version=engine_version, nextflow_version=nextflow_version,
-            description=description,
+            description=description, commit=commit,
             overwrite=overwrite)
 
     @mcp.tool()
