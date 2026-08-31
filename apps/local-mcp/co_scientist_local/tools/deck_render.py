@@ -1040,7 +1040,12 @@ def _theme_fonts(concept: str | None) -> dict[str, str | None]:
 def _installed_font_families() -> frozenset[str] | None:
     """Lowercased font family names known to fontconfig on the render host,
     or None if `fc-list` is unavailable (then we skip the check rather than
-    emit false warnings). Cached — the font set doesn't change mid-process."""
+    emit false warnings).
+
+    Cached for speed, and the cache is CLEARED before a warning is emitted
+    (`_font_warnings`) — installing a font is the one thing that changes this
+    set mid-process, and it is exactly what someone is doing when they re-render
+    to see whether their new font works."""
     try:
         proc = subprocess.run(
             ["fc-list", ":", "family"],
@@ -1071,6 +1076,7 @@ def _font_warnings(fonts: dict) -> list[dict]:
         return []
     out: list[dict] = []
     seen: set[str] = set()
+    rechecked = False
     for role in ("display", "body", "mono"):
         fam = fonts.get(role)
         if not fam:
@@ -1083,6 +1089,23 @@ def _font_warnings(fonts: dict) -> list[dict]:
         # it (covers "Noto Sans KR" matching an installed "Noto Sans KR <wght>").
         if any(f == key or f.startswith(key) for f in installed):
             continue
+        # Before saying a font is missing, look again with a fresh fc-list.
+        # The cached set was read when this process started, and a font
+        # installed since then reads as absent — which sends the user to
+        # replace a font that renders perfectly well. The warning would then
+        # cause the divergence between preview and PowerPoint that it exists to
+        # prevent. Costs one subprocess call, and only on the path that was
+        # about to warn.
+        if not rechecked:
+            # getattr: tests substitute a plain function here, which has no
+            # cache to clear.
+            clear = getattr(_installed_font_families, "cache_clear", None)
+            if clear:
+                clear()
+            installed = _installed_font_families() or installed
+            rechecked = True
+            if any(f == key or f.startswith(key) for f in installed):
+                continue
         out.append({
             "role": role,
             "font": fam,
