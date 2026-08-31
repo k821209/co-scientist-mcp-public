@@ -508,6 +508,15 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   stats / domain) + consistency pass; each finding becomes one
   Firestore review row (`source="ai"`) anchored to the offending
   passage so the dashboard renders inline highlights.
+- `/prose-review [slug]` — reads a FINISHED draft as a journal copy-editor and
+  comments only where the prose is wrong for the venue: metaphor imported from
+  another field, sentences left answering a reviewer, chat register, a register
+  break inside a paragraph. Each finding is a review row carrying the
+  REPLACEMENT sentence. Runs `lint_manuscript` first and never repeats it, and
+  never touches claims or statistics — that is `/paper-review`. Use it on text
+  that arrived some other way (imported, revised, or drafted by a session that
+  skipped `/paper-writing` §2a); a draft written under those rules may
+  legitimately come back clean.
 - `/analysis-run [name]` — wrap a computation (local or registered HPC)
   in a tracked run, then `add_figure` / `add_table` selected outputs.
   Dashboard Runs tab streams logs in real time.
