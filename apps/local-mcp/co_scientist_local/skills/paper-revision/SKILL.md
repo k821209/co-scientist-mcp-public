@@ -89,7 +89,9 @@ announces itself.
    - **Reject** — explain why and respond.
    - **Need more info** — pause that one and come back later.
 4. For accepted comments, edit the relevant section via
-   `mcp__co_scientist__update_section(slug, key, body=...)`.
+   `mcp__co_scientist__update_section(slug, key, body=...)`. **The replacement is
+   manuscript prose, not a note about the change** — see "The revised sentence is
+   manuscript prose, not a patch note" below, and `/paper-writing` §2a.
 5. Mark the comment resolved AND re-anchor it to the revised text:
    `mcp__co_scientist__resolve_paper_comment(slug, review_id,
    status='accepted', response='...', new_anchor_text='<a verbatim phrase
@@ -109,6 +111,35 @@ announces itself.
      manuscript" — re-run with `new_anchor_text(s)`. If the passage was removed
      entirely, pass `new_anchor_text=''` to clear it.
    - `response` is what the human sees alongside the "✓ Addressed" badge.
+
+## The revised sentence is manuscript prose, not a patch note
+
+**Read `/paper-writing` §2a and §2b before editing.** Revision is where that
+register slips worst, and the reason is structural: addressing a comment is a
+"fix this" task, which is the same shape as patching code, so the replacement
+comes out sounding like a changelog entry rather than a sentence in a paper.
+
+Four failures specific to this skill:
+
+1. **The edit reads as a reply.** *"As noted, we now clarify that…"*, *"This has
+   been revised to…"*, *"we have added"* — that is the RESPONSE LETTER's voice
+   and it must not appear in the manuscript body. The reader of the published
+   paper never saw the comment. Write the sentence as if it had always been
+   there.
+2. **The reviewer's shorthand becomes yours.** A comment is written quickly and
+   informally; a manuscript is not. Take the point, not the phrasing.
+3. **Engineering metaphor arrives with the fix** — *orthogonal*, *cheap*,
+   *buys/pays for*, *surfaces*, *knob* (Korean: 직교한다, 산다/판다, 값싸다).
+   Strongest here for the same reason as (1): you are in fix mode. §2a has the
+   replacements; the rule is to write the measurement the metaphor stood in for.
+4. **The sentence is right and the paragraph is now wrong.** A patched line can
+   be locally correct and break the tense, the terminology or the logical order
+   around it. **Re-read the whole paragraph after every edit**, not the sentence
+   you changed. A revision that answers one comment and leaves a register break
+   behind has made the section worse than it was.
+
+Then run `lint_manuscript(slug)` before resolving: it is the same gate drafting
+uses, and a revised section has not been through it.
 
 ## Anchor Drift
 

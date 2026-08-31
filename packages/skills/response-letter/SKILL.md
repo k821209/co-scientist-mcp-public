@@ -102,6 +102,12 @@ not "Major 3"; λ attributed to the arm it exists for.
 
 ## Writing the letter: three rules from repeated corrections
 
+> The letter is read by the same specialist who read the paper, so the register
+> rules apply here too — `/paper-writing` §2a. *"We have revised"* is correct in
+> a letter and wrong in the manuscript; imported metaphor (*orthogonal*, *cheap*,
+> *buys*, 직교한다, 산다/판다) is wrong in both.
+
+
 **A declined request needs its REASON, in the same breath.** A bare
 "MDSearch was not benchmarked." headlines what we did not do; deleting it hides
 non-compliance and re-creates the very `frame_error` the frame check catches. The
