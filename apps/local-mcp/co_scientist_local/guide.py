@@ -832,6 +832,40 @@ analysis and are deciding whether to believe it), `/paper-writing`,
 sentence difficulty, this one is about missing premises, which survive any
 amount of simplification.
 
+## The harness's voice leaks into the manuscript
+
+You are drafting inside a coding session. Everything around you — tool
+descriptions, skills, commit messages — is engineering prose, and that register
+is not neutral background: it comes out in the manuscript, hardest in the
+sentences that felt best to write.
+
+What leaks is metaphor from software / ML / economics standing in for a literal
+statement: *orthogonal* for uncorrelated, *buys / pays for / cheap / expensive*
+for a trade-off, *surfaces*, *knob*, *budget*, *no free lunch*. In Korean:
+직교한다, 산다/판다, 값싸다, 표면화된다.
+
+The test is not whether a word is banned but whether it is **native to this
+paper's field**, and the paper's own reference list settles it — `orthogonal` is
+ordinary in a machine-learning paper and a puzzle in a plant-genomics one. If
+nothing you cite uses the word, you brought it with you. Write the literal
+statement instead: "the two measures were uncorrelated (r = 0.02)".
+
+It is an error, not a taste dispute: the metaphor names a quality where the
+sentence owes a quantity. A journal editor's style guide (Griffies et al.,
+*Elements of Style for Writing Scientific Journal Articles*) uses this very case
+— "ran quickly and cheaply" — and fixes it with the measurement, not a better
+adjective: "required 1200 hours using 100 computer processors". Asking *what is
+"cheap" here* writes the replacement for you.
+
+Same leak, other shape: *"the point is", "which is what makes this safe"* is how
+a code comment argues. A manuscript states the finding and its support.
+
+Do not over-correct: field-standard terms (GWAS, BLUP, transcript abundance) are
+your readers' shared vocabulary, not jargon to strip. Remove metaphor borrowed
+from ANOTHER field; keep the words native to this one.
+
+`/paper-writing` §2a carries the full list.
+
 ## Prose for non-English audiences (todo 001)
 
 When generating prose for a non-English audience — Korean, Japanese,

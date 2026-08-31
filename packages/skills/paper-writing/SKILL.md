@@ -84,6 +84,55 @@ findings, no procedure. Discussion = meaning, no new data.**
   translate from English — it reads as 번역체. Avoid `매우 중요한 역할을 한다`,
   `아무리 강조해도 지나치지 않다`, 완곡어 남발.
 
+### 2a. You are drafting inside a coding harness. Its voice is not neutral.
+
+This session's surroundings — the tool descriptions, the skills, the commit
+messages, this file — are engineering prose. That register leaks into the
+manuscript, and it leaks hardest into the sentences you are proudest of, because
+a vivid metaphor feels like good writing while you are writing it.
+
+The specific leak is **metaphor imported from software / ML / economics used for
+a literal scientific statement**:
+
+| Instead of | Write the literal thing |
+|---|---|
+| the two measures are **orthogonal** | the two measures were uncorrelated (r = 0.02) |
+| this **buys** accuracy and **pays for** it in interpretability | accuracy improved; interpretability decreased |
+| a **cheap** proxy / an **expensive** assay | a fast, low-cost proxy / a labour-intensive assay |
+| the effect **surfaces** in the second cohort | the effect was also present in the second cohort |
+| a **knob** to tune / **budget** for error | a parameter to adjust / the tolerated error |
+| there is no **free lunch** | every method traded one property for another |
+
+Korean drafts carry the same import: **직교한다 · 산다/판다 · 값싸다/비싸다 ·
+표면화된다 · 여유(budget)**. Write 상관이 없었다 / 정확도는 올랐고 해석력은
+떨어졌다 / 비용이 낮은.
+
+**The test is not "is this word banned" — it is "is this word native HERE."**
+`orthogonal` is ordinary vocabulary in a machine-learning paper and a metaphor
+the reader must decode in a plant-genomics one. The paper's own reference list
+settles it: if none of the works you are citing use the word, you imported it.
+
+**Why it is an error and not a taste dispute:** a metaphor names a quality where
+the sentence owes a quantity. Griffies et al., *Elements of Style for Writing
+Scientific Journal Articles* (NOAA/GFDL, for *Ocean Modelling*) uses this exact
+case — "the simulation ran quickly and **cheaply**" — and its fix is not a
+better adjective but the measurement: "required 1200 hours using 100 computer
+processors." Ask *what is "cheap" here* and the replacement writes itself. The
+same guide rules out **subjective or judgmental adjectives** ("a *simple* model"
+— simple against what?) and **expressions of belief** ("we believe this result
+to be true" → "we show through our analysis that…"), both of which are the same
+move: an impression standing in for evidence.
+
+Same leak, different shape: do not explain in an engineer's voice. *"The point
+is…", "which is what makes this safe", "that is the whole feature"* are how a
+code comment argues. A manuscript states the finding and its support.
+
+One caution against over-correcting: **field-standard technical terms are not
+jargon to remove.** GWAS, BLUP, transcript abundance, orthology — these are the
+vocabulary your readers share, and replacing them with plain English makes the
+paper vaguer, not clearer. The rule is directional: strip metaphor borrowed from
+ANOTHER field, keep the terms native to this one.
+
 ### 2b. Clarity over eloquence — draft plain from the start
 
 Default to the **plainest phrasing that stays precise**. "Writerly" LLM prose
