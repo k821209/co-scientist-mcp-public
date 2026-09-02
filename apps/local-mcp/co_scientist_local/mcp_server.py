@@ -1029,8 +1029,37 @@ def build_mcp(state: State) -> FastMCP:
         status: str | None = None,
         sources: list[dict[str, Any]] | None = None,
         follows: str | None = None,
+        study_id: str | None = None,
     ) -> dict[str, Any]:
         """Publish an explainer that READS INLINE in the dashboard's Study tab.
+
+        **Read `/study-design` first** — it covers designing the page, when a
+        study should also be an Artifact, and the checks before you call it
+        done. The essentials:
+
+        **How the page is rendered, which you cannot see from here.** The
+        document goes into a sandboxed iframe of its own, so the dashboard's
+        stylesheet does NOT reach it:
+
+        - Write semantic HTML — `<h2>`, `<p>`, `<table>` — and the tab supplies
+          a readable default: measure, type scale, ruled tables, tabular
+          numerals, and the reader's light/dark theme. Bring a `<style>` block
+          only to design the page deliberately; that switches the default off
+          entirely, so a partial stylesheet leaves the rest unstyled.
+        - **Images: `<img src="asset:FILENAME">`**, where FILENAME is what
+          `add_asset` stored. The tab resolves it to a download URL before
+          rendering. Do NOT inline base64 — a figure pasted through the
+          conversation is slow, expensive, and corrupts silently on one wrong
+          character.
+        - Links out work, but open a NEW TAB. Use
+          `<a href="…" target="_blank" rel="noopener">`; the frame is not
+          allowed to navigate the dashboard away.
+        - Scripts are off unless the reader turns them on, so the document must
+          be readable without them.
+
+        Pass `study_id` to REPLACE a study in place. Without it, fixing a typo
+        meant a new document plus `delete_study`, which broke any `follows`
+        chain pointing at the old one and changed its URL.
 
         Use this, not `add_material`, for a document written to be read. A
         material is what the paper REFERS to; a study is what a person reads,
@@ -1058,7 +1087,7 @@ def build_mcp(state: State) -> FastMCP:
         """
         return _studies.write_study(
             state, title=title, html=html, summary=summary, status=status,
-            sources=sources, follows=follows)
+            sources=sources, follows=follows, study_id=study_id)
 
     @mcp.tool()
     def update_study(

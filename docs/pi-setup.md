@@ -13,7 +13,7 @@ pi install ~/co-scientist-mcp-public
 pip install -e ~/co-scientist-mcp-public/apps/local-mcp
 ```
 
-That gives you the 26 skills, the provenance guard, and the MCP. Then wire the
+That gives you the 27 skills, the provenance guard, and the MCP. Then wire the
 tools.
 
 ## 0. Updating — and why the install is a path, not `git:`
@@ -64,7 +64,7 @@ pi install npm:pi-web-access    # /journal-requirements, /news-short,
                                 # /science-short
 ```
 
-3 of the 26 skills need each of the latter two; the remaining 20 need neither.
+3 of the 27 skills need each of the latter two; the remaining 21 need neither.
 
 `pi-subagents` is the unscoped package. `@tintinweb/pi-subagents` is a
 **different** extension that also exists on npm — the two are not
@@ -181,7 +181,7 @@ the prefix setting has not taken effect.
 
 | | |
 |---|---|
-| 26 skills | identical — `SKILL.md` folders, discovered recursively |
+| 27 skills | identical — `SKILL.md` folders, discovered recursively |
 | MCP tools | identical names, via the adapter settings above |
 | The ssh/provenance guard | ported as a Pi extension (`block-untracked-ssh`), same aliases file, same `# setup` / `# allow-untracked` overrides |
 | `session_start` hook | **not ported.** Claude Code ran the open-comment check itself. The same sequence is written into `CLAUDE.md` (§3), which Pi does read — so it runs because the agent is instructed to, not because a hook fires. Ask for it if a session starts without it |

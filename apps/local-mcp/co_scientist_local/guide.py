@@ -517,6 +517,11 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   that arrived some other way (imported, revised, or drafted by a session that
   skipped `/paper-writing` §2a); a draft written under those rules may
   legitimately come back clean.
+- `/study-design` — read BEFORE `write_study`. What the Study tab actually
+  does (sandboxed frame, a default stylesheet that a `<style>` block switches
+  off entirely, `asset:FILENAME` images, links that open a new tab, scripts
+  off), when to design a page instead of writing bare semantic HTML, and how a
+  study differs from an Artifact when you want both.
 - `/analysis-run [name]` — wrap a computation (local or registered HPC)
   in a tracked run, then `add_figure` / `add_table` selected outputs.
   Dashboard Runs tab streams logs in real time.

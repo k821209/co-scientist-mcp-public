@@ -106,8 +106,13 @@ def write_study(
     status: str | None = None,
     sources: list[dict] | None = None,
     follows: str | None = None,
+    study_id: str | None = None,
 ) -> dict:
     """Publish an explainer that reads inline in the dashboard's Study tab.
+
+    Pass `study_id` to REPLACE an existing study in place. Without it, fixing a
+    typo meant writing a new document and deleting the old one, which broke any
+    `follows` chain pointing at it and changed its URL.
 
     `summary` is for the READER — one or two sentences saying what this explains,
     shown in the list. It is not the place for your own caveats and reasoning;
@@ -126,12 +131,19 @@ def write_study(
         raise ValueError("title is required")
     if not (html or "").strip():
         raise ValueError("html is required — a study is a document to read")
+    # Double-escaped HTML is accepted silently and renders as visible tags. It
+    # is only ever noticed by a human opening the tab, so it is refused here.
+    if "&lt;" in html and "<" not in html:
+        raise ValueError(
+            "html looks HTML-escaped: it contains '&lt;' and no '<', so the "
+            "tags would render as visible text. Pass the markup itself.")
     st = _check_status(status)
     srcs = _norm_sources(state, sources)
     if follows:
         _require(state, follows)
 
-    study_id = new_id()
+    existing = _require(state, study_id) if study_id else None
+    study_id = study_id or new_id()
     now = now_iso()
     blob_path = state.project_path("studies", study_id, "page.html")
     state.backend.put_blob(blob_path, html.encode("utf-8"))
@@ -144,7 +156,7 @@ def write_study(
         "follows": follows or None,
         "blob_path": blob_path,
         "size_bytes": len(html.encode("utf-8")),
-        "created_at": now,
+        "created_at": (existing or {}).get("created_at", now),
         "updated_at": now,
     }
     state.backend.set_doc(_study_path(state, study_id), doc)
