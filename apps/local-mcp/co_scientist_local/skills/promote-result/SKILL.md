@@ -51,10 +51,12 @@ analysis/de-genes/out/top50.csv     → Table 1
                                         genes"
 ```
 
-Multi-panel figures: collect several outputs under one
-`figure_number`. The skill is responsible for composing the panels
-into a single image before `add_figure` (use a quick matplotlib /
-PIL montage, or ask the user to provide a pre-composed panel).
+Multi-panel figures: register each output as a PANEL —
+`add_figure_panel(slug, figure_number, local_path=…)` per image, then
+`compose_figure_panels(slug, figure_number)`. Do NOT montage them by hand: a
+hand-built composite bypasses the `panels` array, so the dashboard cannot
+re-letter or replace one panel, and `panels_updated_at` never says the
+composite is stale.
 
 ### 4. Promote mode — write to the DB
 
@@ -79,9 +81,10 @@ mcp__co_scientist__add_table(
   table_number=N,
   title="<title>",
   content="<markdown table converted from the CSV>",
-  caption="<caption>",
-  legend="<full legend>",
+  caption="<caption — what the table shows: columns, units, n>",
 )
+# Tables have `caption` only; `legend` is a figure field and add_table
+# rejects it.
 ```
 
 ### 5. Link the analysis to its outputs

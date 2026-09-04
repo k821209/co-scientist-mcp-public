@@ -301,3 +301,11 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
   `export_to_path` DID create the file, just somewhere else. When the deliverable
   belongs to a submission package assembled on another paper, follow the export
   with `attach_export(slug=<manuscript>, local_path=…, scope="main")`.
+
+## When this file is what actually goes to the journal
+
+An export is normally edited by hand before it is sent. When the user tells you
+which file was submitted, `register_submission(slug, local_path=…)` — that copy,
+not this export — so the baseline `/tracked-changes-export` and
+`/reviewer-frame-check` need exists, and `submission_sync` can say whether the
+sections still match it. Only from what the user says was sent; never infer it.

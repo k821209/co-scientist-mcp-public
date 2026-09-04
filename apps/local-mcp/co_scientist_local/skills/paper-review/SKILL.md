@@ -42,8 +42,10 @@ Three virtual reviewers, run in sequence. Each writes its own findings:
 2. **Statistics Reviewer** — calculations, claims that don't follow
    from the data, p-value misuse, multiple-testing, effect-size
    omissions. Cross-check numbers between abstract / results / tables.
-3. **Domain Reviewer** — field context, prior art, terminology,
-   missing key citations. Use `mcp__co_scientist__search_works` to
+3. **Domain Reviewer** — field context, prior art, terminology used
+   WRONGLY (the wrong term for the thing), missing key citations. Terminology
+   as register — the right fact in a phrasing the field would not print — is
+   `/prose-review`'s rail, not this one; the two must not interleave. Use `mcp__co_scientist__search_works` to
    spot-check that referenced prior work exists and is correctly
    characterized.
 

@@ -171,10 +171,10 @@ Palette:
   muted: #6B7280       # slate grey — captions, grid, footer
   highlight: #E8590C   # signal orange — ONE decisive number / bottleneck per slide
 Typography:
-  # Noto Sans KR for display + body (shared Hangul/Latin metrics → no
-  # mixed-script seam). JetBrains Mono for tool names / code / numerals /
+  # Noto Sans CJK KR for display + body (shared Hangul/Latin metrics → no
+  # mixed-script seam). Noto Sans Mono CJK KR for tool names / code / numerals /
   # markers / DB stats only.
-  display: Noto Sans KR   body: Noto Sans KR   mono: JetBrains Mono
+  display: Noto Sans CJK KR   body: Noto Sans CJK KR   mono: Noto Sans Mono CJK KR
 Type scale:
   title: 28  head: 22  body: 17  line_spacing: 1.30
   cover_title: 48  caption: 11  hybrid_head: 22  hybrid_body: 15
@@ -234,10 +234,10 @@ mcp__co_scientist__update_deck(
       # designed to share metrics with the CJK script. Pretendard's Latin
       # is taller / heavier than its Hangul and creates a visible seam in
       # mixed-script body text (todo 008 §B).
-      #   Korean   audience: display: Noto Sans KR  body: Noto Sans KR
+      #   Korean   audience: display: Noto Sans CJK KR  body: Noto Sans CJK KR
       #   Japanese audience: display: Noto Sans JP  body: Noto Sans JP
       #   Chinese  audience: display: Noto Sans SC  body: Noto Sans SC
-      display: Inter Bold     body: Inter Regular     mono: JetBrains Mono
+      display: Inter Bold     body: Inter Regular     mono: Noto Sans Mono CJK KR
     Type scale:
       # legacy keys (still honored)
       title: 32  head: 26  body: 20  line_spacing: 1.22
@@ -286,7 +286,7 @@ mixes Latin and CJK in the same paragraph (typical for Korean academic
 talks that use English jargon like "BLUP", "GWAS", "MCP"), the
 **Latin glyphs need to share metrics with the CJK script** or the two
 read as collaged from different fonts. Google's **Noto Sans** pan-CJK
-families do this by design — Noto Sans KR / JP / SC ship Latin
+families do this by design — Noto Sans CJK KR / JP / SC ship Latin
 glyphs co-designed with the matching Hangul / Kana / Hanzi. Pretendard
 and Inter look great in isolation but their Latin glyphs are taller
 and heavier than the Hangul they sit next to, so "MCP가 다리" reads
@@ -1599,7 +1599,7 @@ Fonts: keep to faces present on the render host — `export_deck_to_pptx`
 returns `font_warnings` for any missing one (a missing font → LibreOffice
 substitutes → the PDF diverges from PowerPoint). Safe picks: macOS
 `Apple SD Gothic Neo` (display+body) + `Menlo` (mono); for Korean decks the
-Noto Sans KR static build.
+Noto Sans CJK KR static build.
 
 **Sizing ratios (so elements read at projection distance):**
 - **Card icon ≥ 40–50% of the card width.** A 72pt (1") icon in a 3" card
@@ -1729,7 +1729,7 @@ the render host. LibreOffice silently substitutes a missing face, so the
 exported PDF/PNG (and the dashboard preview) diverge from PowerPoint — the
 "PPT looks right but the PDF is misaligned" trap. Two gotchas: (a) the font
 isn't installed at all → pick one that is; (b) it's a **variable** font
-(e.g. some `Noto Sans KR` builds) → LibreOffice may pick the wrong weight,
+(e.g. some `Noto Sans CJK KR` builds) → LibreOffice may pick the wrong weight,
 so prefer a static build or a host-bundled family. Safe cross-platform
 picks: macOS `Apple SD Gothic Neo` + `Menlo`; otherwise a static Noto
 build. Fix the concept Typography and re-export until `font_warnings == []`.
@@ -1749,7 +1749,7 @@ move it below the title block). A small top-right corner logo is exempt, so
 deck-chrome logos don't false-positive. On both `preview_slide` and the export.
 
 ```
-res = mcp__co_scientist__export_deck_to_pptx(slug, deck_id)
+res = mcp__co_scientist__export_deck_to_pptx(slug, deck_id, output_path="<dir>/<deck>.pptx")
 for png in res["slide_pngs"]:
     # Read the PNG via the Read tool — Claude is multimodal and will
     # see the actual slide rendering.

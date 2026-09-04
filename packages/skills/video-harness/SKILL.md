@@ -43,7 +43,7 @@ top (Claude-in-the-loop).
 | screencast / tutorial | `screencast` | 16:9 | line | none |
 | talking head / webcam | `talkinghead` | 16:9 | word-pop | none |
 | Short (simple) | `shorts` | 9:16 | word-pop | blur-pad |
-| Short (framed 3-zone) | `shorts_boxed` | 9:16 | word-pop | **boxed** |
+| Short (framed 3-zone) | `shorts_boxed` | 9:16 | word-pop | blur-pad (+ `layout=boxed`) |
 | slides / deck capture | `slides` | 16:9 | line | none |
 
 Language: pass `--lang ko` (Korean), `--lang en`, … Korean captions need

@@ -85,7 +85,7 @@ description_block = format_description(refs) # full bibliography + DOIs for the 
 ### 5. Verify + upload
 Frame↔sentence mapping, audio levels (mean ≈ -20 dB / max < 0), pronunciation
 check (spell abbreviations in Hangul for the TTS). Then `add_video` →
-`youtube_upload(privacy="public")` with the citation block in the description.
+`youtube_upload(privacy="unlisted")   # public ONLY after the user says so — /video-publish §3` with the citation block in the description.
 
 ## Related
 `[[shorts-reference-management]]`, `[[factcheck-discipline]]`. Same lineage as

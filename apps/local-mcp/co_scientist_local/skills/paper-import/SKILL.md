@@ -166,3 +166,8 @@ to continue.
   warning, so the user knows figures/tables didn't come across.
 - **Tell the user every judgment call** — merged sections you split,
   citations you couldn't map, images you skipped.
+- **Ask whether this file was already submitted.** An imported `.docx` is very
+  often the version reviewers hold. If so, `register_submission(slug,
+  local_path=<the file>)` right away — then `submission_sync` is meaningful
+  from day one instead of the sections silently drifting from a baseline nobody
+  recorded.

@@ -47,10 +47,16 @@ first so a clean current `.docx` exists.
 
 ### 1. Locate the two documents
 
-- **OLD** — the version the reviewers actually received. Check
-  `mcp__co_scientist__list_exports(slug)`; submitted files are usually archived
-  under `exports/.<label>/`. If the previous submission was never exported to
-  `.docx`, say so and stop — there is nothing to compare against.
+- **OLD** — the version the reviewers actually received:
+  `list_submissions(slug)` → `get_submission(slug)`. If it is empty, ASK — do not
+  substitute an export. (An earlier version of this step said to look in
+  `list_exports` under `exports/.<label>/`; that is the newest-export trap hard
+  rule 5 exists to prevent, and nothing in the exports tool writes such a path.)
+
+  Before either document: if `get_paper_state(slug)["paper"]["submission_sync"]`
+  reads `unreconciled`, the SECTIONS may not match the sent file — see
+  `/paper-revision` "If this paper has been SUBMITTED". A revision built on
+  sections that drifted from the baseline diffs against text nobody sent.
 - **NEW** — the revised document. **Edit a COPY of the OLD file; do not export a
   fresh one from co-scientist.** The submitted `.docx` carries material that never
   existed in the sections and cannot be regenerated: Key Points, a Biographical

@@ -432,7 +432,14 @@ user. If you leave any warning intentionally, say which and why.
 
 ## Citation Format
 
-Inline DOIs: `{doi:10.1234/example}`. You can pre-add references via
+Inline DOIs: `{doi:10.1234/example}`. A reference with NO DOI — software, a
+report, a book, a GenBank submission — is cited by its key: `{cite:andrews2010}`.
+Never `[@key]`: that is pandoc syntax, this system does not resolve it, and it
+reads as cited on screen while exporting with no bibliography entry
+(`lint_manuscript` flags it as `foreign_citation_syntax`).
+
+Prefer `add_reference_by_doi(slug, doi)` — it fetches the metadata so nothing
+is invented. You can pre-add references via
 `mcp__co_scientist__add_reference(slug, citation_key=..., doi=..., title=..., authors=[...])`
 either before or after the prose — `prepare_export` will check for
 unresolved citations at export time.
@@ -472,3 +479,7 @@ they know what you're actively editing.
 Suggest the human pull up the dashboard at the project's Firebase URL to
 read what you wrote and leave inline comments. The comments come back to
 you next session via `count_open_user_comments` in the SessionStart banner.
+
+Offer `/prose-review` on the finished draft. It reads the text as the journal's
+copy-editor and files only register problems, with the replacement sentence —
+the pass that catches what §2a describes when it did not hold while drafting.

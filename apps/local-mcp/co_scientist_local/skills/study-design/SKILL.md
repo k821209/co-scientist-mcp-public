@@ -26,7 +26,7 @@ guessable:
 | **Links** | Work, and open a NEW TAB. Write `<a href="…" target="_blank" rel="noopener">`. The frame is not allowed to navigate the dashboard away. |
 | **Scripts** | Off unless the reader turns them on. The document must be readable without them. |
 | **CSS scope** | The document owns its page. `:root`, `body` and bare element selectors are yours and leak nowhere — it is a separate document, not an injection into the dashboard. |
-| **Editing** | `write_study(study_id=…)` replaces in place. Without the id you get a new document, and deleting the old one breaks any `follows` chain and changes the URL. |
+| **Editing** | `update_study(study_id, html=…)` amends in place, and passing `html` **re-stamps `sources` as read-now** — rewriting the tables is what makes them current. `write_study(study_id=…)` replaces the whole record (every field) and does not re-stamp. Never write-new-then-delete: it breaks any `follows` chain and changes the URL. |
 
 **The styling switch is all-or-nothing.** Adding a `<style>` block turns the
 default off entirely, so a partial stylesheet leaves everything you did not

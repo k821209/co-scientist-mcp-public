@@ -1398,8 +1398,10 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """Register a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
 
-        `caption`/`legend` describe what the item SHOWS: columns, units, sample
-        sizes, normalisation, how to read the symbols. Interpretation
+        `caption` describes what the item SHOWS: columns, units, sample
+        sizes, normalisation, how to read the symbols. (Tables have no
+        separate `legend` field — figures do; this docstring used to say
+        both and a skill wrote `legend=` on the strength of it.) Interpretation
         stays OUT — what the result means, what it excludes, why it matters
         belong to the body section that cites the item. A caption that argues
         duplicates the body, and the two copies drift apart under revision.
@@ -1423,8 +1425,10 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """Patch a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
 
-        `caption`/`legend` describe what the item SHOWS: columns, units, sample
-        sizes, normalisation, how to read the symbols. Interpretation
+        `caption` describes what the item SHOWS: columns, units, sample
+        sizes, normalisation, how to read the symbols. (Tables have no
+        separate `legend` field — figures do; this docstring used to say
+        both and a skill wrote `legend=` on the strength of it.) Interpretation
         stays OUT — what the result means, what it excludes, why it matters
         belong to the body section that cites the item. A caption that argues
         duplicates the body, and the two copies drift apart under revision.

@@ -209,8 +209,8 @@ Then:
 
 ```
 result = mcp__co_scientist__generate_image(
-  slug,
   prompt=<full prompt>,
+  slug=slug,                            # keyword: `prompt` is the first parameter
   figure_number=<N>,                    # if registering immediately
   asset_filename=<name.png>,            # if exploring (no fig number)
   aspect_ratio="16:9",
