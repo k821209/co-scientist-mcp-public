@@ -508,6 +508,11 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   stats / domain) + consistency pass; each finding becomes one
   Firestore review row (`source="ai"`) anchored to the offending
   passage so the dashboard renders inline highlights.
+- `/reconcile-reviews [slug]` — re-anchor inline comment highlights after the
+  manuscript changed under them: after `/paper-import`, after a batch of
+  section edits, and at the end of `/paper-revision`. Comments whose passage
+  moved otherwise fall back to the top of their section with no highlight,
+  which reads as "resolved" to a skimming eye.
 - `/prose-review [slug]` — reads a FINISHED draft as a journal copy-editor and
   comments only where the prose is wrong for the venue: metaphor imported from
   another field, sentences left answering a reviewer, chat register, a register
