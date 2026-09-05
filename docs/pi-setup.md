@@ -156,22 +156,32 @@ The project-side ones also load only after the folder is trusted (`/trust`), so
 on an untrusted folder they are skipped and the global one is used instead, which
 reads as rules switching on and off between projects.
 
-## 4. Two adapter settings that are NOT optional
+## 4. Two adapter settings — one mandatory, one sized on purpose
 
 ```json
 {
-  "directTools": true,
+  "directTools": ["whoami", "project_guide", "get_paper_state", "…"],
   "toolPrefix": "mcp"
 }
 ```
 
-- **`directTools: true`** — by default the adapter exposes one `mcp` proxy tool
-  rather than the individual tools. The skills call tools by name, so they need
-  the direct form.
-- **`toolPrefix: "mcp"`** — produces `mcp__co_scientist__<tool>`, which is
-  exactly what every skill already writes. The adapter's DEFAULT prefix is
-  `<server>_<tool>`, and under that default every tool reference in every skill
-  is wrong. This is the single most likely thing to get wrong.
+- **`toolPrefix: "mcp"` is not optional.** It produces `mcp__co_scientist__<tool>`,
+  the name every skill writes. The adapter's DEFAULT is `<server>_<tool>`, and
+  under that every tool reference in all 27 skills is wrong. This is the single
+  most likely thing to get wrong.
+- **`directTools` is a LIST, not `true`.** The server registers 229 tools and a
+  direct tool costs ~150–300 tokens of system prompt on every turn. The
+  adapter's own README: *"good for targeted sets of 5–20 tools; for servers with
+  75+ tools, stick with the proxy or pick specific tools."* We used to say
+  `true` and call it non-negotiable — on the ~100k-context models Pi is usually
+  run with, that was about half the window gone before the first message, which
+  is why Pi sessions seemed unable to carry the skill set. The Setup tab now
+  emits the list: the five session-start tools plus every tool that two or more
+  skills call, computed from the skills and pinned by a test.
+
+  Every other tool stays reachable through the adapter's proxy, **under the
+  same name**: `mcp({ tool: "mcp__co_scientist__<name>", args: {…} })`. Nothing
+  in the skills changes; only the call form for a tool outside the list.
 
 Verify before trusting it: run `/mcp` (or ask the agent to list its tools) and
 confirm you see `mcp__co_scientist__whoami`. If you see `co_scientist_whoami`,

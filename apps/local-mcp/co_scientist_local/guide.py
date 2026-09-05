@@ -572,7 +572,13 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
 - `/release-publish [slug] [analysis]` — audit + publish an analysis
   release folder as a standalone GitHub repo (git workflow, gated).
 
-## Tool surface (~60 tools under `mcp__co_scientist__*`)
+## Tool surface (`mcp__co_scientist__*`)
+
+**Under Pi, not every tool is a direct tool.** The Setup tab exposes the ~30
+the skills use most directly; the rest are reachable through the adapter's
+proxy under the SAME name — `mcp({{ tool: "mcp__co_scientist__<name>", args:
+{{…}} }})`. If a tool a skill names is not in your direct tool list, call it that
+way. Nothing about the name changes. (Under Claude Code every tool is direct.)
 
 papers · sections · reviews · figures · tables · references · materials
 · analyses · runs · servers (HPC) · exports · journal CSL · requirements
