@@ -580,6 +580,13 @@ proxy under the SAME name — `mcp({{ tool: "mcp__co_scientist__<name>", args:
 {{…}} }})`. If a tool a skill names is not in your direct tool list, call it that
 way. Nothing about the name changes. (Under Claude Code every tool is direct.)
 
+**Under Codex, the tools are behind its tool search.** Codex names them
+exactly as the skills do (`mcp__co_scientist__<name>`) but does not list all
+229 in the prompt; it loads a tool's definition when you look it up by name.
+So call the tool the skill names — the name is the lookup key. Skills are
+invoked as `$<skill-name>` there; a `/<skill-name>` in a skill's text means
+the same skill.
+
 papers · sections · reviews · figures · tables · references · materials
 · analyses · runs · servers (HPC) · exports · journal CSL · requirements
 · project memory · todos + activity · image gen · whoami · project_guide

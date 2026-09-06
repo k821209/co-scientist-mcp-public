@@ -34,20 +34,27 @@ from .backends import InMemoryBackend
 from .state import State
 
 
+# The project context file, by host. Claude Code and Pi read CLAUDE.md; Codex
+# reads AGENTS.md only (its fallback filename list is empty by default —
+# `codex-rs/config/src/config_toml.rs`), so the Codex setup writes that name.
+_CONTEXT_FILES = ("CLAUDE.md", "AGENTS.md")
+
+
 def _check_claude_md_project_id(state: State) -> None:
-    """Compare ./CLAUDE.md's stated project id (if any) against the one
-    the MCP actually authenticated to. A mismatch usually means the user
-    mixed `.mcp.json` and `CLAUDE.md` from two different dashboard
-    projects — the source of the long-running 'paper not found' bug.
+    """Compare the project context file's stated project id (if any) against
+    the one the MCP actually authenticated to. A mismatch usually means the
+    user mixed the MCP config and the context file from two different
+    dashboard projects — the source of the long-running 'paper not found' bug.
 
     Prints a prominent banner to stderr; doesn't fail startup so the
     user can still operate (just with the wrong project bound).
     """
-    cwd_claude = pathlib.Path.cwd() / "CLAUDE.md"
-    if not cwd_claude.is_file():
+    cwd = pathlib.Path.cwd()
+    ctx = next((cwd / n for n in _CONTEXT_FILES if (cwd / n).is_file()), None)
+    if ctx is None:
         return
     try:
-        text = cwd_claude.read_text(encoding="utf-8")
+        text = ctx.read_text(encoding="utf-8")
     except OSError:
         return
     # The dashboard template writes `Project id: \`<pid>\``; older
@@ -58,14 +65,15 @@ def _check_claude_md_project_id(state: State) -> None:
     if claimed is None:
         return
     if claimed != state.project_id:
+        name = ctx.name
         sys.stderr.write(
             "\n"
-            "  ╭─ ⚠  CLAUDE.md / API key mismatch ─────────────────────────────╮\n"
-            f"  │  CLAUDE.md project_id : {claimed:<36} │\n"
+            f"  ╭─ ⚠  {name} / API key mismatch ─────────────────────────────╮\n"
+            f"  │  {name:<9} project_id : {claimed:<36} │\n"
             f"  │  MCP authenticated as : {state.project_id:<36} │\n"
             "  │                                                                │\n"
-            "  │  These should match. You probably mixed `.mcp.json` and        │\n"
-            "  │  CLAUDE.md from two different dashboard projects. Re-download  │\n"
+            "  │  These should match. You probably mixed the MCP config and     │\n"
+            f"  │  {name:<9} from two different dashboard projects. Re-download │\n"
             "  │  setup-<slug>.sh from a single project's Setup tab to fix.     │\n"
             "  ╰────────────────────────────────────────────────────────────────╯\n\n"
         )
@@ -177,6 +185,9 @@ def main() -> None:
     if argv and argv[0] == "install-agents":
         from .agents_install import cli as _install_agents_cli
         sys.exit(_install_agents_cli(argv[1:]))
+    if argv and argv[0] == "install-hooks":
+        from .hooks_install import cli as _install_hooks_cli
+        sys.exit(_install_hooks_cli(argv[1:]))
 
     if os.environ.get("CO_SCIENTIST_USE_MEMORY") == "1":
         state = _build_dev_state()

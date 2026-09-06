@@ -131,6 +131,8 @@ no Pi-specific version to write. Download it into the project folder alongside
 Do NOT also add an `AGENTS.md` next to it. Pi takes the FIRST match in a
 directory — `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`,
 `CLAUDE.MD` — so an `AGENTS.md` shadows the `CLAUDE.md` rather than adding to it.
+(The one exception is a folder also set up for Codex, whose `AGENTS.md` is the
+same text under the name Codex reads; shadowing identical content is harmless.)
 
 Why it matters on a fresh folder: the file carries the project id, and the
 session-start sequence compares it against what `whoami()` returns. That check is
