@@ -17,6 +17,7 @@ Two auth modes, same `Backend` interface:
 """
 from __future__ import annotations
 
+import mimetypes
 import os
 
 import urllib.error
@@ -264,7 +265,12 @@ class FirestoreBackend(Backend):
         if isinstance(content, str):
             blob.upload_from_string(content, content_type="text/markdown")
         else:
-            blob.upload_from_string(content)
+            # Name the type from the extension. Without it every upload is
+            # application/octet-stream, which a browser downloads rather than
+            # opens — wrong for an .html export meant to be read in place, and
+            # not right for a .pdf either.
+            ctype, _ = mimetypes.guess_type(path)
+            blob.upload_from_string(content, content_type=ctype or "application/octet-stream")
 
     def get_blob(self, path: str) -> bytes | None:
         blob = self._bucket.blob(path)

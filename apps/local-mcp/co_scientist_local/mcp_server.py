@@ -2571,8 +2571,18 @@ def build_mcp(state: State) -> FastMCP:
         upload_to_storage: bool = True,
         scope: str = "main",
         page_size: str = "a4",
+        theme: str = "paper",
     ) -> dict[str, Any]:
         """Run pandoc to produce a document; upload result to Cloud Storage.
+
+        `fmt`: docx (default) | tex | pdf | md | html. "html" is ONE
+        self-contained file — stylesheet, script and figures inlined, no CDN,
+        readable offline and with scripts off — for anything that travels as
+        a file rather than to a journal (teaching material, a handout).
+        `theme` shapes the html only: "paper" (a reading page) or "course"
+        (side contents, copy button on each code block, a language badge on
+        fenced code such as ```bash / ```powershell, task-list checkboxes the
+        reader can tick, fold-away <details> blocks).
 
         Place a table or figure IN the body by putting `![](table:N)` /
         `![](figure:N)` alone on a line where it belongs; anything not placed
@@ -2594,7 +2604,7 @@ def build_mcp(state: State) -> FastMCP:
         return _exports.export_to_path(
             state, slug, output_path=output_path, fmt=fmt,
             csl_path=csl_path, upload_to_storage=upload_to_storage, scope=scope,
-            page_size=page_size,
+            page_size=page_size, theme=theme,
         )
 
     @mcp.tool()

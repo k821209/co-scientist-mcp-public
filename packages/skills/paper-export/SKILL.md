@@ -1,6 +1,6 @@
 ---
 name: paper-export
-description: Export a paper to .docx / .tex / .pdf / .md via Pandoc. Use when the user says "export," "download as Word/PDF/LaTeX," "send to journal," or any phrasing that asks for a finished document file.
+description: Export a paper to .docx / .tex / .pdf / .md / single-file .html via Pandoc. Use when the user says "export," "download as Word/PDF/LaTeX," "send to journal," or any phrasing that asks for a finished document file.
 ---
 
 # /paper-export
@@ -97,7 +97,13 @@ If the user wants to proceed despite warnings, continue.
 ### 3. Decide format + output path
 
 - Default format: **docx** (most common journal submission target).
-- Other accepted formats: `tex`, `pdf`, `md`.
+- Other accepted formats: `tex`, `pdf`, `md`, `html`. `html` is one
+  self-contained file for anything that travels as a file rather than to a
+  journal — teaching material, a handout; `theme="course"` adds the
+  classroom affordances (see the tool's docstring). Fenced code carries its
+  language (```bash, ```powershell) so the badge shows; a fold-away solution
+  is a raw `<details><summary>…</summary>…</details>` block; a checklist is
+  a task list (`- [ ] step`).
 - Default path: `./{slug}.{ext}` in the current working directory
   unless the user supplied one.
 
@@ -107,9 +113,10 @@ If the user wants to proceed despite warnings, continue.
 mcp__co_scientist__export_to_path(
   slug,
   output_path="<absolute path or ./{slug}.{ext}>",
-  fmt="docx" | "tex" | "pdf" | "md",
+  fmt="docx" | "tex" | "pdf" | "md" | "html",
   scope="main",     # "main" | "supplementary" | "all"
   page_size="a4",   # "a4" (default) | "letter" — .docx only
+  theme="paper",    # "paper" | "course" — .html only
 )
 ```
 

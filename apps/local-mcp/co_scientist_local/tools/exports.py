@@ -33,6 +33,7 @@ from . import datasets as _datasets
 from . import display_lint as _display_lint
 from . import docx_export as _docx_export
 from . import figures as _figures
+from . import html_export as _html
 from .figures import SUPPLEMENTARY_NUMBER_OFFSET
 from . import papers as _papers
 from . import references as _references
@@ -1075,11 +1076,13 @@ def prepare_export(
     return out
 
 
-_VALID_FORMATS = {"docx", "tex", "pdf", "md"}
+_VALID_FORMATS = {"docx", "tex", "pdf", "md", "html"}
 
 
 def _format_pandoc_args(fmt: str, manuscript_filename: str, output_filename: str,
-                       has_bib: bool, csl_path: str | None) -> list[str]:
+                       has_bib: bool, csl_path: str | None,
+                       html_title: str | None = None,
+                       embed_flag: str = _html.EMBED_FLAG) -> list[str]:
     # Disable yaml_metadata_block so a body-level `---` (thematic break /
     # section divider) isn't mis-parsed as YAML front matter and crash the
     # export (dev-todo P1-3). Everything else in pandoc's markdown stays on.
@@ -1095,6 +1098,9 @@ def _format_pandoc_args(fmt: str, manuscript_filename: str, output_filename: str
         pass
     elif fmt == "md":
         args.extend(["-t", "markdown"])
+    elif fmt == "html":
+        # One self-contained file: stylesheet, script and figures inlined.
+        args.extend(_html.pandoc_args(title=html_title, embed_flag=embed_flag))
     # docx is the implicit default when output ext is .docx. We do NOT pass a
     # --reference-doc: pandoc's built-in reference carries the "Table" style
     # (borders/shading) and other style mappings; the base font is instead
@@ -1268,10 +1274,16 @@ def export_to_path(
     upload_to_storage: bool = True,
     scope: str = "main",
     page_size: str = _docx_export.DEFAULT_PAGE_SIZE,
+    theme: str = "paper",
 ) -> dict:
     """Full export pipeline.
 
-    `fmt` is inferred from output_path extension if None.
+    `fmt` is inferred from output_path extension if None. "html" produces ONE
+    self-contained file (stylesheet, script and every figure inlined; no CDN,
+    readable offline and with scripts off); `theme` picks its look — "paper"
+    (a reading page) or "course" (side contents, copy buttons on code, a
+    language badge on fenced code, tickable task lists, styled <details>).
+    `theme` means nothing for the other formats.
     `page_size` is "a4" (default) or "letter", applied to every .docx on both
     engines.
     The citation style is auto-resolved from the paper's journal and
@@ -1297,6 +1309,7 @@ def export_to_path(
     if scope not in _VALID_SCOPES:
         raise ValueError(f"invalid scope {scope!r}; choose from {_VALID_SCOPES}")
     page_size = _docx_export.validate_page_size(page_size)
+    theme = _html.validate_theme(theme)
     include_main = scope in ("main", "all")
     include_supp = scope in ("supplementary", "all")
 
@@ -1319,6 +1332,9 @@ def export_to_path(
     fmt = (fmt or inferred or "docx").lower()
     if fmt not in _VALID_FORMATS:
         raise ValueError(f"unsupported format {fmt!r}; choose from {_VALID_FORMATS}")
+    if theme != "paper" and fmt != "html":
+        export_warnings.append(
+            f"theme={theme!r} applies to fmt='html' only — ignored for {fmt!r}")
 
     # Non-"paper" docs (reports / other) render .docx natively via python-docx
     # — pandoc's OOXML crashes Hancom (dev-todo P0-1) and these docs don't need
@@ -1439,11 +1455,22 @@ def export_to_path(
                 )
         else:
             # Run pandoc; it writes the output file inside tmp dir, we copy out.
+            html_title = (bundle["paper"].get("title") or slug) if fmt == "html" else None
+            if fmt == "html":
+                _html.write_theme_files(tmp_path, theme)
             args = _format_pandoc_args(
                 fmt, "manuscript.md", out.name,
-                has_bib=has_bib, csl_path=csl_arg,
+                has_bib=has_bib, csl_path=csl_arg, html_title=html_title,
             )
             rc, stdout, stderr = state.require_pandoc().run(args, cwd=str(tmp_path))
+            if rc != 0 and fmt == "html" and _html.EMBED_FLAG.lstrip("-") in stderr:
+                # pandoc < 2.19 knows the flag under its old name only.
+                args = _format_pandoc_args(
+                    fmt, "manuscript.md", out.name,
+                    has_bib=has_bib, csl_path=csl_arg, html_title=html_title,
+                    embed_flag=_html.EMBED_FLAG_LEGACY,
+                )
+                rc, stdout, stderr = state.require_pandoc().run(args, cwd=str(tmp_path))
             if rc != 0:
                 return {
                     "error": f"pandoc failed (rc={rc}): {stderr.strip()}",
@@ -1497,6 +1524,7 @@ def export_to_path(
             "size_bytes": len(output_bytes),
             "csl_filename": csl_filename,
             "csl_status": csl_status,
+            "theme": theme if fmt == "html" else None,
             "updated_at": now_iso(),
         }
         if existing is None:
@@ -1512,6 +1540,7 @@ def export_to_path(
         "doc_type": doc_type,
         "engine": engine,
         "page_size": page_size if fmt == "docx" else None,
+        "theme": theme if fmt == "html" else None,
         "local_path": str(out),
         "blob_path": blob_path,
         "size_bytes": len(output_bytes),
