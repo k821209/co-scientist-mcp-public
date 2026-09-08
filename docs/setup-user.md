@@ -19,8 +19,12 @@ sudo apt update
 sudo apt install -y python3.11 python3.11-venv
 ```
 
-Then run the install with `python3.11 -m pip …` (or inside a `python3.11 -m venv`;
-if you use a venv, point `.mcp.json`'s `command` at that venv's `python`):
+Then run the install with `python3.11 -m pip …`, or inside a venv if you prefer
+one (`python3.11 -m venv ~/co-scientist-mcp-public/.venv`) — your choice. The
+setup script from the Setup tab finds the interpreter that has the package by
+itself (the `python3` on PATH, then `python3.11`–`3.13`, then a venv at
+`~/co-scientist-mcp-public/.venv`) and writes its absolute path into the config;
+for a venv anywhere else, set `CO_SCIENTIST_PYTHON` to its `python` first:
 
 ```bash
 git clone https://github.com/k821209/co-scientist-mcp-public.git ~/co-scientist-mcp-public

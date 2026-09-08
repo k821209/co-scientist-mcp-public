@@ -13,12 +13,21 @@ the paths in parentheses are where to look if a later Codex changes it.
 ## 1. Install
 
 Codex itself (`npm i -g @openai/codex`, then `codex login`) is assumed. The MCP
-is the same install as for Claude Code, and it carries the skills and the hooks:
+is the same install as for Claude Code, and it carries the skills and the hooks.
+It needs **Python 3.11 or newer**; a bare Ubuntu/WSL box usually has an older
+one, so on such a machine start with the deadsnakes block in
+[setup-user.md](setup-user.md). A venv is your choice — the setup script finds
+the interpreter that has the package either way (PATH `python3`, then
+`python3.11`–`3.13`, then `~/co-scientist-mcp-public/.venv`), and for a venv
+anywhere else you set `CO_SCIENTIST_PYTHON` to its `python` before running it.
 
 ```bash
 git clone https://github.com/k821209/co-scientist-mcp-public ~/co-scientist-mcp-public
-pip install -e ~/co-scientist-mcp-public/apps/local-mcp
+pip install -e ~/co-scientist-mcp-public/apps/local-mcp      # or python3.11 -m pip, or a venv's pip
 ```
+
+Verified on a bare Ubuntu machine (2026-09-08): deadsnakes python3.11, a venv
+inside the clone, `pip install -e`, then the setup script.
 
 Already installed for Claude Code or Pi on this machine? Nothing to do here.
 Updating is `git pull` in that folder and a restart — MCP, skills and hooks at

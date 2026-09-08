@@ -13,8 +13,10 @@ pi install ~/co-scientist-mcp-public
 pip install -e ~/co-scientist-mcp-public/apps/local-mcp
 ```
 
-That gives you the 27 skills, the provenance guard, and the MCP. Then wire the
-tools.
+That gives you the 27 skills, the provenance guard, and the MCP. The MCP needs
+Python ≥ 3.11 (see [setup-user.md](setup-user.md) for a bare Ubuntu/WSL box);
+a venv is your choice, and the setup script finds the interpreter that has the
+package by itself. Then wire the tools.
 
 ## 0. Updating — and why the install is a path, not `git:`
 
