@@ -159,6 +159,11 @@ applies; `csl_status` reads `not_applicable`. `prepare_export` says how many
 markers will render this way before the file exists. Never replace markers by
 hand: the numbering then has to be kept in step with every added reference.
 
+**Raw HTML in a report.** The python-docx path renders `<br>` — a line break,
+including inside a table cell, which is the one way markdown has to break a
+cell — and no other tag. Anything else is dropped and named in the export's
+warnings (and in `prepare_export` beforehand); write it as markdown instead.
+
 **Main vs supplementary (`scope`).** A journal receives a main manuscript
 containing only the MAIN figures/tables; supplementary items (figure/table
 number ≥ 101) belong in a separate file. This convention applies to

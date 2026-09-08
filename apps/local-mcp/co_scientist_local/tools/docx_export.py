@@ -21,6 +21,9 @@ where figure blobs were written).
 """
 from __future__ import annotations
 
+import contextvars
+import re
+
 import pathlib
 
 from docx import Document
@@ -268,6 +271,29 @@ def _fix_drawing_ids(doc) -> None:
             el.set("id", str(n))
 
 
+# Raw HTML in the markdown. CommonMark lets it through as html_inline /
+# html_block tokens, and this renderer used to handle neither — so a `<br>` in
+# a table cell, the one idiom markdown has for a line break inside a cell,
+# vanished without a trace: not a break, not the literal text, nothing
+# (feedback a22db828faa3: 433 cells, zero breaks, items run together). `<br>`
+# is now a break. Every other tag is still not rendered, but it is COUNTED, and
+# the export reports what it dropped instead of leaving the discovery to
+# whoever opens the file.
+_BR_RE = re.compile(r"<br\s*/?>", re.I)
+_TAG_NAME_RE = re.compile(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)")
+_DROPPED_HTML: contextvars.ContextVar[dict[str, int] | None] = contextvars.ContextVar(
+    "docx_dropped_html", default=None)
+
+
+def _drop_html(fragment: str) -> None:
+    counts = _DROPPED_HTML.get()
+    if counts is None:
+        return
+    m = _TAG_NAME_RE.search(fragment)
+    name = f"<{m.group(1).lower()}>" if m else fragment.strip()[:20]
+    counts[name] = counts.get(name, 0) + 1
+
+
 def _collect_inline_runs(
     node: SyntaxTreeNode, bold: bool, italic: bool, code: bool
 ) -> list[tuple[str, bool, bool, bool]]:
@@ -288,6 +314,13 @@ def _collect_inline_runs(
             out.extend(_collect_inline_runs(child, bold, True, code))
         elif child.type in ("softbreak", "hardbreak"):
             out.append((" ", bold, italic, code))
+        elif child.type == "html_inline":
+            # Inside a hyperlink a break cannot be represented; a space keeps
+            # the words apart. Anything else is dropped and counted.
+            if _BR_RE.fullmatch(child.content.strip()):
+                out.append((" ", bold, italic, code))
+            else:
+                _drop_html(child.content)
         else:
             out.extend(_collect_inline_runs(child, bold, italic, code))
     return out
@@ -329,6 +362,11 @@ def _render_inline(
             _styled_run(paragraph, " ", bold=bold, italic=italic, code=code)
         elif t == "hardbreak":
             paragraph.add_run().add_break()
+        elif t == "html_inline":
+            if _BR_RE.fullmatch(child.content.strip()):
+                paragraph.add_run().add_break()   # same as a markdown hard break
+            else:
+                _drop_html(child.content)
 
 
 def _resolve_image(src: str, asset_dir: pathlib.Path | None) -> pathlib.Path | None:
@@ -412,6 +450,8 @@ def _render_block(doc, node: SyntaxTreeNode, asset_dir: pathlib.Path | None,
         doc.add_paragraph("─" * 30).alignment = WD_ALIGN_PARAGRAPH.CENTER
     elif t == "table":
         _render_table(doc, node, asset_dir)
+    elif t == "html_block":
+        _drop_html(node.content)
 
 
 def _is_lone_image(inline: SyntaxTreeNode) -> bool:
@@ -509,11 +549,16 @@ def render_markdown_to_docx(
     *,
     asset_dir: str | pathlib.Path | None = None,
     page_size: str = DEFAULT_PAGE_SIZE,
+    diagnostics: dict | None = None,
 ) -> pathlib.Path:
     """Render `markdown_text` to a .docx at `output_path`.
 
     `asset_dir` is the directory holding staged image files (figure_N.png);
     body image embeds resolve against it. Returns the written path.
+
+    `diagnostics`, if given, receives what the renderer could not render:
+    `dropped_html` = {"<span>": 3, …} — every raw HTML tag other than `<br>`.
+    Nothing here raises for those; the caller decides whether to warn.
     """
     out = pathlib.Path(output_path).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -522,11 +567,18 @@ def render_markdown_to_docx(
     tokens = _md().parse(markdown_text)
     root = SyntaxTreeNode(tokens)
 
-    doc = Document()
-    apply_page_setup(doc, page_size)
-    _apply_report_template(doc)
-    for node in root.children:
-        _render_block(doc, node, assets)
+    dropped: dict[str, int] = {}
+    token = _DROPPED_HTML.set(dropped)
+    try:
+        doc = Document()
+        apply_page_setup(doc, page_size)
+        _apply_report_template(doc)
+        for node in root.children:
+            _render_block(doc, node, assets)
+    finally:
+        _DROPPED_HTML.reset(token)
     _fix_drawing_ids(doc)  # non-zero visual ids so Hancom renders images (EXP-2)
     doc.save(str(out))
+    if diagnostics is not None:
+        diagnostics["dropped_html"] = dropped
     return out

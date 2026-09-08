@@ -904,6 +904,15 @@ def prepare_export(
         warnings.append(f"{len(placeholders)} placeholder marker(s) in manuscript")
     if unresolved:
         warnings.append(f"{len(unresolved)} unresolved {{doi:…}} citation(s)")
+    if not is_journal_paper:
+        # The native .docx path renders <br> and nothing else of raw HTML.
+        tags = [t.lower() for t in re.findall(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)[^>]*>", prose)]
+        other = sorted({t for t in tags if t != "br"})
+        if other:
+            warnings.append(
+                f"report/other doc: raw HTML other than <br> is not rendered by the "
+                f"python-docx export and will be dropped: "
+                f"{', '.join('<' + t + '>' for t in other[:8])}")
     if not is_journal_paper and n_cite_tokens:
         # Said here, before the file exists, not in the export's afterword.
         where = ("at the `![](references)` embed" if _numcite.has_references_embed(manuscript)
@@ -1482,11 +1491,19 @@ def export_to_path(
             # python-docx writes a native package Hancom opens cleanly, so no
             # OOXML normalization is needed. Figure embeds resolve against the
             # staged blobs in tmp_path.
+            diag: dict = {}
             _docx_export.render_markdown_to_docx(
                 manuscript_text, tmp_output, asset_dir=tmp_path,
-                page_size=page_size,
+                page_size=page_size, diagnostics=diag,
             )
             docx_hancom_fix = "native_python_docx"
+            if diag.get("dropped_html"):
+                shown = ", ".join(f"{k}×{n}" for k, n in sorted(diag["dropped_html"].items()))
+                export_warnings.append(
+                    f"{sum(diag['dropped_html'].values())} raw HTML tag(s) were NOT "
+                    f"rendered by the python-docx export ({shown}) — only <br> is "
+                    f"understood (a line break, also inside a table cell); rewrite "
+                    f"the rest as markdown")
             if numbered_citations:
                 export_warnings.append(
                     f"report/other doc: {numbered_citations} reference(s) cited as "
