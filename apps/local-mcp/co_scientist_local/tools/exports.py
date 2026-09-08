@@ -34,6 +34,7 @@ from . import display_lint as _display_lint
 from . import docx_export as _docx_export
 from . import figures as _figures
 from . import html_export as _html
+from . import numbered_citations as _numcite
 from . import provenance as _prov
 from .figures import SUPPLEMENTARY_NUMBER_OFFSET
 from . import papers as _papers
@@ -839,7 +840,11 @@ def prepare_export(
 
     manuscript = bundle["manuscript"]
     placeholders = _scan_placeholders(manuscript)
-    cited_dois = _extract_cited_dois(manuscript)
+    # Markers inside code are the syntax being shown, not citations — a
+    # document that documents the `{doi:…}` form was reported as having one
+    # unresolved citation (feedback 6e3c8e85eb93).
+    prose = _numcite.without_code(manuscript)
+    cited_dois = _extract_cited_dois(prose)
     known_dois = {r["doi"] for r in refs if r.get("doi")}
     unresolved = sorted(set(cited_dois) - known_dois)
 
@@ -847,7 +852,7 @@ def prepare_export(
     # inline; citeproc drops uncited entries even though they're in the .bib. A
     # DOI-less ref has no {doi:} token, so unless it is cited via {ref:key} /
     # {cite:key} / [@key] it silently vanishes. Warn about those.
-    cited_keys = {k.lower() for k in _CITE_KEY_RE.findall(manuscript)}
+    cited_keys = {k.lower() for k in _CITE_KEY_RE.findall(prose)}
     cited_keys |= {k.strip().lstrip("@").strip().lower()
                    for grp in _RAW_CITE_RE.findall(manuscript) for k in grp.split(";")}
     cited_keys |= {r["citation_key"].lower() for r in refs
@@ -863,8 +868,16 @@ def prepare_export(
 
     paper = bundle["paper"]
     # Resolve the journal's citation style (offline — registry → in-code map →
-    # kebab guess). export_to_path does the actual download.
-    csl = _csl.resolve_csl_filename(state, paper.get("journal"))
+    # kebab guess). export_to_path does the actual download. Journal papers
+    # only: a report's `journal` is a funder or a template name, and guessing
+    # "국립수목원-위탁연구용역-제안요청서-붙임-1.csl" from it reported
+    # csl_status="resolved" for a file that does not exist. Reports cite by
+    # number (see numbered_citations) and need no style.
+    is_journal_paper = (paper.get("doc_type") or "paper").lower() == "paper"
+    csl = (_csl.resolve_csl_filename(state, paper.get("journal")) if is_journal_paper
+           else {"csl_filename": None, "csl_slug": None, "csl_source": None,
+                 "csl_status": "not_applicable"})
+    n_cite_tokens = len(_CITE_RUN_RE.findall(prose))
 
     # Journal / paper-type requirement check (word limits, item caps, …).
     req_check = _requirements.check_requirements(state, slug)
@@ -891,6 +904,14 @@ def prepare_export(
         warnings.append(f"{len(placeholders)} placeholder marker(s) in manuscript")
     if unresolved:
         warnings.append(f"{len(unresolved)} unresolved {{doi:…}} citation(s)")
+    if not is_journal_paper and n_cite_tokens:
+        # Said here, before the file exists, not in the export's afterword.
+        where = ("at the `![](references)` embed" if _numcite.has_references_embed(manuscript)
+                 else "at the end (put `![](references)` alone on a line to place it)")
+        warnings.append(
+            f"report/other doc: the {n_cite_tokens} citation marker(s) render as "
+            f"numbered [n] in order of first appearance, with a References list "
+            f"{where}; no journal style applies")
     if uncited_doiless:
         warnings.append(
             f"{len(uncited_doiless)} DOI-less registered ref(s) not inline-cited "
@@ -1349,6 +1370,7 @@ def export_to_path(
     doc_type = (bundle["paper"].get("doc_type") or "paper").lower()
     engine = "docx_native" if (doc_type != "paper" and fmt == "docx") else "pandoc"
 
+    numbered_citations: int | None = None
     with tempfile.TemporaryDirectory(prefix=f"export-{slug}-") as tmp:
         tmp_path = pathlib.Path(tmp)
 
@@ -1391,8 +1413,17 @@ def export_to_path(
             # body → References → Tables → Figure legends → Figures. Pandoc-only
             # (docx_native has no citeproc); only when the paper has references.
             if engine == "pandoc" and bundle["references"]:
-                manuscript_text = (manuscript_text.rstrip()
-                                   + "\n\n## References\n\n::: {#refs}\n:::\n")
+                manuscript_text = _numcite.place_reference_list(
+                    manuscript_text, "::: {#refs}\n:::")
+            elif engine == "docx_native" and bundle["references"]:
+                # No citeproc here: number the citations ourselves and write
+                # the list where the format wants it.
+                manuscript_text, cited_refs, _unmatched_native = _numcite.render_numbered(
+                    manuscript_text, bundle["references"])
+                if cited_refs:
+                    manuscript_text = _numcite.place_reference_list(
+                        manuscript_text, _numcite.reference_list_markdown(cited_refs))
+                numbered_citations = len(cited_refs)
         else:
             manuscript_text = "# Supplementary Material\n"
             tbl_heading, fig_heading = "Supplementary Tables", "Supplementary Figures"
@@ -1422,6 +1453,8 @@ def export_to_path(
         has_bib = bool(bundle["bibtex"].strip())
         csl_arg: str | None = None
         csl_status = "no_references"
+        if has_bib and engine == "docx_native":
+            csl_status = "not_applicable"   # numbered citations, no style file
         csl_filename: str | None = None
         # Citation style / bibliography only apply to the pandoc path.
         if has_bib and engine == "pandoc":
@@ -1454,12 +1487,11 @@ def export_to_path(
                 page_size=page_size,
             )
             docx_hancom_fix = "native_python_docx"
-            if has_bib:
+            if numbered_citations:
                 export_warnings.append(
-                    "references are not auto-formatted for report/other docs "
-                    "(python-docx export has no citeproc) — add a manual "
-                    "references section if needed"
-                )
+                    f"report/other doc: {numbered_citations} reference(s) cited as "
+                    f"numbered [n] with a generated References list (no journal "
+                    f"style on the python-docx path)")
         else:
             # Run pandoc; it writes the output file inside tmp dir, we copy out.
             html_title = (bundle["paper"].get("title") or slug) if fmt == "html" else None
@@ -1553,6 +1585,7 @@ def export_to_path(
         "size_bytes": len(output_bytes),
         "csl_filename": csl_filename,
         "csl_status": csl_status,
+        "numbered_citations": numbered_citations,
         "docx_hancom_fix": docx_hancom_fix,
         "warnings": export_warnings,
         "placeholders": bundle["placeholders"],

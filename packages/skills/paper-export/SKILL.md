@@ -149,6 +149,16 @@ inline this way is normally what the reader expects: a proposal whose 100 tables
 sit forty pages away from the prose that cites them does not function as a
 document.
 
+**Citations in a report or proposal.** The python-docx path has no citeproc,
+so `export_to_path` numbers them itself: `{doi:…}` / `{cite:key}` become `[n]`
+in order of first appearance (a run merges to `[1, 2]`), and a References list
+is generated from the registered references — at `![](references)` if the
+author placed one alone on a line (a commissioned-report template often has
+"참고문헌" as a numbered item in the middle), else at the end. No journal style
+applies; `csl_status` reads `not_applicable`. `prepare_export` says how many
+markers will render this way before the file exists. Never replace markers by
+hand: the numbering then has to be kept in step with every added reference.
+
 **Main vs supplementary (`scope`).** A journal receives a main manuscript
 containing only the MAIN figures/tables; supplementary items (figure/table
 number ≥ 101) belong in a separate file. This convention applies to
