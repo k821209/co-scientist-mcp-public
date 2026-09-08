@@ -34,6 +34,7 @@ from . import display_lint as _display_lint
 from . import docx_export as _docx_export
 from . import figures as _figures
 from . import html_export as _html
+from . import provenance as _prov
 from .figures import SUPPLEMENTARY_NUMBER_OFFSET
 from . import papers as _papers
 from . import references as _references
@@ -686,7 +687,7 @@ def _stale_artifact_warnings(
     ):
         for a in items:
             analysis = a.get("source_analysis")
-            if not analysis:
+            if not _prov.is_linked(analysis):
                 continue
             latest = _latest_analysis_output_at(state, slug, analysis)
             # content_updated_at, NOT updated_at: the row's mtime also moves for
@@ -740,7 +741,9 @@ def _provenance_coverage_warnings(
     unlinked: list[str] = []
     for kind, key, rows in items:
         for a in rows:
-            if not (a.get("source_analysis") or "").strip():
+            # "manual" is a statement (not computed), not a gap.
+            src = a.get("source_analysis")
+            if not _prov.is_linked(src) and not _prov.is_manual(src):
                 unlinked.append(f"{kind} {a.get(key)}")
     if not unlinked:
         return []
@@ -755,14 +758,18 @@ def _provenance_coverage_warnings(
             f"computed, the command that produced them is not recorded anywhere — "
             f"back-fill now with create_analysis + record_analysis_run and link via "
             f"update_figure/update_table(source_analysis=…). Journals that require "
-            f"a data/code availability statement need exactly this. Schematics and "
-            f"hand-built tables need no link — say so and move on."
+            f"a data/code availability statement need exactly this — and without "
+            f"the link the harness cannot check whether a table's rows are "
+            f"comparable (compare_run_params). Schematics and hand-built tables: "
+            f"say so with source_analysis=\"manual\"."
         ]
     return [
         f"{len(unlinked)} of {total} registered figures/tables have no "
         f"`source_analysis` ({shown}) while {n_analyses} analysis/analyses are "
-        f"registered — the unlinked ones are invisible to the staleness check. "
-        f"Link them, or confirm they are not computational outputs."
+        f"registered — the unlinked ones are invisible to the staleness check "
+        f"and cannot be checked for a confounded comparison. Link them "
+        f"(source_analysis= + source_runs=), or mark them "
+        f"source_analysis=\"manual\" if they were not computed."
     ]
 
 

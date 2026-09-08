@@ -14,24 +14,16 @@ from ..util import now_iso
 from . import limits as _limits
 from .figures import SUPPLEMENTARY_NUMBER_OFFSET, is_supplementary_number
 from .papers import _paper_path
+from .provenance import NO_PROVENANCE_HINT as _NO_PROVENANCE_HINT, is_linked, is_manual, normalize_varies
 
 
 def _table_path(state: State, slug: str, table_number: int) -> str:
     return state.project_path("papers", slug, "tables", str(table_number))
 
 
-# The one line a caller sees at the moment memory is freshest. Registration is
-# when back-filling provenance is cheapest — an hour later the command is gone
-# from scrollback, and a month later it is unrecoverable (feedback f3f9b4b56577:
-# 9 hours of foreground training whose hyperparameters no longer exist anywhere).
-# Returned, never stored, and never an error: a schematic has no analysis behind
-# it and failing the call would be wrong.
-_NO_PROVENANCE_HINT = (
-    "no source_analysis on this artifact — if its numbers were computed, record "
-    "the run (create_analysis + record_analysis_run) and link it with "
-    "source_analysis=, or it will be untraceable at submission. Ignore for "
-    "schematics and hand-built tables."
-)
+# The registration hint lives in tools/provenance.py (one copy for tables and
+# figures). Returned, never stored, and never an error at registration time —
+# check_requirements is where a numeric table without a link fails.
 
 
 def _ensure_paper(state: State, slug: str) -> None:
@@ -49,10 +41,14 @@ def add_table(
     caption: str | None = None,
     status: str = "pending",
     source_analysis: str | None = None,
+    source_runs: list[str] | None = None,
+    varies: list[str] | str | None = None,
 ) -> dict:
     """Create a table. `source_analysis` names the analysis whose outputs this
     table is built from; setting it lets `prepare_export` warn when the analysis
-    has re-run since the table was last updated (see exports.prepare_export)."""
+    has re-run since the table was last updated (see exports.prepare_export).
+    `source_runs` names the run(s) whose outputs are the rows, and `varies` the
+    param key(s) the rows are supposed to differ in — see compare_run_params."""
     _ensure_paper(state, slug)
     path = _table_path(state, slug, table_number)
     if state.backend.get_doc(path) is not None:
@@ -69,6 +65,8 @@ def add_table(
         "caption": caption,
         "status": status,
         "source_analysis": source_analysis,
+        "source_runs": list(source_runs) if source_runs else None,
+        "varies": normalize_varies(varies),
         "created_at": now,
         "updated_at": now,
         # When the DATA last changed, as opposed to any field on the row. The
@@ -78,7 +76,7 @@ def add_table(
         "content_updated_at": now,
     }
     state.backend.set_doc(path, doc)
-    if not (source_analysis or "").strip():
+    if not is_linked(source_analysis) and not is_manual(source_analysis):
         return {**doc, "provenance_hint": _NO_PROVENANCE_HINT}
     return doc
 
@@ -93,6 +91,8 @@ def update_table(
     caption: str | None = None,
     status: str | None = None,
     source_analysis: str | None = None,
+    source_runs: list[str] | None = None,
+    varies: list[str] | str | None = None,
 ) -> dict:
     """Update a table. `source_analysis` links it to the analysis that generates
     it, which is what lets `prepare_export` catch a table left behind by a rerun."""
@@ -108,6 +108,8 @@ def update_table(
     if caption is not None: fields["caption"] = caption
     if status is not None: fields["status"] = status
     if source_analysis is not None: fields["source_analysis"] = source_analysis
+    if source_runs is not None: fields["source_runs"] = list(source_runs) or None
+    if varies is not None: fields["varies"] = normalize_varies(varies)
 
     # Keep "when the data changed" separate from "when the row changed".
     #

@@ -220,6 +220,7 @@ def submit_remote_job(
     local_dir: str | None = None,
     sync_files: bool = True,
     force: bool = False,
+    params: dict | None = None,
 ) -> dict:
     """Politeness-checked SSH job submission with pidfile idempotency.
 
@@ -357,6 +358,7 @@ def submit_remote_job(
         pid=pid, started_at=started_at, log_path=log_path_relative,
         workdir=remote_dir,
         notes=notes,
+        params=params,
     )
     return {
         "run_key": run["run_key"], "pid": pid, "host": server_alias,

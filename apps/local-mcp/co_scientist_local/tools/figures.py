@@ -22,6 +22,7 @@ from ..state import State
 from ..util import new_id, now_iso
 from . import limits as _limits
 from .papers import _paper_path
+from .provenance import NO_PROVENANCE_HINT as _NO_PROVENANCE_HINT, is_linked, is_manual, normalize_varies
 
 SUPPLEMENTARY_NUMBER_OFFSET = 100
 
@@ -49,18 +50,8 @@ def _figure_blob_path(state: State, slug: str, figure_number: int, ext: str) -> 
     )
 
 
-# The one line a caller sees at the moment memory is freshest. Registration is
-# when back-filling provenance is cheapest — an hour later the command is gone
-# from scrollback, and a month later it is unrecoverable (feedback f3f9b4b56577:
-# 9 hours of foreground training whose hyperparameters no longer exist anywhere).
-# Returned, never stored, and never an error: a schematic has no analysis behind
-# it and failing the call would be wrong.
-_NO_PROVENANCE_HINT = (
-    "no source_analysis on this artifact — if its numbers were computed, record "
-    "the run (create_analysis + record_analysis_run) and link it with "
-    "source_analysis=, or it will be untraceable at submission. Ignore for "
-    "schematics and hand-built tables."
-)
+# The registration hint lives in tools/provenance.py (one copy for tables and
+# figures). Returned, never stored, never an error.
 
 
 def _ensure_paper(state: State, slug: str) -> None:
@@ -119,6 +110,8 @@ def add_figure(
     aspect_ratio: str | None = None,
     quality: str | None = None,
     source_analysis: str | None = None,
+    source_runs: list[str] | None = None,
+    varies: list[str] | str | None = None,
 ) -> dict:
     """Register a figure. If `local_path` is provided, upload the file bytes.
 
@@ -172,6 +165,10 @@ def add_figure(
         # omits it doesn't silently drop the link.
         "source_analysis": source_analysis if source_analysis is not None
         else (existing.get("source_analysis") if existing else None),
+        "source_runs": (list(source_runs) if source_runs else None) if source_runs is not None
+        else (existing.get("source_runs") if existing else None),
+        "varies": normalize_varies(varies) if varies is not None
+        else (existing.get("varies") if existing else None),
         "created_at": existing.get("created_at", now) if existing else now,
         "updated_at": now,
         # When the IMAGE last changed, as opposed to any field on the row. The
@@ -183,7 +180,7 @@ def add_figure(
         else (existing.get("content_updated_at") or existing.get("updated_at")),
     }
     state.backend.set_doc(path, doc)
-    if not (source_analysis or "").strip():
+    if not is_linked(doc.get("source_analysis")) and not is_manual(doc.get("source_analysis")):
         return {**doc, "provenance_hint": _NO_PROVENANCE_HINT}
     return doc
 
@@ -200,6 +197,8 @@ def update_figure(
     status: str | None = None,
     source_analysis: str | None = None,
     prompt: str | None = None,
+    source_runs: list[str] | None = None,
+    varies: list[str] | str | None = None,
 ) -> dict:
     """Patch a figure's metadata; optionally replace the image bytes.
 
@@ -222,6 +221,8 @@ def update_figure(
     if legend is not None: fields["legend"] = legend
     if status is not None: fields["status"] = status
     if source_analysis is not None: fields["source_analysis"] = source_analysis
+    if source_runs is not None: fields["source_runs"] = list(source_runs) or None
+    if varies is not None: fields["varies"] = normalize_varies(varies)
     if prompt is not None or local_path:
         fields.update(_prompt_fields(existing, prompt, bool(local_path)))
 

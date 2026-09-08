@@ -70,6 +70,9 @@ mcp__co_scientist__add_figure(
   caption="<draft 1-sentence caption>",
   legend="<FULL legend — written now, during promotion>",
   local_path="analysis/<group>/out/<file-or-composed-panel>.png",
+  source_analysis="<group>",
+  source_runs=["<run_key of each arm shown>"],
+  varies="<the one param the panels differ in>",
 )
 ```
 
@@ -82,10 +85,27 @@ mcp__co_scientist__add_table(
   title="<title>",
   content="<markdown table converted from the CSV>",
   caption="<caption — what the table shows: columns, units, n>",
+  source_analysis="<group>",
+  source_runs=["<run_key behind each row>"],
+  varies="<the one param the rows differ in>",
 )
 # Tables have `caption` only; `legend` is a figure field and add_table
 # rejects it.
 ```
+
+Then, for any table or figure that COMPARES arms:
+
+```
+mcp__co_scientist__compare_run_params(slug, table_number=N)
+```
+
+Read `report` before the caption is final. Every key that differs across
+the rows' runs and is not in `varies` is listed; decide for each whether it
+is design (say so in the caption) or a confound (the row is not comparable
+— do not promote it). A row whose run has no `params` shows as uncomparable;
+back-fill with `update_analysis_run` first. `source_analysis` is not optional
+for a numeric table: `check_requirements` fails one without it, and a table
+nobody computed says `source_analysis="manual"`.
 
 ### 5. Link the analysis to its outputs
 

@@ -75,13 +75,19 @@ def record_analysis_run(
     workdir: str | None = None,
     notes: str | None = None,
     run_key: str | None = None,
+    params: dict | None = None,
 ) -> dict:
     """Insert a new analysis_runs doc. Used by `launch_local_job` and
     `submit_remote_job`.
 
     `workdir` is the absolute directory the command ran in (local path, or
     the resolved remote dir). Persisted so a run stays self-contained — the
-    location survives even if a server's `default_workdir` later changes."""
+    location survives even if a server's `default_workdir` later changes.
+
+    `params` is the dict of arguments that DEFINE this run — every value that
+    could change the result. The harness never interprets it; it diffs it
+    against the other runs behind the same table (see tools/provenance.py)."""
+    from .provenance import normalize_params
     _ensure_analysis(state, slug, analysis)
     run_key = run_key or _new_run_key()
     doc = {
@@ -101,6 +107,7 @@ def record_analysis_run(
         "log_path": log_path,
         "workdir": workdir,
         "notes": notes,
+        "params": normalize_params(params),
         # Liveness: the dashboard shows a live spinner only while a run is fresh
         # (now - last_heartbeat < TTL); a run whose session died goes "stale"
         # instead of spinning forever. Bumped by poll_remote_pids / heartbeat_run;
@@ -111,6 +118,35 @@ def record_analysis_run(
     }
     state.backend.set_doc(_run_path(state, slug, analysis, run_key), doc)
     return doc
+
+
+def update_analysis_run(
+    state: State,
+    slug: str,
+    analysis: str,
+    run_key: str,
+    *,
+    params: dict | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Back-fill `params` (replacing the whole dict) and/or append notes on an
+    existing run. The back-fill path exists because the runs that most need
+    comparing are the ones recorded before anyone thought to compare them."""
+    from .provenance import normalize_params
+    _ensure_analysis(state, slug, analysis)
+    path = _run_path(state, slug, analysis, run_key)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(f"run {run_key!r} not found")
+    fields: dict = {}
+    if params is not None:
+        fields["params"] = normalize_params(params)
+    if notes:
+        prior = existing.get("notes") or ""
+        fields["notes"] = (prior + " " + notes).strip()
+    if fields:
+        state.backend.update_doc(path, fields)
+    return state.backend.get_doc(path)
 
 
 def bump_heartbeat(state: State, slug: str, analysis: str, run_key: str) -> None:
@@ -191,6 +227,7 @@ def launch_local_job(
     workdir: str,
     env_name: str | None = None,
     conda_root: str | None = None,
+    params: dict | None = None,
 ) -> dict:
     """Spawn `command` on the user's laptop, detached, log streamed to file.
 
@@ -253,6 +290,7 @@ def launch_local_job(
         log_path=str(log_file),
         workdir=str(wd),
         run_key=run_key,
+        params=params,
     )
     _register_local_pid(slug, analysis, run_key, pid)
     return run

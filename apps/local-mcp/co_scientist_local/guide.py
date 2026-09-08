@@ -425,6 +425,29 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   or new bytes via `local_path`) clears a warning. Editing a caption or legend
   deliberately will not; if a warning persists, regenerate the artifact or say
   why it is unaffected.
+- **Record what DEFINED the run, not just the command: `params=`.** Every
+  argument that could change the result — model, objective, learning rate,
+  seed, split, script version — as a flat dict on `record_analysis_run` /
+  `launch_local_job` / `submit_remote_job` (back-fill with
+  `update_analysis_run`). The harness never reads the values; it diffs them.
+  A comparison table is only valid when its rows differ in the one thing the
+  claim names, and the only way to see that they do not is to put the runs'
+  params side by side. Measured once: two rows compared on adapter rank also
+  differed in objective and learning rate, every check passed, and two
+  retrainings were needed once a reader noticed.
+- **Say what a table varies, then ask.** `add_table(..., source_runs=[run
+  keys of the rows], varies="adapter_rank")`, then `compare_run_params(slug,
+  table_number=N)` and read `report`: every key that differs across those
+  runs, split into declared and NOT declared. The judgement is yours — a
+  per-arm learning rate can be correct design — but the list must be
+  complete, and a run with no params is named as uncomparable, which is a
+  finding. Without `varies` the tool still lists every difference.
+- **A numeric table with no `source_analysis` fails `check_requirements`**
+  (`table_provenance`, with or without a journal spec). A table nobody
+  computed — a primer list, values compiled from papers — says so with
+  `source_analysis="manual"`: a statement, not a gap, and it satisfies the
+  check. Figures are listed there but do not fail it; the server cannot tell
+  a chart from a schematic.
 - **The exploratory stretch is where this is lost, not the big jobs.** Nine short
   interactive `ssh … python script.py` runs never feel like "time to use
   /analysis-run", and then six tables depend on them. One measured case: 9 hours

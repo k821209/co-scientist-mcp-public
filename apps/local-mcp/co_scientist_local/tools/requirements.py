@@ -115,14 +115,25 @@ def check_requirements(state: State, slug: str) -> dict:
 
     Returns {configured, requirements, metrics, checks, violations, ok}.
     """
+    from . import provenance as _prov
     paper = _paper_or_raise(state, slug)
     req = paper.get("requirements")
+    # Provenance is checked whether or not a journal spec is set: a confounded
+    # comparison is wrong in every journal, and the paper that needed this had
+    # no requirements configured.
+    prov = _prov.provenance_check(
+        _tables.list_tables(state, slug, supplementary=None),
+        _figures.list_figures(state, slug, supplementary=None),
+    )
     if not req:
         return {
             "configured": False,
             "requirements": None,
             "message": "No journal requirements set for this paper. "
                        "Run /journal-requirements to set them.",
+            "checks": [prov],
+            "violations": [] if prov["ok"] else [prov],
+            "ok": prov["ok"],
         }
 
     bundle = _papers.get_paper_state(state, slug)
@@ -181,6 +192,8 @@ def check_requirements(state: State, slug: str) -> dict:
             "kind": "presence", "required": required, "missing": missing,
             "ok": not missing,
         })
+
+    checks.append(prov)
 
     violations = [c for c in checks if not c["ok"]]
     return {

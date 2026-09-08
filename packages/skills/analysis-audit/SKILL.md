@@ -39,6 +39,12 @@ Verify that numbers cited in the manuscript actually match the data:
    `list_tables`) and `list_analysis_runs(slug, name)` — that is the recorded
    producer, and it answers "which run made this number" without reading a
    script. Fall back to tracing by hand only when it is unset.
+   For every table or figure that compares arms, run
+   `compare_run_params(slug, table_number=N)` and put the undeclared
+   differences in the triage table: rows that differ in more than the
+   variable the claim names are a **block**, not a note — the conclusion
+   changes, and the cost of finding it later is a retraining. Runs it
+   reports as having no `params` are a gap of the same class.
 2. Extract every claim-worthy number (sample sizes, p-values, fold
    changes, percentages, counts).
 3. For each, trace it back to the analysis output that produced it

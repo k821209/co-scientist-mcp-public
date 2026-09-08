@@ -73,8 +73,14 @@ run = mcp__co_scientist__launch_local_job(
   workdir="analysis/<group>",       # must already exist
   env_name="<conda_env>",           # optional — conda env to activate
   conda_root="~/miniconda3",        # optional — required with env_name
+  params={"model": "...", "lr": 5e-4, "seed": 1, "split": "val"},
 )
 ```
+
+`params` is every argument that could change the result, as a flat dict —
+what `compare_run_params` diffs later to tell whether two table rows are a
+fair comparison. Not the command string again, and not prose (see the tool's
+docstring). Already ran it without? `update_analysis_run(..., params=)`.
 
 `workdir` must already exist — the MCP does **not** create it
 (`FileNotFoundError` otherwise). Create `analysis/<group>/` and write
@@ -104,6 +110,7 @@ mcp__co_scientist__submit_remote_job(
   server_alias="<server_alias>",
   env_name="<conda_env>",           # optional
   local_dir="analysis/<group>",     # rsync'd to the server before launch
+  params={...},                     # same dict as for the local path
 )
 ```
 

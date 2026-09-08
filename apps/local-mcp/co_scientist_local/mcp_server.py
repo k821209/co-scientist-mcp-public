@@ -59,6 +59,7 @@ from .tools import graphs as _graphs
 from .tools import materials as _materials
 from .tools import memory as _memory
 from .tools import papers as _papers
+from .tools import provenance as _prov
 from .tools import pipelines as _pipelines
 from .tools import references as _references
 from .tools import reorder as _reorder
@@ -376,6 +377,11 @@ def build_mcp(state: State) -> FastMCP:
         {configured, requirements, metrics, checks, violations, ok}.
         Judgment calls (structured-abstract format, free-text `notes`)
         are yours — read `requirements` and decide.
+
+        One check runs even with no journal spec set: `table_provenance` —
+        a table with numbers in its cells and no `source_analysis` is a
+        violation (it cannot be checked for a confounded comparison). Link
+        it, or state `source_analysis="manual"` for a table nobody computed.
         """
         return _requirements.check_requirements(state, slug)
 
@@ -631,6 +637,8 @@ def build_mcp(state: State) -> FastMCP:
         legend: str | None = None,
         local_path: str | None = None,
         source_analysis: str | None = None,
+        source_runs: list[str] | None = None,
+        varies: list[str] | None = None,
     ) -> dict[str, Any]:
         """Register a figure. If local_path provided, uploads image bytes to Storage.
 
@@ -644,7 +652,7 @@ def build_mcp(state: State) -> FastMCP:
         prepare_export warns about any still unfilled, since an image-less figure
         is dropped from the exported document.
 
-        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale. `source_runs` names the run(s) whose outputs are its rows/panels and `varies` the param key(s) they are meant to differ in — `compare_run_params` then lists every other difference. A table with numbers and no `source_analysis` FAILS check_requirements; one that was not computed says so with `source_analysis="manual"`.
 
         `caption` and `legend` describe what the item SHOWS: panels, axes,
         units, sample sizes, normalisation, and how to read the symbols.
@@ -659,7 +667,7 @@ def build_mcp(state: State) -> FastMCP:
         return _figures.add_figure(
             state, slug, figure_number=figure_number, title=title,
             caption=caption, legend=legend, local_path=local_path,
-            source_analysis=source_analysis,
+            source_analysis=source_analysis, source_runs=source_runs, varies=varies,
         )
 
     @mcp.tool()
@@ -716,10 +724,12 @@ def build_mcp(state: State) -> FastMCP:
         status: str | None = None,
         source_analysis: str | None = None,
         prompt: str | None = None,
+        source_runs: list[str] | None = None,
+        varies: list[str] | None = None,
     ) -> dict[str, Any]:
         """Patch a figure; optionally replace the image bytes.
 
-        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+        `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale. `source_runs` names the run(s) whose outputs are its rows/panels and `varies` the param key(s) they are meant to differ in — `compare_run_params` then lists every other difference. A table with numbers and no `source_analysis` FAILS check_requirements; one that was not computed says so with `source_analysis="manual"`.
 
         Replacing the bytes (`local_path`) WITHOUT passing a `prompt` retires the
         stored generation prompt to `prompt_superseded`. Supplying bytes says the
@@ -740,6 +750,7 @@ def build_mcp(state: State) -> FastMCP:
             state, slug, figure_number, title=title, caption=caption,
             legend=legend, local_path=local_path, status=status,
             source_analysis=source_analysis, prompt=prompt,
+            source_runs=source_runs, varies=varies,
         )
 
     @mcp.tool()
@@ -1395,8 +1406,10 @@ def build_mcp(state: State) -> FastMCP:
         content: str,
         caption: str | None = None,
         source_analysis: str | None = None,
+        source_runs: list[str] | None = None,
+        varies: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Register a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+        """Register a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale. `source_runs` names the run(s) whose outputs are its rows/panels and `varies` the param key(s) they are meant to differ in — `compare_run_params` then lists every other difference. A table with numbers and no `source_analysis` FAILS check_requirements; one that was not computed says so with `source_analysis="manual"`.
 
         `caption` describes what the item SHOWS: columns, units, sample
         sizes, normalisation, how to read the symbols. (Tables have no
@@ -1411,6 +1424,7 @@ def build_mcp(state: State) -> FastMCP:
         return _tables.add_table(
             state, slug, table_number=table_number, title=title,
             content=content, caption=caption, source_analysis=source_analysis,
+            source_runs=source_runs, varies=varies,
         )
 
     @mcp.tool()
@@ -1422,8 +1436,10 @@ def build_mcp(state: State) -> FastMCP:
         caption: str | None = None,
         status: str | None = None,
         source_analysis: str | None = None,
+        source_runs: list[str] | None = None,
+        varies: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Patch a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale.
+        """Patch a table. `source_analysis` names the analysis this artifact is generated from; set it so prepare_export can warn when that analysis re-runs and leaves this artifact stale. `source_runs` names the run(s) whose outputs are its rows/panels and `varies` the param key(s) they are meant to differ in — `compare_run_params` then lists every other difference. A table with numbers and no `source_analysis` FAILS check_requirements; one that was not computed says so with `source_analysis="manual"`.
 
         `caption` describes what the item SHOWS: columns, units, sample
         sizes, normalisation, how to read the symbols. (Tables have no
@@ -1438,6 +1454,7 @@ def build_mcp(state: State) -> FastMCP:
         return _tables.update_table(
             state, slug, table_number, title=title, content=content,
             caption=caption, status=status, source_analysis=source_analysis,
+            source_runs=source_runs, varies=varies,
         )
 
     @mcp.tool()
@@ -2152,8 +2169,19 @@ def build_mcp(state: State) -> FastMCP:
         pid: int | None = None,
         log_path: str | None = None,
         notes: str | None = None,
+        params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Insert a run record (provenance for a command you ran yourself).
+
+        `params`: the arguments that DEFINE this run — every value that could
+        change the result (model, objective, learning rate, seed, data split,
+        script version …), as a flat dict. Not a description: the harness
+        never reads the values, it diffs them between the runs behind one
+        table (`compare_run_params`), which is the only way a confounded
+        comparison — two rows that differ in more than the one thing the
+        table claims — gets seen before a reviewer sees it. A free-text
+        `notes` cannot be diffed. Back-fill on an older run with
+        `update_analysis_run`.
 
         The row starts UNFINISHED. If the command has already finished, follow
         with `mark_run_finished(...)` — a row with no `pid` has no process for
@@ -2163,6 +2191,7 @@ def build_mcp(state: State) -> FastMCP:
         return _runs.record_analysis_run(
             state, slug, analysis, command=command, host=host,
             env_name=env_name, pid=pid, log_path=log_path, notes=notes,
+            params=params,
         )
 
     @mcp.tool()
@@ -2179,6 +2208,45 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def get_analysis_run(slug: str, analysis: str, run_key: str) -> dict[str, Any]:
         return _runs.get_analysis_run(state, slug, analysis, run_key)
+
+    @mcp.tool()
+    def update_analysis_run(
+        slug: str,
+        analysis: str,
+        run_key: str,
+        params: dict[str, Any] | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Back-fill `params` on a run recorded without them (replaces the whole
+        dict), and/or append notes. See record_analysis_run for what `params`
+        is for."""
+        return _runs.update_analysis_run(
+            state, slug, analysis, run_key, params=params, notes=notes,
+        )
+
+    @mcp.tool()
+    def compare_run_params(
+        slug: str,
+        table_number: int | None = None,
+        figure_number: int | None = None,
+        analysis: str | None = None,
+        run_keys: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Are the rows of this table (or panels of this figure) comparable?
+
+        Diffs the `params` of the runs behind the artifact — its `source_runs`,
+        or every run of its `source_analysis` — and lists every key whose value
+        is not the same across them, split into what the artifact declared it
+        varies in (`varies=`) and what it did not. Read `report`. The
+        judgement is yours: a per-arm learning rate can be correct design; an
+        objective that differs between two rows compared on adapter rank is
+        not. Runs with no `params` are named as uncomparable — that is a
+        finding, not a pass. Or pass `analysis` (+ `run_keys`) directly.
+        """
+        return _prov.compare_run_params(
+            state, slug, table_number=table_number, figure_number=figure_number,
+            analysis=analysis, run_keys=run_keys,
+        )
 
     @mcp.tool()
     def get_user_secret(key: str) -> dict[str, Any]:
@@ -2419,11 +2487,14 @@ def build_mcp(state: State) -> FastMCP:
         workdir: str,
         env_name: str | None = None,
         conda_root: str | None = None,
+        params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Spawn a long-running local job (detached). Returns run row with pid + log_path."""
+        """Spawn a long-running local job (detached). Returns run row with pid + log_path.
+        `params`: the arguments that define the run, as a dict — see
+        record_analysis_run."""
         return _runs.launch_local_job(
             state, slug, analysis, command=command, workdir=workdir,
-            env_name=env_name, conda_root=conda_root,
+            env_name=env_name, conda_root=conda_root, params=params,
         )
 
     @mcp.tool()
@@ -2448,12 +2519,15 @@ def build_mcp(state: State) -> FastMCP:
         local_dir: str | None = None,
         sync_files: bool = True,
         force: bool = False,
+        params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Politeness-checked SSH job submission (rsync + nohup, pidfile-idempotent)."""
+        """Politeness-checked SSH job submission (rsync + nohup, pidfile-idempotent).
+        `params`: the arguments that define the run, as a dict — see
+        record_analysis_run."""
         return _ssh_ops.submit_remote_job(
             state, slug, analysis, command=command, server_alias=server_alias,
             env_name=env_name, workers=workers, local_dir=local_dir,
-            sync_files=sync_files, force=force,
+            sync_files=sync_files, force=force, params=params,
         )
 
     @mcp.tool()
