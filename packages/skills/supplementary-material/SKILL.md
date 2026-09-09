@@ -33,11 +33,11 @@ Don't reach for this skill on a report.
 ### 1. Audit existing state
 
 ```
-main_figs = mcp__co_scientist__list_figures(slug)
-supp_figs = mcp__co_scientist__list_figures(slug, supplementary=True)
-main_tbls = mcp__co_scientist__list_tables(slug)
-supp_tbls = mcp__co_scientist__list_tables(slug, supplementary=True)
-paper = mcp__co_scientist__get_paper_state(slug)
+main_figs = mcp__scivo__list_figures(slug)
+supp_figs = mcp__scivo__list_figures(slug, supplementary=True)
+main_tbls = mcp__scivo__list_tables(slug)
+supp_tbls = mcp__scivo__list_tables(slug, supplementary=True)
+paper = mcp__scivo__get_paper_state(slug)
 ```
 
 ### 2. Identify supplementary candidates
@@ -54,7 +54,7 @@ Surface the candidates and let the user confirm which to promote.
 ### 3. Register supplementary figures / tables
 
 ```
-mcp__co_scientist__add_figure(
+mcp__scivo__add_figure(
   slug,
   figure_number=101,           # first SFigure
   title="Extended QC metrics",
@@ -62,7 +62,7 @@ mcp__co_scientist__add_figure(
   legend="<full legend>",
   local_path="<path to PNG>",
 )
-mcp__co_scientist__add_table(
+mcp__scivo__add_table(
   slug,
   table_number=101,            # first STable
   title="Full parameter set",
@@ -81,7 +81,7 @@ table), add them as regular sections with a `supplementary_` key
 prefix, or append to a dedicated section the user designates:
 
 ```
-mcp__co_scientist__update_section(
+mcp__scivo__update_section(
   slug, key="supplementary_methods",
   body="<supplementary text>",
   status="draft",
@@ -107,7 +107,7 @@ reference at the right spot.
 ### 6. Verify export-readiness
 
 ```
-prep = mcp__co_scientist__prepare_export(slug)
+prep = mcp__scivo__prepare_export(slug)
 ```
 
 `prepare_export` already bundles `supplementary_figures` and

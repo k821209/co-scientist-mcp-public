@@ -25,7 +25,7 @@ for the introduction", "look up Smith 2024 on …".
 ### 1. Decide search strategy
 
 For a single topic, run 2–3 progressively-narrower queries via
-`mcp__co_scientist__search_works(query, limit=…, year_from=…)`:
+`mcp__scivo__search_works(query, limit=…, year_from=…)`:
 
 - **Broad** ("plant pangenome") for landscape understanding
 - **Narrow** ("Arabidopsis pangenome 27 accessions") for specifics
@@ -41,7 +41,7 @@ writes happen.
 Present a numbered list with title / authors / year / journal / one-line
 abstract snippet (or "no abstract on CrossRef"). Mark obvious
 duplicates of already-registered references — call
-`mcp__co_scientist__list_references(slug)` first to know what's there.
+`mcp__scivo__list_references(slug)` first to know what's there.
 
 Format suggestion:
 
@@ -64,7 +64,7 @@ Ask which they want to register. Accept:
 For each picked candidate:
 
 ```
-mcp__co_scientist__add_reference_by_doi(slug, doi=…)
+mcp__scivo__add_reference_by_doi(slug, doi=…)
 ```
 
 The tool:

@@ -269,7 +269,7 @@ and then silently fails to highlight. Save the letter per `/response-letter`
 step 3:
 
 ```
-mcp__co_scientist__add_section(slug, key='response_letter',
+mcp__scivo__add_section(slug, key='response_letter',
   title='Response to Reviewers', sort_order=<after the last section>, body=…)
 ```
 
@@ -288,7 +288,7 @@ with the paper — check that against the journal package the author wants.
 | located section | `section` and `manuscript_ref="section:<key>"` |
 
 ```
-mcp__co_scientist__add_review(
+mcp__scivo__add_review(
   slug,
   comment="[frame_error] Reviewer 2 saw the 69-accession panel, not 285. "
           "Supplied from outside: that the removed panel matched the current cohort. "

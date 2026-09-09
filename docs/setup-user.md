@@ -131,8 +131,8 @@ The dashboard's Papers tab updates live as the agent writes sections.
 
 ## Sanity checks
 
-- `/mcp` in Claude Code → should show `co_scientist · ✔ connected`.
-- Have the agent run `mcp__co_scientist__whoami()` — confirms the MCP
+- `/mcp` in Claude Code → should show `scivo · ✔ connected`.
+- Have the agent run `mcp__scivo__whoami()` — confirms the MCP
   is bound to the correct project_id (matches what your CLAUDE.md says).
 - The MCP startup line on stderr looks like:
   `co-scientist-local: token-auth, project=<pid>, owner=<uid>`.

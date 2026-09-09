@@ -27,8 +27,8 @@ Two modes:
 ### 1. Resolve the analysis group
 
 ```
-analyses = mcp__co_scientist__list_analyses(slug)
-runs = mcp__co_scientist__list_analysis_runs(slug, analysis=<group>)
+analyses = mcp__scivo__list_analyses(slug)
+runs = mcp__scivo__list_analysis_runs(slug, analysis=<group>)
 ```
 
 If the user didn't name a group, list them and ask.
@@ -63,7 +63,7 @@ composite is stale.
 For figures:
 
 ```
-mcp__co_scientist__add_figure(
+mcp__scivo__add_figure(
   slug,
   figure_number=N,            # ≥101 for supplementary
   title="<concise title>",
@@ -79,7 +79,7 @@ mcp__co_scientist__add_figure(
 For tables — convert CSV/TSV to a markdown table:
 
 ```
-mcp__co_scientist__add_table(
+mcp__scivo__add_table(
   slug,
   table_number=N,
   title="<title>",
@@ -96,7 +96,7 @@ mcp__co_scientist__add_table(
 Then, for any table or figure that COMPARES arms:
 
 ```
-mcp__co_scientist__compare_run_params(slug, table_number=N)
+mcp__scivo__compare_run_params(slug, table_number=N)
 ```
 
 Read `report` before the caption is final. Every key that differs across
@@ -110,7 +110,7 @@ nobody computed says `source_analysis="manual"`.
 ### 5. Link the analysis to its outputs
 
 ```
-mcp__co_scientist__update_analysis(
+mcp__scivo__update_analysis(
   slug, name=<group>,
   description="<what was done> → produced Figure N, Table M",
 )

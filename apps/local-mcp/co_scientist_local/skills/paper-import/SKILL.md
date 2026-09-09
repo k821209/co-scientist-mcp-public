@@ -44,7 +44,7 @@ recommend the .docx — much better fidelity.
 ### 2. Convert
 
 ```
-result = mcp__co_scientist__import_document(local_path="/abs/path/paper.docx")
+result = mcp__scivo__import_document(local_path="/abs/path/paper.docx")
 ```
 
 Returns `{ source_format, markdown, media[], warnings[], char_count }`.
@@ -79,7 +79,7 @@ them to the nearest section.
 ### 4. Create the paper
 
 ```
-mcp__co_scientist__create_paper(
+mcp__scivo__create_paper(
   title="...",
   authors=[...],          # parsed from the front matter if present
   journal="...",          # if the document names a target journal
@@ -94,7 +94,7 @@ mcp__co_scientist__create_paper(
 For each canonical section, write the imported text:
 
 ```
-mcp__co_scientist__update_section(
+mcp__scivo__update_section(
   slug, key="introduction", body="<imported markdown for that section>",
   status="draft",
 )
@@ -111,7 +111,7 @@ The imported bibliography is plain text — co-scientist wants
 structured references. For each entry that has a DOI:
 
 ```
-mcp__co_scientist__add_reference_by_doi(slug, doi="10.…")
+mcp__scivo__add_reference_by_doi(slug, doi="10.…")
 ```
 
 For entries without a DOI in the text, try `search_works` with the
@@ -130,7 +130,7 @@ and tell the user which you couldn't.)
 that's a real paper figure (skip logos, equation images):
 
 ```
-mcp__co_scientist__add_figure(
+mcp__scivo__add_figure(
   slug, figure_number=N,
   title="...", caption="...",
   local_path="<path from result.media>",

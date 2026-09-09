@@ -7,7 +7,7 @@ description: Publish a Video-tab deliverable to YouTube (long-form or Shorts) �
 
 > **Video tools missing?** The video/YouTube tool family registers only on
 > machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__co_scientist__add_video`
+> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
 > / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
 > session — needed once per fresh machine; after `youtube_connect` the token file
 > auto-enables it.
@@ -64,7 +64,7 @@ usage, phone-verified) and approve the device-flow code from a normal browser.
 
 4. **Upload:**
    ```
-   mcp__co_scientist__youtube_upload(
+   mcp__scivo__youtube_upload(
      video_id, title=…, description=<blurb + chapter block>,
      privacy="unlisted", language="ko",
      local_path="<the rendered .mp4>",   # optional; else pulled from Storage

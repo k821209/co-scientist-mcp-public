@@ -16,7 +16,7 @@ decision/`response` flow, and this skill compiles the letter from them.
 
 ## Step 0 — make sure the reviewer comments are registered
 
-Check first: `mcp__co_scientist__list_reviews(slug, source='reviewer')`.
+Check first: `mcp__scivo__list_reviews(slug, source='reviewer')`.
 
 If there are none (or the user is pasting a fresh decision letter), **import**:
 1. Ask the user to paste the decision letter (or read the file they point to).
@@ -34,7 +34,7 @@ points — one row each, so each gets its own response.
 
 ## Step 1 — make sure every point is addressed
 
-Run `mcp__co_scientist__review_triage_summary(slug)`. Every reviewer point
+Run `mcp__scivo__review_triage_summary(slug)`. Every reviewer point
 must be either:
 - **accepted** → the manuscript was revised; its `response` says *how* (and
   where: section / lines). Resolve it (`status='resolved'`).

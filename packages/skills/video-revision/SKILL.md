@@ -7,7 +7,7 @@ description: Address open timecode comments left on a video in the dashboard's V
 
 > **Video tools missing?** The video/YouTube tool family registers only on
 > machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__co_scientist__add_video`
+> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
 > / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
 > session — needed once per fresh machine; after `youtube_connect` the token file
 > auto-enables it.
@@ -20,7 +20,7 @@ analogue of `/paper-revision`, on top of `/video-harness`.
 
 1. **Pull the work list**
    ```
-   mcp__co_scientist__list_video_comments(video_id, status="open")
+   mcp__scivo__list_video_comments(video_id, status="open")
    # omit video_id → open comments across ALL videos
    ```
    Each carries `t_seconds` (+ `frame` when fps known) and `text`.
@@ -42,7 +42,7 @@ analogue of `/paper-revision`, on top of `/video-harness`.
 
 3. **Re-register the new cut** (overwrite in place, same id):
    ```
-   mcp__co_scientist__add_video(
+   mcp__scivo__add_video(
        title=..., video_id="<same id>", overwrite=True,
        local_path="<new final.mp4>", aspect_ratio=...,
        srt_local_path=..., ass_local_path=...)
@@ -50,7 +50,7 @@ analogue of `/paper-revision`, on top of `/video-harness`.
 
 4. **Resolve each comment**, recording what changed:
    ```
-   mcp__co_scientist__resolve_video_comment(
+   mcp__scivo__resolve_video_comment(
        video_id, comment_id, status="accepted", response="<what changed>")
    ```
    Decline one you won't act on with `status="rejected"` + a reason — don't

@@ -7,7 +7,7 @@ description: Turn a raw screen/talking-head recording into a publish-ready video
 
 > **Video tools missing?** The video/YouTube tool family registers only on
 > machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__co_scientist__add_video`
+> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
 > / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
 > session — needed once per fresh machine; after `youtube_connect` the token file
 > auto-enables it.
@@ -303,7 +303,7 @@ them. (Same reason abbreviations get spelled out: a TTS read "AIVO" as "aewo".)
 ## 4 — Register in the Video tab
 
 ```
-mcp__co_scientist__add_video(
+mcp__scivo__add_video(
   title="<clip title>",
   local_path="<…final.mp4>",          # or final_chaptered.mp4
   aspect_ratio="16:9" | "9:16",        # from the preset (screencast/talkinghead/slides→16:9; shorts*→9:16)

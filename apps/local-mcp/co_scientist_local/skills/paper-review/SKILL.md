@@ -12,7 +12,7 @@ description: Act as a virtual expert reviewer on a paper. Surfaces methodologica
 ## Non-negotiable rules (do NOT violate)
 
 1. **Every finding becomes a database row**, written via
-   `mcp__co_scientist__add_review(...)` with `source="ai"`. No
+   `mcp__scivo__add_review(...)` with `source="ai"`. No
    markdown-only output. The dashboard's Comments card lists these
    alongside user comments; the bidirectional `/paper-revision` loop
    reads them from there.
@@ -22,7 +22,7 @@ description: Act as a virtual expert reviewer on a paper. Surfaces methodologica
    dashboard render an inline yellow highlight on the problem text and
    lets the next round of `/paper-revision` jump straight to it.
 3. **Verify after writing**. Call
-   `mcp__co_scientist__list_reviews(slug, source="ai", status="open")`
+   `mcp__scivo__list_reviews(slug, source="ai", status="open")`
    at the end; assert total ≥ number of findings you intended to write.
    If short, retry the missing ones.
 4. **Don't duplicate**. Before writing, call
@@ -45,7 +45,7 @@ Three virtual reviewers, run in sequence. Each writes its own findings:
 3. **Domain Reviewer** — field context, prior art, terminology used
    WRONGLY (the wrong term for the thing), missing key citations. Terminology
    as register — the right fact in a phrasing the field would not print — is
-   `/prose-review`'s rail, not this one; the two must not interleave. Use `mcp__co_scientist__search_works` to
+   `/prose-review`'s rail, not this one; the two must not interleave. Use `mcp__scivo__search_works` to
    spot-check that referenced prior work exists and is correctly
    characterized.
 
@@ -74,11 +74,11 @@ reviews).
 ### 1. Load context
 
 ```
-paper = mcp__co_scientist__get_paper_state(slug)
-existing = mcp__co_scientist__list_reviews(slug, source="ai")
-figures = mcp__co_scientist__list_figures(slug)
-tables = mcp__co_scientist__list_tables(slug)
-refs = mcp__co_scientist__list_references(slug)
+paper = mcp__scivo__get_paper_state(slug)
+existing = mcp__scivo__list_reviews(slug, source="ai")
+figures = mcp__scivo__list_figures(slug)
+tables = mcp__scivo__list_tables(slug)
+refs = mcp__scivo__list_references(slug)
 ```
 
 Read the assembled manuscript text from `paper.manuscript`.
@@ -103,7 +103,7 @@ returned by `get_section`. Don't paraphrase.
 ### 3. Persist each finding
 
 ```
-mcp__co_scientist__add_review(
+mcp__scivo__add_review(
   slug,
   comment="...",
   source="ai",
@@ -134,7 +134,7 @@ support this number."
 ### 5. Verify
 
 ```
-final = mcp__co_scientist__list_reviews(slug, source="ai", status="open")
+final = mcp__scivo__list_reviews(slug, source="ai", status="open")
 assert len(final) >= <expected>
 ```
 

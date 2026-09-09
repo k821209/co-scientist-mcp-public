@@ -66,7 +66,7 @@ try to run a remote command through the local tool or vice-versa.
 ### A. Local (your machine)
 
 ```
-run = mcp__co_scientist__launch_local_job(
+run = mcp__scivo__launch_local_job(
   slug,
   analysis="<group_name>",
   command="bash run.sh",            # runs *inside* workdir
@@ -93,7 +93,7 @@ so your Claude Code session doesn't block. Periodically poll with the
 `run_key` from the return:
 
 ```
-mcp__co_scientist__reap_local_run(slug, analysis, run["run_key"])
+mcp__scivo__reap_local_run(slug, analysis, run["run_key"])
 ```
 
 When `finished_at` is set, you're done.
@@ -103,7 +103,7 @@ When `finished_at` is set, you're done.
 If the user has registered a server (see `add_server`):
 
 ```
-mcp__co_scientist__submit_remote_job(
+mcp__scivo__submit_remote_job(
   slug,
   analysis="<group_name>",
   command="sbatch run.slurm",       # runs *inside* the remote dir
@@ -135,13 +135,13 @@ tracked and the dashboard won't see it.
 ### 1. Decide / create the analysis group
 
 ```
-analyses = mcp__co_scientist__list_analyses(slug)
+analyses = mcp__scivo__list_analyses(slug)
 ```
 
 If no group matches what the user wants, create one:
 
 ```
-mcp__co_scientist__create_analysis(
+mcp__scivo__create_analysis(
   slug, name="<group>", description="<one-liner>"
 )
 ```
@@ -179,16 +179,16 @@ the script work, and make sure that folder exists first. For server —
 set `local_dir="analysis/<group>"`; it gets rsync'd up before launch:
 
 ```
-mcp__co_scientist__add_server(...)    # one-time per HPC
-mcp__co_scientist__list_servers()
-mcp__co_scientist__server_status(alias)  # is it up?
+mcp__scivo__add_server(...)    # one-time per HPC
+mcp__scivo__list_servers()
+mcp__scivo__server_status(alias)  # is it up?
 ```
 
 ### 4. Watch + reap
 
 Local:
 ```
-run = mcp__co_scientist__reap_local_run(slug, analysis, run_key)
+run = mcp__scivo__reap_local_run(slug, analysis, run_key)
 # loop with a short sleep until run["finished_at"] is set
 ```
 
@@ -200,8 +200,8 @@ its own (jobs that died between sessions are swept at the next startup).
 
 Remote:
 ```
-mcp__co_scientist__poll_remote_pids(alias)  # PIDs still alive?
-mcp__co_scientist__refresh_log_tail(slug, analysis, run_key)
+mcp__scivo__poll_remote_pids(alias)  # PIDs still alive?
+mcp__scivo__refresh_log_tail(slug, analysis, run_key)
 # (the dashboard does this automatically every few seconds)
 ```
 
@@ -213,7 +213,7 @@ Walk `analysis/<group>/out/` (or wherever the script wrote its
 outputs). For each PNG/PDF the user wants on the manuscript:
 
 ```
-mcp__co_scientist__add_figure(
+mcp__scivo__add_figure(
   slug,
   figure_number=N,                 # ≥101 for supplementary
   title="<concise title>",
@@ -225,7 +225,7 @@ mcp__co_scientist__add_figure(
 For CSV/TSV that should appear as a table:
 
 ```
-mcp__co_scientist__add_table(
+mcp__scivo__add_table(
   slug,
   table_number=N,                  # ≥101 for supplementary
   title="<title>",
@@ -240,7 +240,7 @@ The rest sit in `analysis/<group>/out/` as the audit trail.
 ### 6. Update the analysis description
 
 ```
-mcp__co_scientist__update_analysis(
+mcp__scivo__update_analysis(
   slug, name="<group>",
   description="<what was done + which figures/tables came out>"
 )

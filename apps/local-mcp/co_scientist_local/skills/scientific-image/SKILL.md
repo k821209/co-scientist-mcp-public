@@ -11,7 +11,7 @@ the relationship between …".
 
 ## What it does
 
-A staged pipeline around `mcp__co_scientist__generate_image`:
+A staged pipeline around `mcp__scivo__generate_image`:
 
 1. **Classify** the diagram type (pathway / network / workflow /
    comparison / architecture / heatmap / tree / freeform schematic).
@@ -55,7 +55,7 @@ overlaps, off-canvas elements, and arrows crossing unrelated boxes. Instead:
 2. **Lint deterministically before rendering.** Give each box a `label` +
    `font_size` (pt) and pass the figure size so overflow is caught too:
    ```
-   mcp__co_scientist__lint_figure_layout(
+   mcp__scivo__lint_figure_layout(
        nodes, canvas_w, canvas_h, edges=edges, min_gap=<pad>,
        figure_w_in=<figsize[0]>, figure_h_in=<figsize[1]>)
    ```
@@ -208,7 +208,7 @@ outside each element. 16:9 aspect, minimal color palette."
 Then:
 
 ```
-result = mcp__co_scientist__generate_image(
+result = mcp__scivo__generate_image(
   prompt=<full prompt>,
   slug=slug,                            # keyword: `prompt` is the first parameter
   figure_number=<N>,                    # if registering immediately
@@ -250,7 +250,7 @@ If `figure_number` was set: the figure doc + storage blob are
 already in place. Update the caption with the polished version:
 
 ```
-mcp__co_scientist__update_figure(
+mcp__scivo__update_figure(
   slug, figure_number,
   caption="<polished caption>",
   legend="<full legend for the manuscript>"

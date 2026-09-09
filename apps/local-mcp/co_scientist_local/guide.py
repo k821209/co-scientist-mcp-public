@@ -58,7 +58,7 @@ def render_guide(include_video: bool = True, installed: dict | None = None) -> s
     skills" (see installed_skills_block)."""
     video_block = _VIDEO_GUIDE if include_video else ""
     installed_block = installed_skills_block(installed)
-    return f"""# co-scientist MCP — session guide (v{GUIDE_VERSION})
+    return f"""# Scivo MCP (`scivo`) — session guide (v{GUIDE_VERSION})
 
 ## How this project works
 
@@ -73,7 +73,7 @@ opens a popover with the comment. The highlight is re-matched against the
 elsewhere never breaks it — but a comment whose stored `section` points at
 the wrong section can still fail to highlight. After bulk edits (import,
 mass section rewrites, `/paper-revision`) run
-`mcp__co_scientist__reconcile_review_anchors(slug, dry_run=True)` to preview
+`mcp__scivo__reconcile_review_anchors(slug, dry_run=True)` to preview
 which comments need their `section` corrected, then re-run with
 `dry_run=False` to apply; comments reported as `truly_missing` are ones
 whose passage is genuinely gone — review those with the user. To correct a
@@ -93,7 +93,7 @@ why.
 
 On every session start:
 
-1. Call `mcp__co_scientist__whoami()` once — verifies the MCP is bound to
+1. Call `mcp__scivo__whoami()` once — verifies the MCP is bound to
    the project_id your CLAUDE.md mentions. If they differ, STOP and tell
    the user — they likely mixed `.mcp.json` and `CLAUDE.md` from two
    different dashboard projects. (The MCP also prints a stderr warning
@@ -108,15 +108,15 @@ On every session start:
    `git_sha` and have the user check the checkout itself
    (`git status -sb && git pull`), because `pip install --upgrade` is a
    no-op there. Only `false` means "checked, and current".
-2. Call `mcp__co_scientist__get_project_memory()` — the project's durable
+2. Call `mcp__scivo__get_project_memory()` — the project's durable
    knowledge (user preferences, decisions, gotchas). Treat it as standing
    context for the whole session. See "## Project memory" below. Also call
-   `mcp__co_scientist__get_project_skills()` — freeform, project-scoped
+   `mcp__scivo__get_project_skills()` — freeform, project-scoped
    playbooks/instructions the user defined in the Memory tab; follow them for
    THIS project (they complement the built-in skills). Skip if it returns "".
-3. Call `mcp__co_scientist__list_papers(summary=True)` then, for each paper,
-   `mcp__co_scientist__count_open_user_comments(slug)`. If non-zero,
-   call `mcp__co_scientist__list_reviews(slug, status="open")` to get
+3. Call `mcp__scivo__list_papers(summary=True)` then, for each paper,
+   `mcp__scivo__count_open_user_comments(slug)`. If non-zero,
+   call `mcp__scivo__list_reviews(slug, status="open")` to get
    the open comments with their `anchor_text` — use that quoted passage
    to locate the exact place in the manuscript the user is pointing at,
    then offer `/paper-revision`. Each comment also carries a `decision`
@@ -124,7 +124,7 @@ On every session start:
    act only on `accepted` ones, never on `rejected`, and ask before
    touching `pending` ones. `list_reviews(slug, status="open",
    decision="accepted")` is the approved work list.
-   `mcp__co_scientist__review_triage_summary(slug)` gives the whole
+   `mcp__scivo__review_triage_summary(slug)` gives the whole
    picture in one call — including `rejected_without_rationale`, the
    rejected comments still missing a rebuttal (those block a clean export
    and need a `response` via /paper-revision), and `ai_open`, the
@@ -135,16 +135,16 @@ On every session start:
    `response` stating the plan. Editing the manuscript never auto-resolves a
    finding, so drive `ai_open` to 0 before calling a review handled.
    For any deck on the paper, also call
-   `mcp__co_scientist__list_deck_comments(slug, deck_id)` — open slide
+   `mcp__scivo__list_deck_comments(slug, deck_id)` — open slide
    comments are the deck's revision to-do list; revise the slide, then
    `resolve_deck_comment`.
-4. For each paper, call `mcp__co_scientist__check_requirements(slug)`.
+4. For each paper, call `mcp__scivo__check_requirements(slug)`.
    If `configured` is true and `violations` is non-empty, surface them
    (e.g. "abstract 178/150 words — over the Short Communication limit")
    and offer to fix. If `configured` is false and the paper has a
    target `journal` set, suggest `/journal-requirements` so the
    journal's word/figure/section limits get tracked.
-5. Call `mcp__co_scientist__list_servers()` — the project's registered
+5. Call `mcp__scivo__list_servers()` — the project's registered
    compute (HPC nodes, workstations). Treat this as the inventory of
    where analyses can run. See "## Compute resources" below.
 
@@ -648,16 +648,22 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
 - `/release-publish [slug] [analysis]` — audit + publish an analysis
   release folder as a standalone GitHub repo (git workflow, gated).
 
-## Tool surface (`mcp__co_scientist__*`)
+## Tool surface (`mcp__scivo__*`)
+
+**The server key is `scivo`** — every tool is `mcp__scivo__<name>`. If your
+session's tools are named `mcp__co_scientist__*`, the project's MCP config
+predates the rename (2026-09-09) and every skill's tool reference will miss:
+rename the server key in `.mcp.json` / `.codex/config.toml` to `scivo`, or
+re-run the Setup tab script, and restart.
 
 **Under Pi, not every tool is a direct tool.** The Setup tab exposes the ~30
 the skills use most directly; the rest are reachable through the adapter's
-proxy under the SAME name — `mcp({{ tool: "mcp__co_scientist__<name>", args:
+proxy under the SAME name — `mcp({{ tool: "mcp__scivo__<name>", args:
 {{…}} }})`. If a tool a skill names is not in your direct tool list, call it that
 way. Nothing about the name changes. (Under Claude Code every tool is direct.)
 
 **Under Codex, the tools are behind its tool search.** Codex names them
-exactly as the skills do (`mcp__co_scientist__<name>`) but does not list all
+exactly as the skills do (`mcp__scivo__<name>`) but does not list all
 229 in the prompt; it loads a tool's definition when you look it up by name.
 So call the tool the skill names — the name is the lookup key. Skills are
 invoked as `$<skill-name>` there; a `/<skill-name>` in a skill's text means
@@ -845,7 +851,7 @@ Inline DOI: `{{doi:10.1234/example}}`. For a DOI-less registered ref
 from the rendered bibliography even though it's in the .bib. Adjacent citation
 tokens of any kind collapse into one parenthetical, so `{{doi:A}}{{cite:b}}`
 is fine. References auto-managed via
-`mcp__co_scientist__add_reference_by_doi(slug, doi)` — fetches title,
+`mcp__scivo__add_reference_by_doi(slug, doi)` — fetches title,
 authors, journal, year from CrossRef so you never invent them. Refuses
 DOIs CrossRef can't find (404 → almost always a hallucinated citation).
 
@@ -861,7 +867,7 @@ Two-axis verification model — and the MCP only owns one of them:
 
 Workflow YOU follow per session:
 
-1. Call `mcp__co_scientist__validate_references(slug)`. It returns a
+1. Call `mcp__scivo__validate_references(slug)`. It returns a
    facts pack:
      - `unresolved[]` — CrossRef 404s. Almost always fake DOIs.
      - `missing_doi[]` — references with no DOI to check.
@@ -887,7 +893,7 @@ The dashboard shows two ribbons per reference (`✓ DOI` / `✓ Context`).
 `?` Context means you haven't judged it yet. Both green = trusted.
 
 **On every session start, also call**
-`mcp__co_scientist__list_verification_findings(slug)` for each paper.
+`mcp__scivo__list_verification_findings(slug)` for each paper.
 Returns unacknowledged problem findings (unresolved hallucinations,
 title mismatches, errors). If non-empty:
   1. Surface them to the user.
@@ -1001,7 +1007,7 @@ sub/superscripts, Greek letters as variables, fractions, sums. Leave
 ## Remote job rule
 
 **Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.
-Use `mcp__co_scientist__submit_remote_job` so the run is tracked in
+Use `mcp__scivo__submit_remote_job` so the run is tracked in
 `analysis_runs` and visible in the dashboard. Untracked raw-ssh jobs are the #1
 reason the Runs tab is both blind to real work and cluttered with stale rows.
 
@@ -1020,7 +1026,7 @@ regardless of age (`since_hours` only narrows the sweep).
 
 ## Image generation
 
-`mcp__co_scientist__generate_image` routes through the Firebase Cloud
+`mcp__scivo__generate_image` routes through the Firebase Cloud
 Function (Cloud Run gen2) backed by OpenAI gpt-image-2.
 
 **Plan gating** — the function enforces:
@@ -1029,7 +1035,7 @@ Function (Cloud Run gen2) backed by OpenAI gpt-image-2.
   - `plan_id="max"`    → up to 2000 / month
     (`enterprise` is a legacy alias for `max`, same 2000 quota)
 
-Call `mcp__co_scientist__get_plan()` to check the owner's tier + limits
+Call `mcp__scivo__get_plan()` to check the owner's tier + limits
 (authoritative, from their billing state) BEFORE attempting a paid-only feature
 — it returns `can_generate_images`, `upload_limit_mb`, `project_cap`, etc., so
 you can tell the user "image generation needs Pro" instead of hitting a 403.

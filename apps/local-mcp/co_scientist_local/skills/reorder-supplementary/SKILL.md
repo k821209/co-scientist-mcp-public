@@ -7,7 +7,7 @@ description: Renumber/reorder supplementary figures or tables (SFig/STable). Use
 
 Supplementary items are keyed by number (SFig 1 = `figure_number` 101, …), and
 a figure's image blob path embeds that number — so reordering means renumbering
-the docs and moving the blobs. `mcp__co_scientist__reorder_supplementary` does
+the docs and moving the blobs. `mcp__scivo__reorder_supplementary` does
 that server-side (no image re-upload) and rewrites deterministic body refs.
 
 ## Flow

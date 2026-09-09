@@ -25,6 +25,7 @@ Env vars per mode:
 """
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
@@ -38,6 +39,50 @@ from .state import State
 # reads AGENTS.md only (its fallback filename list is empty by default —
 # `codex-rs/config/src/config_toml.rs`), so the Codex setup writes that name.
 _CONTEXT_FILES = ("CLAUDE.md", "AGENTS.md")
+
+
+LEGACY_SERVER_KEY = "co_scientist"
+SERVER_KEY = "scivo"
+
+
+def detect_legacy_server_key(project_dir: pathlib.Path) -> str | None:
+    """The config file that still names the server `co_scientist`, or None.
+
+    The skills call `mcp__scivo__*` since 2026-09-09; a config from before
+    that exposes the tools as `mcp__co_scientist__*`, and every skill's tool
+    reference misses — which reads as "the tools are gone". Checked here, at
+    the one moment the MCP is certainly running under that config."""
+    mcp_json = project_dir / ".mcp.json"
+    if mcp_json.is_file():
+        try:
+            servers = (json.loads(mcp_json.read_text(encoding="utf-8")) or {}).get("mcpServers") or {}
+            if LEGACY_SERVER_KEY in servers and SERVER_KEY not in servers:
+                return str(mcp_json)
+        except (OSError, ValueError):
+            pass
+    toml = project_dir / ".codex" / "config.toml"
+    if toml.is_file():
+        try:
+            text = toml.read_text(encoding="utf-8")
+            if re.search(r"^\[mcp_servers\.co_scientist\]", text, re.M) and \
+               not re.search(r"^\[mcp_servers\.scivo\]", text, re.M):
+                return str(toml)
+        except OSError:
+            pass
+    return None
+
+
+def _warn_legacy_server_key() -> None:
+    hit = detect_legacy_server_key(pathlib.Path.cwd())
+    if hit:
+        sys.stderr.write(
+            "\n"
+            "  ╭─ ⚠  MCP server key is still `co_scientist` ───────────────────╮\n"
+            f"  │  {hit[-58:]:<62} │\n"
+            "  │  The skills call mcp__scivo__* now. Rename the key to `scivo`  │\n"
+            "  │  (or re-run the Setup tab script) and restart the session.     │\n"
+            "  ╰────────────────────────────────────────────────────────────────╯\n\n"
+        )
 
 
 def _check_claude_md_project_id(state: State) -> None:
@@ -204,6 +249,7 @@ def main() -> None:
             file=sys.stderr,
         )
         _check_claude_md_project_id(state)
+        _warn_legacy_server_key()
     elif os.environ.get("CO_SCIENTIST_PROJECT_ID") and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         try:
             state = _build_service_account_state()

@@ -34,7 +34,7 @@ user refactors them (parametrize paths, move secrets to env vars).
 
 Verify that numbers cited in the manuscript actually match the data:
 
-1. Read the manuscript: `mcp__co_scientist__get_paper_state(slug)`.
+1. Read the manuscript: `mcp__scivo__get_paper_state(slug)`.
    For each figure/table, check `source_analysis` first (`list_figures`,
    `list_tables`) and `list_analysis_runs(slug, name)` — that is the recorded
    producer, and it answers "which run made this number" without reading a

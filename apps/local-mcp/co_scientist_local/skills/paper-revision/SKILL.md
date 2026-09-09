@@ -38,7 +38,7 @@ A `rejected` comment is NOT done — academic response letters must state *why*
 a reviewer point was not adopted, so every rejected comment needs a rebuttal
 in its `response`. Treat this as the symmetric half of the accepted workflow.
 
-Run `mcp__co_scientist__review_triage_summary(slug)` to see the gap in one
+Run `mcp__scivo__review_triage_summary(slug)` to see the gap in one
 call — `rejected_without_rationale` lists rejected comments whose `response`
 is empty. For each:
 
@@ -76,7 +76,7 @@ announces itself.
 
 ## Flow
 
-1. `mcp__co_scientist__list_reviews(slug, status='open', source='user')`
+1. `mcp__scivo__list_reviews(slug, status='open', source='user')`
    to fetch every open user comment, newest first. Read each comment's
    `decision` and split into accepted / pending / rejected per the rule above.
 2. For each comment, show the user:
@@ -89,11 +89,11 @@ announces itself.
    - **Reject** — explain why and respond.
    - **Need more info** — pause that one and come back later.
 4. For accepted comments, edit the relevant section via
-   `mcp__co_scientist__update_section(slug, key, body=...)`. **The replacement is
+   `mcp__scivo__update_section(slug, key, body=...)`. **The replacement is
    manuscript prose, not a note about the change** — see "The revised sentence is
    manuscript prose, not a patch note" below, and `/paper-writing` §2a.
 5. Mark the comment resolved AND re-anchor it to the revised text:
-   `mcp__co_scientist__resolve_paper_comment(slug, review_id,
+   `mcp__scivo__resolve_paper_comment(slug, review_id,
    status='accepted', response='...', new_anchor_text='<a verbatim phrase
    from the REVISED passage>', new_section='<key if it moved>')`
    - **Always pass `new_anchor_text` when your edit changed the anchored
@@ -155,13 +155,13 @@ If you can't find the corresponding location in the current manuscript:
 If the dashboard flags *several* comments it "couldn't locate" but the
 sentences are clearly still there, the stored `section` is likely wrong
 rather than the text being gone — run `/reconcile-reviews [slug]` (wraps
-`mcp__co_scientist__reconcile_review_anchors`) to re-align them in bulk.
+`mcp__scivo__reconcile_review_anchors`) to re-align them in bulk.
 
 ## After editing sections
 
 Editing sections regenerates the manuscript blob, which can leave some
 comments pointing at the wrong section. Before you report done, run
-`mcp__co_scientist__reconcile_review_anchors(slug, dry_run=True)`; if it
+`mcp__scivo__reconcile_review_anchors(slug, dry_run=True)`; if it
 reports any `relocated`, apply it (`dry_run=False`) so the user's remaining
 highlights resolve correctly. See `/reconcile-reviews`.
 
@@ -192,7 +192,7 @@ highlights resolve correctly. See `/reconcile-reviews`.
 
 ## After Addressing All Open Comments
 
-Call `mcp__co_scientist__count_open_user_comments(slug)` to confirm the
+Call `mcp__scivo__count_open_user_comments(slug)` to confirm the
 count is zero. Report the resolution summary back to the user.
 
 ## Write from the reader's context

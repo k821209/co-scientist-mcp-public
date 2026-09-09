@@ -82,7 +82,7 @@ from . import features as _features
 
 def build_mcp(state: State) -> FastMCP:
     """Construct the MCP server bound to a given State (uid + backend)."""
-    mcp = FastMCP("co-scientist-local")
+    mcp = FastMCP("scivo")
 
     # ─── session / identity ──────────────────────────────────────────────────
     @mcp.tool()

@@ -213,7 +213,7 @@ def main() -> None:
             f"there, `{root}`.\n\n"
             f"Every folder this project makes on a server lives under that root "
             f"(runs in {root}/analysis/<name>). Ask "
-            f"mcp__co_scientist__remote_workdir(\"{alias}\") for the path and use it; "
+            f"mcp__scivo__remote_workdir(\"{alias}\") for the path and use it; "
             f"to bind a different root for this project, set_project_workdir(...).\n\n"
             f"If this really must live elsewhere (shared reference data, say), add "
             f"`# outside-project` to the command and say why.",
@@ -227,7 +227,7 @@ def main() -> None:
         f"Blocked: raw `ssh {target} … nohup …` bypasses Running Jobs and "
         f"loses provenance.\n\n"
         f"Use the MCP tool instead:\n\n"
-        f"  mcp__co_scientist__submit_remote_job(\n"
+        f"  mcp__scivo__submit_remote_job(\n"
         f"    slug=..., analysis=..., command=...,\n"
         f"    server_alias=\"{target}\", env_name=..., workers=...,\n"
         f"  )\n\n"

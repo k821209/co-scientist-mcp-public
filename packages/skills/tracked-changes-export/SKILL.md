@@ -522,7 +522,7 @@ pd.count("independently constructed")      # a fact about python-docx
 explicitly, or it will not appear on the dashboard:
 
 ```
-mcp__co_scientist__attach_export(slug, local_path=..., scope="main")
+mcp__scivo__attach_export(slug, local_path=..., scope="main")
 ```
 
 ## If Google Docs still refuses

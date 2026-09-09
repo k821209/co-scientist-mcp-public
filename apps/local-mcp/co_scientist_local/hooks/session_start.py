@@ -36,13 +36,13 @@ def build_banner(paper_slug: str | None) -> str:
             f"  /paper-writing             — write/update sections\n"
             f"  /paper-revision            — address open user comments\n"
             f"\n"
-            f"Status: call mcp__co_scientist__count_open_user_comments({paper_slug!r}) "
+            f"Status: call mcp__scivo__count_open_user_comments({paper_slug!r}) "
             f"to see how many comments the dashboard has waiting for you."
         )
     return (
         "co-scientist: no paper detected in the current directory.\n"
-        "Run `mcp__co_scientist__list_papers` to see your papers, "
-        "or `mcp__co_scientist__create_paper` to start one."
+        "Run `mcp__scivo__list_papers` to see your papers, "
+        "or `mcp__scivo__create_paper` to start one."
     )
 
 
@@ -60,10 +60,29 @@ def version_warning() -> str:
     return ""
 
 
+def legacy_server_key_warning(cwd: Path) -> str:
+    """A .mcp.json / .codex/config.toml that still names the server
+    `co_scientist` exposes the tools as mcp__co_scientist__*, and every skill
+    (which calls mcp__scivo__* since 2026-09-09) misses."""
+    for d in [cwd, *cwd.parents]:
+        f = d / ".mcp.json"
+        if f.is_file():
+            try:
+                servers = (json.loads(f.read_text(encoding="utf-8")) or {}).get("mcpServers") or {}
+            except (OSError, ValueError):
+                return ""
+            if "co_scientist" in servers and "scivo" not in servers:
+                return (f"\n\n⚠️  {f} still names the MCP server `co_scientist`; the skills "
+                        f"call mcp__scivo__* now. Rename the key to `scivo` (or re-run the "
+                        f"Setup tab script) and restart.")
+            return ""
+    return ""
+
+
 def main() -> None:
     cwd = Path.cwd()
     paper = detect_paper(cwd)
-    banner = build_banner(paper) + version_warning()
+    banner = build_banner(paper) + version_warning() + legacy_server_key_warning(cwd)
     # The documented shape, for BOTH hosts. Claude Code and Codex read the
     # banner from hookSpecificOutput.additionalContext; a top-level key (what
     # this printed before) reached the model only because Claude Code appends

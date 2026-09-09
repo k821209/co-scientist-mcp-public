@@ -35,7 +35,7 @@ def _make_settings(hooks_dir: pathlib.Path) -> dict:
     return {
         "permissions": {
             "allow": [
-                "mcp__co_scientist__*",
+                "mcp__scivo__*",
                 "Read", "Glob", "Grep", "WebSearch", "WebFetch",
             ],
         },
@@ -54,7 +54,7 @@ def _make_settings(hooks_dir: pathlib.Path) -> dict:
             ],
             "PostToolUse": [
                 {
-                    "matcher": "mcp__co_scientist__*",
+                    "matcher": "mcp__scivo__*",
                     "hooks": [hook("post_tool", 3000)],
                 },
             ],
@@ -64,7 +64,7 @@ def _make_settings(hooks_dir: pathlib.Path) -> dict:
 
 _MCP_JSON = {
     "mcpServers": {
-        "co_scientist": {
+        "scivo": {
             "type": "stdio",
             "command": "python3",
             "args": ["-m", "co_scientist_local"],

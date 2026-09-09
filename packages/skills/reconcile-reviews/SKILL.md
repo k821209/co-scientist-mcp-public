@@ -13,14 +13,14 @@ stamps the wrong one, and older comments stored a section *title* where a
 *key* is expected — fails to highlight even though the sentence is still
 there verbatim. This skill fixes the stored `section` in bulk.
 
-It wraps `mcp__co_scientist__reconcile_review_anchors`.
+It wraps `mcp__scivo__reconcile_review_anchors`.
 
 ## Flow
 
 1. Resolve the paper `slug` (ask, or use the one in context). If the user
-   didn't name one, run `mcp__co_scientist__list_papers()` and confirm.
+   didn't name one, run `mcp__scivo__list_papers()` and confirm.
 2. **Preview** — call
-   `mcp__co_scientist__reconcile_review_anchors(slug, dry_run=True)`.
+   `mcp__scivo__reconcile_review_anchors(slug, dry_run=True)`.
    It returns:
    - `relocated` — `[{review_id, from, to, anchor_preview}]`: comments whose
      `section` will be corrected to where the text actually lives.
@@ -32,10 +32,10 @@ It wraps `mcp__co_scientist__reconcile_review_anchors`.
    `truly_missing` is empty, report "all comment anchors already resolve
    correctly" and stop.
 4. **Apply** — on the user's OK, call
-   `mcp__co_scientist__reconcile_review_anchors(slug, dry_run=False)`.
+   `mcp__scivo__reconcile_review_anchors(slug, dry_run=False)`.
 5. **Handle the truly-missing ones** — these are NOT auto-changed. For each,
    show the `anchor_preview` and the comment text
-   (`mcp__co_scientist__list_paper_comments(slug, status='open')`) and ask
+   (`mcp__scivo__list_paper_comments(slug, status='open')`) and ask
    the user whether to:
    - re-anchor it to an analogous passage that still exists —
      `update_review(slug, review_id, section=…, anchor_text=…)`;

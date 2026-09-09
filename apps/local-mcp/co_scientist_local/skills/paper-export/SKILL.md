@@ -48,7 +48,7 @@ in-file claims are yours to check.
 ### 1. Resolve the target paper
 
 - If the user already named a slug, use it.
-- Otherwise call `mcp__co_scientist__list_papers()` and ask which one.
+- Otherwise call `mcp__scivo__list_papers()` and ask which one.
 
 ### 2. Run `prepare_export(slug)` — pre-flight check
 
@@ -110,7 +110,7 @@ If the user wants to proceed despite warnings, continue.
 ### 4. Run `export_to_path`
 
 ```
-mcp__co_scientist__export_to_path(
+mcp__scivo__export_to_path(
   slug,
   output_path="<absolute path or ./{slug}.{ext}>",
   fmt="docx" | "tex" | "pdf" | "md" | "html",
@@ -236,7 +236,7 @@ kebab-case to a real style slug. Look up the correct filename at
 https://github.com/citation-style-language/styles and pin it:
 
 ```
-mcp__co_scientist__register_journal_csl(
+mcp__scivo__register_journal_csl(
   journal="<exact paper.journal value>",
   csl_filename="journal-of-experimental-botany.csl",
 )

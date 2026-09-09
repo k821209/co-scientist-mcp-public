@@ -96,10 +96,10 @@ unity header — ready for rendering.
 ### 1. Pull paper context
 
 ```
-paper = mcp__co_scientist__get_paper_state(slug)
-figs = mcp__co_scientist__list_figures(slug)
-tabs = mcp__co_scientist__list_tables(slug)
-prep = mcp__co_scientist__prepare_export(slug)   # for warnings
+paper = mcp__scivo__get_paper_state(slug)
+figs = mcp__scivo__list_figures(slug)
+tabs = mcp__scivo__list_tables(slug)
+prep = mcp__scivo__prepare_export(slug)   # for warnings
 ```
 
 If `prep["warnings"]` shows placeholders or unresolved DOIs, ask the
@@ -108,7 +108,7 @@ user whether to proceed or fix first.
 ### 2. Initialize the deck (idempotent)
 
 ```
-deck = mcp__co_scientist__create_deck(
+deck = mcp__scivo__create_deck(
   slug,
   title="<presentation title>",
   audience="<lab seminar | Nature poster | conference plenary | …>",
@@ -208,7 +208,7 @@ image_style:
 Write a SHORT narrative-arc concept and call:
 
 ```
-mcp__co_scientist__update_deck(
+mcp__scivo__update_deck(
   slug, deck_id,
   concept="""
     Theme: minimal-modern-academic
@@ -221,7 +221,7 @@ mcp__co_scientist__update_deck(
 **B. Without theme**: invent your own concept. Spell out:
 
 ```
-mcp__co_scientist__update_deck(
+mcp__scivo__update_deck(
   slug, deck_id,
   concept="""
     Palette:
@@ -503,7 +503,7 @@ So the simplest add+design loop is:
 
 ```python
 # Step 4 produced the brief; Step 5 designs + authors:
-mcp__co_scientist__update_slide(
+mcp__scivo__update_slide(
   slug, deck_id, slide_id=...,
   code="""
     h.accent_stripe(slide, palette=palette, sw=sw)
@@ -529,7 +529,7 @@ mcp__co_scientist__update_slide(
 `add_slide` itself stays simple:
 
 ```
-mcp__co_scientist__add_slide(
+mcp__scivo__add_slide(
   slug, deck_id,
   slide_number=N,
   role="<role>",
@@ -1015,7 +1015,7 @@ pattern call.** This is the shape of a typical content slide — the
 two pattern-driven examples below are the *narrow* case.
 
 ```python
-mcp__co_scientist__add_slide(
+mcp__scivo__add_slide(
   slug, deck_id, slide_number=N, role="method",
   title="Part 1 — 참조 유전체 구축 (3중 플랫폼 전략)",
   body="3 sequencing platforms compared on mode / spec / tag, "
@@ -1136,7 +1136,7 @@ equipment list on the right, both dense), see
 **Example 1 — title + 4-card grid + take-home quote**:
 
 ```python
-mcp__co_scientist__add_slide(
+mcp__scivo__add_slide(
   slug, deck_id, slide_number=N, role="discussion",
   title="The four harness primitives",
   body="Memory keeps decisions. Hooks fire on events. Slash commands "
@@ -1430,7 +1430,7 @@ Put the bullets in `body` (markdown) on `add_slide`, then set ONE
 image region for the figure on the right:
 
 ```
-mcp__co_scientist__set_slide_regions(
+mcp__scivo__set_slide_regions(
   slug, deck_id, slide_id,
   regions=[
     { "render_mode": "ai-image",
@@ -1455,7 +1455,7 @@ overflow the box even at the reduced 20pt body type.
 data plot next to a manuscript figure:
 
 ```
-mcp__co_scientist__set_slide_regions(
+mcp__scivo__set_slide_regions(
   slug, deck_id, slide_id,
   regions=[
     { "render_mode": "paper-figure", "figure_number": 2,
@@ -1639,7 +1639,7 @@ Noto Sans CJK KR static build.
 After adding all slides:
 
 ```
-mcp__co_scientist__renumber_deck(slug, deck_id)
+mcp__scivo__renumber_deck(slug, deck_id)
 ```
 
 Packs `slide_number`s tightly starting at 1, even if you added them
@@ -1648,7 +1648,7 @@ out of order.
 ### 7. Mark drafted
 
 ```
-mcp__co_scientist__update_deck(slug, deck_id, status="drafted")
+mcp__scivo__update_deck(slug, deck_id, status="drafted")
 ```
 
 Status flow: `draft` (initial) → `drafted` (slides + notes + prompts
@@ -1749,7 +1749,7 @@ move it below the title block). A small top-right corner logo is exempt, so
 deck-chrome logos don't false-positive. On both `preview_slide` and the export.
 
 ```
-res = mcp__co_scientist__export_deck_to_pptx(slug, deck_id, output_path="<dir>/<deck>.pptx")
+res = mcp__scivo__export_deck_to_pptx(slug, deck_id, output_path="<dir>/<deck>.pptx")
 for png in res["slide_pngs"]:
     # Read the PNG via the Read tool — Claude is multimodal and will
     # see the actual slide rendering.
@@ -1813,7 +1813,7 @@ it.
 After every slide has its body / prompt / notes filled:
 
 ```
-mcp__co_scientist__render_deck(slug, deck_id)
+mcp__scivo__render_deck(slug, deck_id)
 ```
 
 This walks every slide and:
@@ -1831,7 +1831,7 @@ This walks every slide and:
                    PNG), then pass that path back:
 
 ```
-mcp__co_scientist__render_slide(
+mcp__scivo__render_slide(
   slug, deck_id, slide_id,
   local_path="/abs/path/to/slide-3.png",
 )
@@ -1840,7 +1840,7 @@ mcp__co_scientist__render_slide(
 For a **hybrid** slide's `code-shape` region, render that one region:
 
 ```
-mcp__co_scientist__render_region(
+mcp__scivo__render_region(
   slug, deck_id, slide_id, region_id,   # e.g. region_id="r2"
   local_path="/abs/path/to/region.png",
 )
@@ -1854,7 +1854,7 @@ Once every non-`text` slide has an `image_blob_path`, the deck's
 `status` flips to `"rendered"`. To export from Claude Code:
 
 ```
-mcp__co_scientist__export_deck_to_pptx(
+mcp__scivo__export_deck_to_pptx(
   slug, deck_id,
   output_path="~/decks/my-talk.pptx",
 )

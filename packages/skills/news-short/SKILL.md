@@ -7,7 +7,7 @@ description: Turn a news story or text (no source video) into a vertical news Sh
 
 > **Video tools missing?** The video/YouTube tool family registers only on
 > machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__co_scientist__add_video`
+> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
 > / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
 > session — needed once per fresh machine; after `youtube_connect` the token file
 > auto-enables it.

@@ -8,7 +8,7 @@ project is a fork of the co-scientist harness, rebuilt on Firebase (Firestore
 
 - **All paper metadata** (papers, sections, figures, tables, references,
   reviews, analyses, runs, servers) — Firestore, accessed via the
-  `mcp__co_scientist__*` tools.
+  `mcp__scivo__*` tools.
 - **Manuscript content** — `manuscript.md` blob in Cloud Storage,
   regenerated automatically whenever you update a section.
 - **Figure images, analysis outputs** — Cloud Storage blobs.
@@ -70,7 +70,7 @@ gap here directly undermines the paper's reproducibility claim. Reconcile with
 **Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.
 The PreToolUse hook will block it.
 
-**Use `mcp__co_scientist__submit_remote_job(...)` instead.** Politeness checks
+**Use `mcp__scivo__submit_remote_job(...)` instead.** Politeness checks
 (load avg, polite-cap) are enforced. Override (for setup commands like
 `mkdir`, `conda env create`) by prefixing the command with `# setup` or
 including `# allow-untracked` in it.

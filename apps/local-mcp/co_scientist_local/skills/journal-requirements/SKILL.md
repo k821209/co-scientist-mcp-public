@@ -54,7 +54,7 @@ items." Pick the row for the chosen type.
 ### 3. Record the spec
 
 ```
-mcp__co_scientist__set_paper_requirements(
+mcp__scivo__set_paper_requirements(
   slug,
   paper_type="Short Communication",
   abstract_max_words=150,
@@ -85,7 +85,7 @@ Rules:
 ### 4. Check the manuscript
 
 ```
-result = mcp__co_scientist__check_requirements(slug)
+result = mcp__scivo__check_requirements(slug)
 ```
 
 Returns `{configured, requirements, metrics, checks, violations, ok}`.

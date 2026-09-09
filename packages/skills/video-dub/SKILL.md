@@ -7,7 +7,7 @@ description: Dub a video into another language (default English) with free open-
 
 > **Video tools missing?** The video/YouTube tool family registers only on
 > machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__co_scientist__add_video`
+> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
 > / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
 > session — needed once per fresh machine; after `youtube_connect` the token file
 > auto-enables it.
@@ -68,7 +68,7 @@ and translate each segment yourself. TTS/assembly/mux are `vh.steps.dub`.
    ```
 7. **Register as a variant:**
    ```
-   mcp__co_scientist__add_video(title="<title> (EN)", local_path=".../final_en.mp4",
+   mcp__scivo__add_video(title="<title> (EN)", local_path=".../final_en.mp4",
        aspect_ratio="9:16")
    ```
    Then it can go through `/video-publish` to a target-language channel.

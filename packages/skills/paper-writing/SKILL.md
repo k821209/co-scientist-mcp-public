@@ -20,7 +20,7 @@ description: Create a new paper or update sections of an existing one. Use when 
    - `doc_type="report"` / `"other"` start with **no sections** (you structure
      the body freely with markdown headings) and export to **.docx via
      python-docx** — a native file that opens cleanly in 한컴오피스/Word.
-3. Call `mcp__co_scientist__create_paper(title=..., journal=..., doc_type=...)`.
+3. Call `mcp__scivo__create_paper(title=..., journal=..., doc_type=...)`.
 4. For a `paper`, the canonical 6 sections (abstract, introduction, methods,
    results, discussion, conclusion) are seeded automatically. For
    `report`/`other`, add sections yourself with markdown `##` headings in the
@@ -29,16 +29,16 @@ description: Create a new paper or update sections of an existing one. Use when 
 
 ### Working on an existing paper
 
-1. Call `mcp__co_scientist__list_papers()` if the slug isn't provided.
-2. Call `mcp__co_scientist__get_paper_state(slug)` to see the current
+1. Call `mcp__scivo__list_papers()` if the slug isn't provided.
+2. Call `mcp__scivo__get_paper_state(slug)` to see the current
    state of all sections and the assembled manuscript.
 3. For each section the user wants to write:
    - Ask any clarifying questions (target audience, key claims).
    - Draft the section content **per the Writing craft rules below**
      (section contracts, journal register, no duplication).
-   - Call `mcp__co_scientist__update_section(slug, key, body=..., status='draft')`.
-4. After updating sections, run `mcp__co_scientist__lint_manuscript(slug)`,
-   resolve every warning, then call `mcp__co_scientist__get_paper_state(slug)`
+   - Call `mcp__scivo__update_section(slug, key, body=..., status='draft')`.
+4. After updating sections, run `mcp__scivo__lint_manuscript(slug)`,
+   resolve every warning, then call `mcp__scivo__get_paper_state(slug)`
    and show the user a summary of what changed (and the clean lint result).
 
 ## Writing craft — read before drafting ANY section
@@ -414,7 +414,7 @@ one and cross-reference.
 Before marking sections `complete` (and before `/paper-export`), run:
 
 ```
-mcp__co_scientist__lint_manuscript(slug)
+mcp__scivo__lint_manuscript(slug)
 ```
 
 It deterministically flags **duplication** (same sentence across sections),
@@ -440,7 +440,7 @@ reads as cited on screen while exporting with no bibliography entry
 
 Prefer `add_reference_by_doi(slug, doi)` — it fetches the metadata so nothing
 is invented. You can pre-add references via
-`mcp__co_scientist__add_reference(slug, citation_key=..., doi=..., title=..., authors=[...])`
+`mcp__scivo__add_reference(slug, citation_key=..., doi=..., title=..., authors=[...])`
 either before or after the prose — `prepare_export` will check for
 unresolved citations at export time.
 

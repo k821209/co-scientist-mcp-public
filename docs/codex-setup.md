@@ -130,7 +130,7 @@ use per command, delete the two lines and answer the prompts.
 
 Then verify — do not assume:
 
-- `/mcp` lists the tools. You should see `mcp__co_scientist__whoami` — the
+- `/mcp` lists the tools. You should see `mcp__scivo__whoami` — the
   same name every skill writes. (A feature flag,
   `non_prefixed_mcp_tool_names`, would drop the `mcp__` prefix; it is off and
   marked "under development". If a future Codex turns it on, the skills'
@@ -145,7 +145,7 @@ Then verify — do not assume:
 | | |
 |---|---|
 | Skills | identical files. Invoked as **`$paper-review`** (a `$` mention), not `/paper-review`; where a skill's text says `/name` it means the same skill. Codex shows the catalog within a budget of about 2% of the context window, truncating long descriptions rather than dropping skills (`codex-rs/ext/skills/src/render.rs`) |
-| MCP tools | identical names. Not listed in every prompt: with current OpenAI models they sit behind Codex's tool search and are loaded when looked up by name (`mcp_tool_exposure.rs`). So no direct-tool list is needed, unlike Pi. With `--oss` / a local provider the search is unavailable and all tools are direct; then `enabled_tools = [...]` under `[mcp_servers.co_scientist]` is the equivalent of Pi's list |
+| MCP tools | identical names. Not listed in every prompt: with current OpenAI models they sit behind Codex's tool search and are loaded when looked up by name (`mcp_tool_exposure.rs`). So no direct-tool list is needed, unlike Pi. With `--oss` / a local provider the search is unavailable and all tools are direct; then `enabled_tools = [...]` under `[mcp_servers.scivo]` is the equivalent of Pi's list |
 | `session_start` hook | **runs** (SessionStart, via `.codex/hooks.json`) — Claude Code parity, unlike Pi |
 | The ssh provenance guard | the same Python file, via `PreToolUse` with matcher `Bash` — Codex reports its shell tool to hooks under that name (`codex-rs/core/src/tools/hook_names.rs`). Same `# setup` / `# allow-untracked` overrides, same fail-open when the aliases cache is missing |
 | `/reviewer-frame-check` | needs a reader that holds only the bundle. Codex can spawn agents, but not one restricted to reading — run the check in a separate Codex session with only the bundle files open. The isolation is the point, not the mechanism |

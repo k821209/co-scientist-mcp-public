@@ -38,7 +38,7 @@ HOOK_GROUPS: list[tuple[str, str | None, list[tuple[str, int]]]] = [
     ("SessionStart", None, [("session_start", 5)]),
     ("PreToolUse", "Bash", [("pretool_block_ssh_nohup", 3),
                             ("pretool_cutadapt_lint", 2)]),
-    ("PostToolUse", "mcp__co_scientist__*", [("post_tool", 3)]),
+    ("PostToolUse", "mcp__scivo__*", [("post_tool", 3)]),
 ]
 
 

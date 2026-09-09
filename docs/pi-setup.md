@@ -100,7 +100,7 @@ once there is nothing to create:
 ```json
 {
   "mcpServers": {
-    "co_scientist": {
+    "scivo": {
       "type": "stdio",
       "command": "python3",
       "args": ["-m", "co_scientist_local"]
@@ -169,7 +169,7 @@ reads as rules switching on and off between projects.
 }
 ```
 
-- **`toolPrefix: "mcp"` is not optional.** It produces `mcp__co_scientist__<tool>`,
+- **`toolPrefix: "mcp"` is not optional.** It produces `mcp__scivo__<tool>`,
   the name every skill writes. The adapter's DEFAULT is `<server>_<tool>`, and
   under that every tool reference in all 27 skills is wrong. This is the single
   most likely thing to get wrong.
@@ -184,11 +184,11 @@ reads as rules switching on and off between projects.
   skills call, computed from the skills and pinned by a test.
 
   Every other tool stays reachable through the adapter's proxy, **under the
-  same name**: `mcp({ tool: "mcp__co_scientist__<name>", args: {…} })`. Nothing
+  same name**: `mcp({ tool: "mcp__scivo__<name>", args: {…} })`. Nothing
   in the skills changes; only the call form for a tool outside the list.
 
 Verify before trusting it: run `/mcp` (or ask the agent to list its tools) and
-confirm you see `mcp__co_scientist__whoami`. If you see `co_scientist_whoami`,
+confirm you see `mcp__scivo__whoami`. If you see `scivo_whoami`,
 the prefix setting has not taken effect.
 
 ## 5. What differs from Claude Code

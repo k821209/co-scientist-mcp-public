@@ -1,6 +1,6 @@
 # MCP tool catalog
 
-All tools registered under `mcp__co_scientist__*`. ~70 total.
+All tools registered under `mcp__scivo__*`. ~70 total.
 
 The MCP server is single-project — every tool implicitly operates on the
 `state.project_id` resolved at startup from the API key in `.mcp.json`.
