@@ -58,6 +58,8 @@ def render_guide(include_video: bool = True, installed: dict | None = None) -> s
     skills" (see installed_skills_block)."""
     video_block = _VIDEO_GUIDE if include_video else ""
     installed_block = installed_skills_block(installed)
+    from .tab_roles import render_tab_roles
+    tab_roles_block = render_tab_roles(include_video=include_video)
     return f"""# Scivo MCP (`scivo`) — session guide (v{GUIDE_VERSION})
 
 ## How this project works
@@ -148,6 +150,7 @@ On every session start:
    compute (HPC nodes, workstations). Treat this as the inventory of
    where analyses can run. See "## Compute resources" below.
 
+{tab_roles_block}
 ## Compute resources
 
 The user's compute — HPC nodes, lab workstations, their cores/RAM/GPUs

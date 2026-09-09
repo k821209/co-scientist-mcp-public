@@ -1,0 +1,96 @@
+{
+  "_comment": "One source for what each project tab is FOR. Rendered on the dashboard (the line under the tab bar, the 'What each tab is for' panel) and in project_guide()'s 'The dashboard, tab by tab'. Edit here only; tests/test_tab_roles.py checks both renderings and that every tool named exists.",
+  "tabs": [
+    {
+      "key": "papers", "label": "Paper",
+      "role": "The manuscript and everything a journal receives with it: sections, figures, tables, references, reviews, exports, submissions.",
+      "holds": "manuscript text, inline comments, the review and revision record, rendered exports",
+      "not": "source files the paper cites (Materials); explainers for people (Study)",
+      "tools": ["/paper-writing", "/paper-revision", "/paper-review", "/paper-export", "get_paper_state"]
+    },
+    {
+      "key": "presentations", "label": "Presentation",
+      "role": "Talks built from a paper: decks that reuse its figures and claims, rendered and exportable.",
+      "holds": "decks, their slides, comments on slides",
+      "not": "the paper's own figures (they stay in Paper; a deck references them)",
+      "tools": ["/paper-deck", "create_deck", "render_deck"]
+    },
+    {
+      "key": "runs", "label": "Runs",
+      "role": "Every computation behind a number: which machine, which command, which params, live status. The provenance a reviewer asks for.",
+      "holds": "analysis runs across all papers, running or finished, with logs",
+      "not": "the analyses' outputs themselves (they become figures/tables in Paper)",
+      "tools": ["/analysis-run", "submit_remote_job", "launch_local_job", "record_analysis_run", "compare_run_params"]
+    },
+    {
+      "key": "activity", "label": "Activity",
+      "role": "The shared checklist and timeline: what is planned, what happened, by whom.",
+      "holds": "to-dos and a reverse-chronological feed of writes and milestones",
+      "not": "reasoning or decisions (Discussion); durable knowledge (Memory)",
+      "tools": ["add_todo", "update_todo", "log_activity"]
+    },
+    {
+      "key": "memory", "label": "Memory",
+      "role": "Soft knowledge that is not in the data: preferences, why a decision was made, dead ends. Standing context for every session.",
+      "holds": "one markdown document of durable notes, plus the project's playbook",
+      "not": "machines and environments (the Servers registry); files (Materials); facts recoverable from the paper",
+      "tools": ["get_project_memory", "append_project_memory", "get_project_skills"]
+    },
+    {
+      "key": "discussion", "label": "Discussion",
+      "role": "Where the argument is drawn and settled: graphs of the reasoning, threads, and the record of what was decided.",
+      "holds": "drawn graphs (saved as data), discussion threads, decisions",
+      "not": "the polished write-up (Study) or the manuscript (Paper)",
+      "tools": ["write_graph", "post_comment", "record_decision", "list_decisions"]
+    },
+    {
+      "key": "study", "label": "Study",
+      "role": "Explainers a person reads here, written against the project's numbers so they say when those numbers have moved.",
+      "holds": "designed HTML documents with their data sources declared",
+      "not": "reference files (Materials); the manuscript (Paper)",
+      "tools": ["/study-design", "write_study", "read_study"]
+    },
+    {
+      "key": "materials", "label": "Materials",
+      "role": "Source files the paper refers to: PDFs to read, prior drafts, notes, data files. Traceability, not reading.",
+      "holds": "uploaded files with the user's note and the agent's note",
+      "not": "cited works (References, in Paper); explainers (Study); large data on servers (Datasets)",
+      "tools": ["list_materials", "get_material", "add_material"]
+    },
+    {
+      "key": "datasets", "label": "Datasets",
+      "role": "Which data is on which server, at what path, keyed how, and what it joins to. The map the analyses run against.",
+      "holds": "dataset registrations pointing at server paths",
+      "not": "the files themselves; the machines (Servers registry)",
+      "tools": ["register_dataset", "check_dataset", "list_datasets"]
+    },
+    {
+      "key": "published", "label": "Published",
+      "role": "Unlisted live links to a page: something currently open, with people behind it and a moment when it should be closed.",
+      "holds": "publications and their passcodes",
+      "not": "exports (files, in Paper); the archive of a paper (a DOI, not offered)",
+      "tools": ["publish_page", "list_publications"]
+    },
+    {
+      "key": "video", "label": "Video",
+      "role": "Recordings edited, captioned, dubbed and published from the paper's material. Admin-only for now.",
+      "holds": "videos and their processing state",
+      "not": "the deck (Presentation)",
+      "tools": ["/video-harness", "/video-dub", "/video-publish"]
+    },
+    {
+      "key": "feedback", "label": "Feedback",
+      "role": "Bugs and feature requests about the harness itself, triaged by the developer. The agent files here too, while working.",
+      "holds": "reports with status and the developer's note",
+      "not": "comments on the manuscript (those are reviews, in Paper)",
+      "tools": ["report_feedback", "list_feedback"]
+    },
+    {
+      "key": "setup", "label": "Setup guide",
+      "role": "Wiring a session to this project: the API key, the config and skills for Claude Code, Codex or Pi.",
+      "holds": "the key, the per-host setup script and files",
+      "not": "anything about the research",
+      "tools": ["whoami", "project_guide"]
+    }
+  ]
+}

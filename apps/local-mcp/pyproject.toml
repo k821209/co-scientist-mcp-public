@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "co-scientist-local"
-version = "0.1.20260909.post3"
+version = "0.1.20260909.post4"
 description = "Local MCP server for co-scientist-cloud (Claude Code <-> Firestore)"
 requires-python = ">=3.11"
 dependencies = [
@@ -64,7 +64,7 @@ include = ["co_scientist_local*"]
 # private repo this dir is absent (canonical lives at repo-root packages/skills
 # and is resolved at runtime); the publish step materializes it into the
 # public package. See co_scientist_local/skills_install.py.
-co_scientist_local = ["skills/**/*", "agents/*.md", "hooks/*.py"]
+co_scientist_local = ["skills/**/*", "agents/*.md", "hooks/*.py", "tab_roles.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["../../tests"]
