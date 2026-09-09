@@ -10,17 +10,54 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-08-20a"
+GUIDE_VERSION = "2026-09-09a"
 
 
-def render_guide(include_video: bool = True) -> str:
+def installed_skills_block(inv: dict | None) -> str:
+    """The one paragraph that contradicts an empty host listing loudly.
+
+    The bullets below it are static: they say what the harness HAS. This says
+    what this session can REACH — how many, at what absolute path, and whether
+    the session was launched below that path, which is the one condition under
+    which the host's own skill listing goes quiet while invocation by name
+    still works.
+    """
+    if not inv:
+        return ""
+    n = len(inv.get("skills") or [])
+    if inv.get("found"):
+        line = f"**Installed here: {n} skills at `{inv['dest']}`.**"
+        lv = inv.get("levels_above") or 0
+        if lv:
+            line += (
+                f" That is {lv} level{'s' if lv > 1 else ''} ABOVE your working "
+                f"directory (`{inv['cwd']}`), so the host's session-start skill "
+                f"listing may not show them — they are still there. Invoke by "
+                f"name (`/paper-review`), or launch from `{inv['root']}`.")
+        return line + "\n\n"
+    src = inv.get("source")
+    where = f" The package carries {n} at `{src}`." if src else ""
+    return (
+        f"**Not installed under your working directory** (`{inv['cwd']}` and its "
+        f"parents hold no `.claude/skills` or `.agents/skills`).{where} Run "
+        f"`co-scientist-local install-skills --dir <project root>` there, or launch "
+        f"the session from the project directory. Do not conclude the skills do "
+        f"not exist.\n\n")
+
+
+def render_guide(include_video: bool = True, installed: dict | None = None) -> str:
     """The canonical session-start guide, rendered as markdown.
 
     `include_video=False` drops the video/YouTube skill bullets — used when the
     video tool family is not registered (features.video_enabled), so the guide
     never documents tools the session cannot call. ~2k chars of guide per
-    session on machines that never touch video."""
+    session on machines that never touch video.
+
+    `installed` is `skills_install.find_installed_skills()` for this session's
+    working directory; it renders as the first paragraph of "Available
+    skills" (see installed_skills_block)."""
     video_block = _VIDEO_GUIDE if include_video else ""
+    installed_block = installed_skills_block(installed)
     return f"""# co-scientist MCP — session guide (v{GUIDE_VERSION})
 
 ## How this project works
@@ -472,7 +509,7 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
 
 ## Available skills
 
-- `/paper-writing [title]` — create or update manuscript sections
+{installed_block}- `/paper-writing [title]` — create or update manuscript sections
 - `/paper-import [file]` — import an existing .docx/.pdf/.odt/.tex
   manuscript: `import_document` converts to markdown, the agent splits
   it into canonical sections, registers figures + references.

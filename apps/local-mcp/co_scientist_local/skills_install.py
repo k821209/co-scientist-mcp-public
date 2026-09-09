@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import shutil
 import sys
 
@@ -117,6 +118,55 @@ def install_skills(
 
     return {"installed": installed, "skipped": skipped, "host": host,
             "source": str(source), "dest": str(dest_root), "strategy": strategy}
+
+
+def _skill_description(skill_dir: pathlib.Path) -> str:
+    """The frontmatter `description:` of a SKILL.md, first line only."""
+    try:
+        text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    m = re.search(r"^description:\s*(.+)$", text, re.M)
+    return (m.group(1).strip() if m else "")[:200]
+
+
+def find_installed_skills(start: pathlib.Path | str | None = None) -> dict:
+    """Where the skills a session can use actually are, seen from `start`.
+
+    Walks UP from `start` (default: cwd) looking for a `.claude/skills` or
+    `.agents/skills` that holds at least one skill. The host lists skills from
+    the directory it was launched in; a session started two levels below the
+    project root sees an empty listing, concludes the skills do not exist, and
+    does the work by hand (feedback 7e36bc1d1d74). Skill INVOCATION by name
+    still works from there — only the listing is quiet — so the fix is to say,
+    from a call the agent must make anyway, where the skills are and how far
+    above the session they sit.
+
+    Returns {found, host, root, dest, levels_above, cwd, skills:[{name,
+    description}]}; when nothing is found, `source` names the package's own
+    copy so the agent can still see what exists.
+    """
+    cwd = pathlib.Path(start or pathlib.Path.cwd()).resolve()
+    for levels, d in enumerate([cwd, *cwd.parents]):
+        for host, rel in SKILL_DEST.items():
+            dest = d / rel
+            if _has_any_skill(dest):
+                names = _skill_names(dest)
+                return {
+                    "found": True, "host": host, "root": str(d), "dest": str(dest),
+                    "levels_above": levels, "cwd": str(cwd),
+                    "skills": [{"name": n, "description": _skill_description(dest / n)}
+                               for n in names],
+                }
+    source = find_skills_source()
+    names = _skill_names(source) if source else []
+    return {
+        "found": False, "host": None, "root": None, "dest": None,
+        "levels_above": None, "cwd": str(cwd),
+        "source": str(source) if source else None,
+        "skills": [{"name": n, "description": _skill_description(source / n)}
+                   for n in names],
+    }
 
 
 def _claude_code_project(project_dir: pathlib.Path) -> bool:

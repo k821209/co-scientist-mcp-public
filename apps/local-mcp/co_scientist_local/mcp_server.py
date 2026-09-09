@@ -144,8 +144,18 @@ def build_mcp(state: State) -> FastMCP:
 
         Lives in the installed `co_scientist_local` package so updates flow
         via `pip install --upgrade` — no need to re-download CLAUDE.md.
+
+        Opens the skills section with what THIS session can reach: how many
+        skills are installed, at what absolute path, and whether the working
+        directory sits below them (the case in which the host's own skill
+        listing comes back empty while invocation by name still works).
         """
-        return render_guide(include_video=_features.video_enabled())
+        try:
+            from .skills_install import find_installed_skills
+            installed = find_installed_skills()
+        except Exception:      # the guide must never fail on a filesystem quirk
+            installed = None
+        return render_guide(include_video=_features.video_enabled(), installed=installed)
 
     # ─── project memory ──────────────────────────────────────────────────────
     @mcp.tool()
@@ -177,10 +187,12 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def get_project_skills() -> dict[str, Any]:
-        """Return the project's user-defined skills/playbooks (from the Memory
-        tab): {content, updated_at, updated_by}. Read at session start and
-        follow them for THIS project — freeform, project-scoped instructions
-        that complement the built-in skills. `content` is "" when none set."""
+        """The Memory tab's freeform PLAYBOOK for this project — NOT the
+        installed skill inventory. Returns {content, updated_at, updated_by};
+        `content` is "" when the user has written none, which is the normal
+        case. Read at session start and follow it for THIS project. Which
+        skills are installed, and where, is what `project_guide()` opens its
+        skills section with."""
         return _memory.get_project_skills(state)
 
     @mcp.tool()
