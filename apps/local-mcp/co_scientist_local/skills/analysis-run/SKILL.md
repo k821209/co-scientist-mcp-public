@@ -114,11 +114,17 @@ mcp__co_scientist__submit_remote_job(
 )
 ```
 
-The remote working dir is derived automatically — it's the server's
-`default_workdir` + `/analysis/<group>` (created with `mkdir -p`). You
+The remote working dir is derived automatically: the project's root on
+that server + `/analysis/<group>` (created with `mkdir -p`). The root is
+`<server default_workdir>/<project-slug>`, or the project's
+`set_project_workdir` binding; `remote_workdir(alias)` shows it. You
 don't pass a remote path; set `local_dir` to the local folder to rsync
 up, and the command runs inside the remote dir. `run_key` is generated
 for you (in the returned row).
+
+Any `# setup` ssh work for this project — an env, a download, a scratch
+dir — goes under that same root. Ask `remote_workdir(alias)` first and use
+the path; the guard blocks a `mkdir`/`rsync` outside it.
 
 Streams stderr/stdout back via `tail_remote_log` and
 `refresh_log_tail`. Don't `ssh "nohup …"` manually — the run won't be

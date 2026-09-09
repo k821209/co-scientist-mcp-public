@@ -69,6 +69,7 @@ from .tools import runs as _runs
 from .tools import sections as _sections
 from .tools import datasets as _datasets
 from .tools import servers as _servers
+from .tools import servers_cache as _servers_cache
 from .tools import workdirs as _workdirs
 from .tools import ssh_ops as _ssh_ops
 from .tools import tables as _tables
@@ -1804,12 +1805,14 @@ def build_mcp(state: State) -> FastMCP:
         polite_max_cores_pct: int = 50,
         notes: str | None = None,
     ) -> dict[str, Any]:
-        return _servers.add_server(
+        out = _servers.add_server(
             state, alias=alias, host=host, user=user, cores=cores,
             memory_gb=memory_gb, gpus=gpus, ssh_key=ssh_key,
             conda_root=conda_root, default_workdir=default_workdir,
             polite_max_cores_pct=polite_max_cores_pct, notes=notes,
         )
+        _servers_cache.write_servers_cache(state)   # the guard reads a file
+        return out
 
     # ─── pipelines (account-wide, versioned) ─────────────────────────────────
     @mcp.tool()
@@ -2114,15 +2117,19 @@ def build_mcp(state: State) -> FastMCP:
         default_workdir: str | None = None,
         active: bool | None = None,
     ) -> dict[str, Any]:
-        return _servers.update_server(
+        out = _servers.update_server(
             state, alias, host=host, user=user, cores=cores,
             polite_max_cores_pct=polite_max_cores_pct,
             default_workdir=default_workdir, active=active,
         )
+        _servers_cache.write_servers_cache(state)   # the guard reads a file
+        return out
 
     @mcp.tool()
     def delete_server(alias: str) -> dict[str, Any]:
-        return {"deleted": _servers.delete_server(state, alias)}
+        out = {"deleted": _servers.delete_server(state, alias)}
+        _servers_cache.write_servers_cache(state)
+        return out
 
     @mcp.tool()
     def add_server_env(
@@ -2156,8 +2163,10 @@ def build_mcp(state: State) -> FastMCP:
         by default (both falling back to the server's defaults), so each
         project's runs land in — and are documented against — a clear location
         and environment."""
-        return _workdirs.set_project_workdir(state, server_alias, workdir,
-                                             description=description, env_name=env_name)
+        out = _workdirs.set_project_workdir(state, server_alias, workdir,
+                                            description=description, env_name=env_name)
+        _servers_cache.write_servers_cache(state)   # the guard's root for this alias
+        return out
 
     @mcp.tool()
     def list_project_workdirs() -> list[dict[str, Any]]:
@@ -2168,7 +2177,9 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def delete_project_workdir(server_alias: str) -> dict[str, Any]:
         """Remove this project's working-directory binding for a server."""
-        return {"deleted": _workdirs.delete_project_workdir(state, server_alias)}
+        out = {"deleted": _workdirs.delete_project_workdir(state, server_alias)}
+        _servers_cache.write_servers_cache(state)
+        return out
 
     # ─── analysis runs ───────────────────────────────────────────────────────
     @mcp.tool()
@@ -2516,6 +2527,27 @@ def build_mcp(state: State) -> FastMCP:
 
     # ─── SSH-bound server operations ─────────────────────────────────────────
     @mcp.tool()
+    def remote_workdir(server_alias: str, analysis: str | None = None) -> dict[str, Any]:
+        """Where THIS project's work lives on a server — the one rule for
+        remote directories. Call it before any `# setup` ssh work (mkdir, env
+        creation, a download) and use the path it returns; never make up a
+        folder on a server.
+
+        The root is the project's binding on that server (set_project_workdir)
+        if one exists, else `<server default_workdir>/<project-slug>`; runs go
+        in `<root>/analysis/<name>`, which submit_remote_job creates. The ssh
+        guard blocks a `mkdir` or `rsync` on a registered server that targets a
+        path outside the root (override with `# outside-project` in the
+        command, and say why). Returns {root, source, project_slug, analysis_dir,
+        env_name}; `root` is None when the server has no default_workdir."""
+        server = _servers.get_server(state, server_alias)
+        info = _workdirs.project_root(state, server)
+        info["server_alias"] = server_alias
+        info["analysis_dir"] = (_workdirs.analysis_dir(info["root"], analysis)
+                                if info["root"] and analysis else None)
+        return info
+
+    @mcp.tool()
     def server_status(alias: str) -> dict[str, Any]:
         """Live SSH check: load avg, memory, our running PIDs, warnings."""
         return _ssh_ops.server_status(state, alias)
@@ -2534,8 +2566,9 @@ def build_mcp(state: State) -> FastMCP:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Politeness-checked SSH job submission (rsync + nohup, pidfile-idempotent).
-        `params`: the arguments that define the run, as a dict — see
-        record_analysis_run."""
+        Runs in `<project root>/analysis/<analysis>` on the server — see
+        remote_workdir for the root rule. `params`: the arguments that define
+        the run, as a dict — see record_analysis_run."""
         return _ssh_ops.submit_remote_job(
             state, slug, analysis, command=command, server_alias=server_alias,
             env_name=env_name, workers=workers, local_dir=local_dir,

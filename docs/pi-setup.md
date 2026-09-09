@@ -215,3 +215,10 @@ is never blocked from working.
 Legitimate non-job ssh (making a directory, creating an env) is allowed by
 prefixing the command with `# setup` or including `# allow-untracked` anywhere in
 it.
+
+The same extension enforces a second rule: a `mkdir`, or an `rsync`/`scp`
+destination, on a registered server must lie under this project's root there
+(`<default_workdir>/<project-slug>`, or the `set_project_workdir` binding —
+`remote_workdir(alias)` shows it). The cache carries that root per project
+under `projects`, keyed by the id in the `CLAUDE.md` above the cwd. `# setup`
+does not lift this rule; `# outside-project` does, with a reason.

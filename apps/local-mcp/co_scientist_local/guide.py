@@ -167,6 +167,16 @@ drives each project's **Runs tab**, the politeness caps, and
   compute details sitting in memory, move them to the registry and prune
   the memory entry.
 - `ssh_key` stores a *path on the user's disk*, never key material.
+- **One directory per project on each server, and everything under it.** The
+  root is `<server default_workdir>/<project-slug>` — or the binding you set
+  with `set_project_workdir(alias, workdir, description=, env_name=)` — and
+  `remote_workdir(alias)` returns it. Runs go in `<root>/analysis/<name>`
+  (`submit_remote_job` creates that); envs, downloads and scratch go under the
+  root too. Never make up a folder on a server: the ssh guard blocks a
+  `mkdir`/`rsync` on a registered server outside the root, and `# setup` does
+  not lift that (only `# outside-project`, with a reason — shared reference
+  data is the usual one). Work was landing in ad-hoc folders with no project
+  in the path; a `ls` of the server should read as a list of projects.
 - `notes` is the place for MEASURED facts you had to discover — "egress to EBI
   43 B/s vs 365 KB/s locally, don't download here". A download that silently
   crawls looks identical to one that is working.

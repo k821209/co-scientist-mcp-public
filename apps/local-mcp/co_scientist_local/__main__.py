@@ -228,6 +228,10 @@ def main() -> None:
     # cwd is the project dir). Takes effect on the next Claude Code launch.
     from .skills_install import install_skills_quietly
     install_skills_quietly()
+    # The ssh guard reads ~/.co-scientist/cache/servers.json; this is the write
+    # the hook, the Pi extension and the docs always said happened here.
+    from .tools.servers_cache import write_servers_cache
+    write_servers_cache(state)
     from .agents_install import install_agents_quietly
     install_agents_quietly()
 

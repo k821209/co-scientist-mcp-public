@@ -51,23 +51,63 @@ function cachePath(): string {
   );
 }
 
+type Cache = {
+  servers?: { alias?: string; host?: string; user?: string }[];
+  projects?: Record<string, Record<string, string>>;
+};
+
+function readCache(readFile: (p: string) => string): Cache {
+  try {
+    return JSON.parse(readFile(cachePath())) as Cache;
+  } catch {
+    return {}; // Missing/unreadable cache → fail open. See blockedTarget.
+  }
+}
+
 /** Every spelling of a registered server that could appear as an ssh target. */
 export function loadAliases(readFile: (p: string) => string = (p) =>
   fs.readFileSync(p, "utf8")): Set<string> {
   const out = new Set<string>();
-  try {
-    const data = JSON.parse(readFile(cachePath())) as {
-      servers?: { alias?: string; host?: string; user?: string }[];
-    };
-    for (const s of data.servers ?? []) {
-      if (s.alias) out.add(s.alias);
-      if (s.host) out.add(s.host);
-      if (s.user && s.host) out.add(`${s.user}@${s.host}`);
-    }
-  } catch {
-    // Missing/unreadable cache → empty set → fail open. See isBlocked.
+  for (const s of readCache(readFile).servers ?? []) {
+    if (s.alias) out.add(s.alias);
+    if (s.host) out.add(s.host);
+    if (s.user && s.host) out.add(`${s.user}@${s.host}`);
   }
   return out;
+}
+
+/** This project's root per server alias, from the cache's `projects` map. */
+export function loadProjectRoots(
+  projectId: string | null,
+  readFile: (p: string) => string = (p) => fs.readFileSync(p, "utf8"),
+): Record<string, string> {
+  if (!projectId) return {};
+  return readCache(readFile).projects?.[projectId] ?? {};
+}
+
+const PROJECT_ID_RE = /[Pp]roject\s+id\s*:\s*`([a-zA-Z0-9_-]+)`/;
+const CONTEXT_FILES = ["CLAUDE.md", "AGENTS.md"];
+
+/** The project id in the CLAUDE.md / AGENTS.md found walking up from cwd —
+ *  the same file the MCP checks at startup. */
+export function detectProjectId(
+  cwd: string,
+  readFile: (p: string) => string = (p) => fs.readFileSync(p, "utf8"),
+): string | null {
+  let dir = path.resolve(cwd);
+  for (;;) {
+    for (const name of CONTEXT_FILES) {
+      try {
+        const m = PROJECT_ID_RE.exec(readFile(path.join(dir, name)));
+        if (m) return m[1];
+      } catch {
+        /* not here */
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }
 
 const OVERRIDE_PREFIXES = ["# setup", "# manual"];
@@ -108,6 +148,67 @@ export function blockedTarget(command: string, aliases: Set<string>): string | n
   return null;
 }
 
+// Rule 2 — a directory outside this project's root on a registered server.
+// `# setup` does NOT lift it (setup is exactly when a folder is made); only
+// `# outside-project` does. Mirrors the Python hook, segment for segment.
+const OUTSIDE_OVERRIDE = "# outside-project";
+const SEG_SPLIT_RE = /\s*(?:;|&&|\|\||\|)\s*/;
+const MKDIR_RE = /\bmkdir\b(.*)$/;
+const COPY_RE = /\b(?:rsync|scp)\b(.*)$/;
+const ABS_PATH_RE = /(?<![\w.@/])(\/[^\s"';|&]+)/g;
+const REMOTE_DEST_RE = /^([A-Za-z0-9_.@-]+):(\/[^\s"';|&]*)$/;
+
+export function outsideProject(
+  command: string,
+  aliases: Set<string>,
+  roots: Record<string, string>,
+): { alias: string; path: string; root: string } | null {
+  if (command.includes(OUTSIDE_OVERRIDE)) return null;
+  if (!SSH_CMD_RE.test(command) && !COPY_RE.test(command)) return null;
+  let alias: string | null = null;
+  for (const m of command.matchAll(TOKEN_RE)) {
+    if (aliases.has(m[0])) { alias = m[0]; break; }
+  }
+  if (!alias) return null;
+  const root = (roots[alias] ?? "").replace(/\/+$/, "");
+  if (!root.startsWith("/")) return null;
+  const outside = (p0: string) => {
+    const p = p0.replace(/\/+$/, "") || "/";
+    return !(p === root || p.startsWith(root + "/"));
+  };
+  const flat = command.replace(/["']/g, " ");
+  for (const seg of flat.split(SEG_SPLIT_RE)) {
+    const c = COPY_RE.exec(seg);
+    if (c) {
+      // rsync/scp: the DESTINATION is the last argument, and only a remote one
+      // on this alias is ours to judge. Pulling from a shared path is reading.
+      const args = c[1].trim().split(/\s+/).filter(Boolean);
+      const d = args.length ? REMOTE_DEST_RE.exec(args[args.length - 1]) : null;
+      if (d && d[1] === alias && d[2] && outside(d[2])) return { alias, path: d[2], root };
+      continue;
+    }
+    const m = MKDIR_RE.exec(seg);
+    if (!m) continue;
+    for (const pm of m[1].matchAll(ABS_PATH_RE)) {
+      if (outside(pm[1])) return { alias, path: pm[1], root };
+    }
+  }
+  return null;
+}
+
+export function outsideReason(hit: { alias: string; path: string; root: string }): string {
+  return [
+    `Blocked: \`${hit.path}\` on ${hit.alias} is outside this project's directory there, \`${hit.root}\`.`,
+    "",
+    `Every folder this project makes on a server lives under that root (runs in ${hit.root}/analysis/<name>).`,
+    `Ask mcp__co_scientist__remote_workdir("${hit.alias}") for the path and use it; to bind a different`,
+    "root for this project, set_project_workdir(...).",
+    "",
+    "If this really must live elsewhere (shared reference data, say), add `# outside-project`",
+    "to the command and say why.",
+  ].join("\n");
+}
+
 export function reasonFor(target: string): string {
   return [
     `Blocked: raw \`ssh ${target} … nohup …\` bypasses Running Jobs and loses provenance.`,
@@ -137,7 +238,11 @@ export default function (pi: ExtensionAPI) {
     ).trim();
     if (!command) return;
 
-    const target = blockedTarget(command, loadAliases());
+    const aliases = loadAliases();
+    const roots = loadProjectRoots(detectProjectId(process.cwd()));
+    const hit = outsideProject(command, aliases, roots);
+    if (hit) return { block: true, reason: outsideReason(hit) };
+    const target = blockedTarget(command, aliases);
     if (target) return { block: true, reason: reasonFor(target) };
   });
 }

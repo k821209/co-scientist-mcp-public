@@ -233,20 +233,21 @@ def submit_remote_job(
         5. Record an analysis_runs row.
     """
     server = get_server(state, server_alias)
-    # This PROJECT's binding on the server (workdir + env) takes precedence over
-    # the account server's defaults — so each project's runs land in its own
-    # directory and use its own environment. Falls back to the server defaults.
+    # The project's root on this server: its binding, else
+    # <default_workdir>/<project-slug> (workdirs.project_root). Every run of
+    # this project lands under it, in analysis/<name>.
     from . import workdirs as _workdirs
-    binding = _workdirs.get_project_workdir(state, server_alias) or {}
-    base_workdir = (binding.get("workdir") or server.get("default_workdir") or "").strip()
+    root_info = _workdirs.project_root(state, server)
+    base_workdir = root_info["root"] or ""
     if not base_workdir:
         return {
             "error": f"server {server_alias!r} has no working directory for this "
-                     "project — set one via set_project_workdir(alias, workdir, "
-                     "description=..., env_name=...) (or the server's default_workdir)."
+                     "project — set the server's default_workdir (update_server), "
+                     "or bind one for this project with set_project_workdir(alias, "
+                     "workdir, description=..., env_name=...)."
         }
-    if env_name is None and binding.get("env_name"):
-        env_name = binding["env_name"]   # default env from the project binding
+    if env_name is None and root_info.get("env_name"):
+        env_name = root_info["env_name"]   # default env from the project binding
     ssh = state.require_ssh()
 
     # 1. Politeness
@@ -272,8 +273,8 @@ def submit_remote_job(
     if status.get("warnings"):
         polite_warnings.extend(status["warnings"])
 
-    # 2. Resolve remote dir + create (under the project's base workdir)
-    remote_dir = f"{base_workdir.rstrip('/')}/analysis/{analysis_name}"
+    # 2. Resolve remote dir + create (under the project's root)
+    remote_dir = _workdirs.analysis_dir(base_workdir, analysis_name)
     rc, _, err = ssh.run(server, f"mkdir -p {shlex.quote(remote_dir)}")
     if rc != 0:
         return {"error": f"failed to create remote dir: {(err or '').strip()}"}
@@ -855,6 +856,9 @@ def scan_recent_outputs(
     """
     server = get_server(state, alias)
     ssh = state.require_ssh()
+    if not workdir:
+        from . import workdirs as _workdirs
+        workdir = _workdirs.project_root(state, server)["root"]
     root = workdir or server.get("default_workdir") or "."
     since_hours = max(0.1, float(since_hours))
     # `find -newermt` beats -mtime: minutes of resolution, and no rounding to
