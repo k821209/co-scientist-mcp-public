@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import pathlib
 import shlex
+import socket
 import subprocess
 import sys
 import threading
@@ -40,6 +41,25 @@ def _run_path(state: State, slug: str, analysis: str, run_key: str) -> str:
 def _ensure_analysis(state: State, slug: str, analysis: str) -> None:
     if state.backend.get_doc(_analysis_path(state, slug, analysis)) is None:
         raise NotFound(f"analysis {analysis!r} not found for {slug!r}")
+
+
+def local_hostname() -> str:
+    """This machine's name, as a run records it. `host="local"` says WHICH KIND
+    of place a run happened; with two laptops and a workstation it does not say
+    which one, and a PID from another machine is not knowable here — so the
+    reapers use this to leave other machines' runs alone."""
+    try:
+        return socket.gethostname().split(".")[0] or "localhost"
+    except OSError:
+        return "localhost"
+
+
+def is_this_machine(run: dict) -> bool:
+    """Whether a local run's PID can be checked from HERE. Runs recorded before
+    `hostname` existed have none, and are treated as local to keep the old
+    behaviour."""
+    h = run.get("hostname")
+    return not h or h == local_hostname()
 
 
 def _new_run_key() -> str:
@@ -76,9 +96,14 @@ def record_analysis_run(
     notes: str | None = None,
     run_key: str | None = None,
     params: dict | None = None,
+    hostname: str | None = None,
 ) -> dict:
     """Insert a new analysis_runs doc. Used by `launch_local_job` and
     `submit_remote_job`.
+
+    `hostname`: for a local run, the machine it ran on — recorded as this
+    machine's name unless given (back-filling a run from another laptop).
+    Remote runs carry the server alias in `host` and need none.
 
     `workdir` is the absolute directory the command ran in (local path, or
     the resolved remote dir). Persisted so a run stays self-contained — the
@@ -108,6 +133,9 @@ def record_analysis_run(
         "workdir": workdir,
         "notes": notes,
         "params": normalize_params(params),
+        # Which machine, for a local run. "local" alone does not say.
+        "hostname": (hostname or local_hostname()) if (host or "local") == "local"
+        else hostname,
         # Liveness: the dashboard shows a live spinner only while a run is fresh
         # (now - last_heartbeat < TTL); a run whose session died goes "stale"
         # instead of spinning forever. Bumped by poll_remote_pids / heartbeat_run;
@@ -319,6 +347,8 @@ def reap_local_run(state: State, slug: str, analysis: str, run_key: str) -> dict
     pid = run.get("pid")
     if pid is None:
         return run
+    if not is_this_machine(run):
+        return run  # a PID on another machine is not knowable here
     try:
         os.kill(pid, 0)
         return run  # still alive
@@ -376,13 +406,16 @@ def reap_all_local_runs(state: State) -> dict:
     unfinished *local* run whose PID is gone. Used at MCP startup to clean up
     jobs that died while no session was running (the registry is empty then).
     """
-    checked = finished = 0
+    checked = finished = other_machine = 0
     for slug, _ in state.backend.list_collection(state.project_path("papers")):
         for analysis, _ in state.backend.list_collection(
             state.project_path("papers", slug, "analyses")
         ):
             for r in list_analysis_runs(state, slug, analysis, unfinished_only=True):
                 if (r.get("host") or "local") != "local" or not r.get("pid"):
+                    continue
+                if not is_this_machine(r):
+                    other_machine += 1     # its own machine's session reaps it
                     continue
                 checked += 1
                 try:
@@ -392,7 +425,7 @@ def reap_all_local_runs(state: State) -> dict:
                 except Exception as e:  # pragma: no cover — defensive
                     print(f"co-scientist-local: sweep {r.get('run_key')} failed: {e}",
                           file=sys.stderr)
-    return {"checked": checked, "finished": finished}
+    return {"checked": checked, "finished": finished, "other_machine": other_machine}
 
 
 def start_local_reaper(state: State, *, interval_seconds: float = 30.0,

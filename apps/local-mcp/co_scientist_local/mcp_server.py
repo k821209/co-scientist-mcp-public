@@ -2193,8 +2193,14 @@ def build_mcp(state: State) -> FastMCP:
         log_path: str | None = None,
         notes: str | None = None,
         params: dict[str, Any] | None = None,
+        hostname: str | None = None,
     ) -> dict[str, Any]:
         """Insert a run record (provenance for a command you ran yourself).
+
+        A local run (`host="local"`) records THIS machine's name as `hostname`
+        automatically — "local" alone does not say which laptop or workstation,
+        and a reaper on another machine must not judge its PID. Pass `hostname`
+        only to back-fill a run that happened elsewhere.
 
         `params`: the arguments that DEFINE this run — every value that could
         change the result (model, objective, learning rate, seed, data split,
@@ -2214,7 +2220,7 @@ def build_mcp(state: State) -> FastMCP:
         return _runs.record_analysis_run(
             state, slug, analysis, command=command, host=host,
             env_name=env_name, pid=pid, log_path=log_path, notes=notes,
-            params=params,
+            params=params, hostname=hostname,
         )
 
     @mcp.tool()

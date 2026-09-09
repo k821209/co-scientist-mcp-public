@@ -456,6 +456,12 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
 - **Already ran it ad-hoc?** Back-fill immediately: `create_analysis(...)`
   then `record_analysis_run(..., host=, command=, env_name=, log_path=, pid=)`.
   A quick `zcat | …`, a figure script, a one-off `gm_compare` — all count.
+- **A local run records which machine.** `host="local"` plus `hostname` (this
+  machine's name, filled in automatically). With two laptops and a
+  workstation, "local" alone does not say where the output lives, and a PID
+  from another machine must not be judged here — the reapers skip runs of
+  other machines. Back-filling a run that happened elsewhere: pass
+  `hostname=`.
 - **Figure/table generation IS an analysis** — record the command that made
   each `figure_N.png` / table CSV, not just the "big" jobs.
 - **Link the artifact back to its analysis**: pass `source_analysis="<analysis

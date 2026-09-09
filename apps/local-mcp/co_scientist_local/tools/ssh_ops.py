@@ -675,8 +675,13 @@ def auto_finish_stale_runs(state: State, *, since_hours: float | None = None) ->
         except Exception as e:  # pragma: no cover — defensive
             errors.append(f"{r.get('run_key')}: {e}")
 
-    # Local cleanup
+    # Local cleanup — only for runs of THIS machine; another laptop's PID
+    # cannot be checked from here and must not be closed as "gone".
+    from .runs import is_this_machine
     for r in by_host.pop("local", []):
+        if not is_this_machine(r):
+            still_running += 1
+            continue
         try:
             os.kill(int(r["pid"]), 0)  # still alive
             still_running += 1
