@@ -82,7 +82,7 @@ def _review_path(state: State, slug: str, review_id: str) -> str:
 # manuscript — and the pattern built from it could not be executed by the
 # browser's regex engine, which blanked the paper page. An anchor is a place
 # to jump to; a comment on the whole text is refused, not saved cut down.
-MAX_ANCHOR_CHARS = 1500
+MAX_ANCHOR_CHARS = 500
 
 
 def check_anchor(text: str | None) -> None:

@@ -487,7 +487,7 @@ def build_mcp(state: State) -> FastMCP:
         0-based index of the intended instance among repeats (pins it exactly,
         even when the surrounding context is identical).
 
-        `anchor_text` is a sentence or a short passage (at most 1,500
+        `anchor_text` is a sentence or a short passage (at most 500
         characters) — the place the comment jumps to. A comment about a whole
         section anchors its first sentence and says so; a whole-section anchor
         is refused.
