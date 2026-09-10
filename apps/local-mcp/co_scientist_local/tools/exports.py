@@ -844,8 +844,10 @@ def prepare_export(
     # document that documents the `{doi:…}` form was reported as having one
     # unresolved citation (feedback 6e3c8e85eb93).
     prose = _numcite.without_code(manuscript)
-    cited_dois = _extract_cited_dois(prose)
-    known_dois = {r["doi"] for r in refs if r.get("doi")}
+    # DOIs compare in canonical (lowercase) form: a token typed as the
+    # publisher prints it is the same work as the lowercase CrossRef record.
+    cited_dois = [d.strip().lower() for d in _extract_cited_dois(prose)]
+    known_dois = {(r["doi"] or "").strip().lower() for r in refs if r.get("doi")}
     unresolved = sorted(set(cited_dois) - known_dois)
 
     # A registered ref only appears in the rendered bibliography if it is cited
@@ -857,7 +859,7 @@ def prepare_export(
                    for grp in _RAW_CITE_RE.findall(manuscript) for k in grp.split(";")}
     cited_keys |= {r["citation_key"].lower() for r in refs
                    if r.get("doi") and r.get("citation_key")
-                   and r["doi"] in cited_dois}
+                   and r["doi"].strip().lower() in cited_dois}
     uncited_doiless = sorted(
         r["citation_key"] for r in refs
         if not r.get("doi") and r.get("citation_key")

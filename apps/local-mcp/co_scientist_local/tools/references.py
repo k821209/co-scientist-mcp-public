@@ -93,6 +93,24 @@ def search_works(
     return [_normalize_crossref(it, (it.get("DOI") or "")) for it in items]
 
 
+def normalize_doi(raw: str | None) -> str | None:
+    """One canonical form: trimmed, lowercase, no doi.org / doi: prefix.
+
+    DOI names are case-insensitive (DOI Handbook 2.4). CrossRef returns them
+    lowercase; publishers print mixed case; a manuscript token typed as printed
+    matched nothing and got no badge and no finding (feedback 06a873d717fb).
+    Applied on every write, so every comparison can be exact."""
+    if raw is None:
+        return None
+    s = str(raw).strip().lstrip("/")
+    for prefix in ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:"):
+        if s.lower().startswith(prefix):
+            s = s[len(prefix):]
+            break
+    s = s.strip().lower()
+    return s or None
+
+
 def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
     """Fetch CrossRef metadata for a DOI. Raises DoiNotFound on 404."""
     doi = (doi or "").strip().lstrip("/")
@@ -325,7 +343,7 @@ def add_reference(
         "journal": journal,
         "journal_short": journal_short,
         "year": year,
-        "doi": doi,
+        "doi": normalize_doi(doi),
         "pmid": pmid,
         "bibtex": bibtex,
         "volume": volume,
@@ -371,7 +389,7 @@ def update_reference(
     if authors is not None: fields["authors"] = list(authors) if isinstance(authors, list) else authors
     if journal is not None: fields["journal"] = journal
     if year is not None: fields["year"] = year
-    if doi is not None: fields["doi"] = doi
+    if doi is not None: fields["doi"] = normalize_doi(doi)
     if pmid is not None: fields["pmid"] = pmid
     if bibtex is not None: fields["bibtex"] = bibtex
     if cited_in is not None: fields["cited_in"] = list(cited_in)
