@@ -77,6 +77,23 @@ def _review_path(state: State, slug: str, review_id: str) -> str:
     return state.project_path("papers", slug, "reviews", review_id)
 
 
+# The same limit the dashboard applies (web/src/lib/anchorCap.ts). One
+# share-link comment arrived with 76,626 characters of anchor — most of the
+# manuscript — and the pattern built from it could not be executed by the
+# browser's regex engine, which blanked the paper page. An anchor is a place
+# to jump to; a comment on the whole text is refused, not saved cut down.
+MAX_ANCHOR_CHARS = 1500
+
+
+def check_anchor(text: str | None) -> None:
+    if text and len(text) > MAX_ANCHOR_CHARS:
+        raise ValueError(
+            f"anchor_text is {len(text)} characters; the limit is {MAX_ANCHOR_CHARS}. "
+            f"Anchor a comment to a sentence or a short passage — for a remark "
+            f"about a whole section, anchor its first sentence and say so in the "
+            f"comment.")
+
+
 def add_review(
     state: State,
     slug: str,
@@ -107,6 +124,7 @@ def add_review(
     if not comment or not comment.strip():
         raise ValueError("comment is required")
 
+    check_anchor(anchor_text)
     review_id = new_id()
     now = now_iso()
     doc = {

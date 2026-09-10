@@ -485,7 +485,13 @@ def build_mcp(state: State) -> FastMCP:
         when anchor_text repeats in a section they let the dashboard highlight
         the exact occurrence instead of every match. anchor_occurrence is the
         0-based index of the intended instance among repeats (pins it exactly,
-        even when the surrounding context is identical)."""
+        even when the surrounding context is identical).
+
+        `anchor_text` is a sentence or a short passage (at most 1,500
+        characters) — the place the comment jumps to. A comment about a whole
+        section anchors its first sentence and says so; a whole-section anchor
+        is refused.
+        """
         return _reviews.add_review(
             state, slug, comment=comment, source=source, reviewer_name=reviewer_name,
             section=section, severity=severity, manuscript_ref=manuscript_ref,
