@@ -1065,8 +1065,8 @@ def build_mcp(state: State) -> FastMCP:
         """Publish an explainer that READS INLINE in the dashboard's Study tab.
 
         **Read `/study-design` first** — it covers designing the page, when a
-        study should also be an Artifact, and the checks before you call it
-        done. The essentials:
+        study should also be a standalone page, and the checks before you call
+        it done. The essentials:
 
         **How the page is rendered, which you cannot see from here.** The
         document goes into a sandboxed iframe of its own, so the dashboard's
@@ -1121,9 +1121,10 @@ def build_mcp(state: State) -> FastMCP:
         `follows` is the study this one continues; the tab lists a series in
         reading order.
 
-        If this study also has a standalone copy (an Artifact), record it with
-        `mark_study_published`; a later rewrite then warns that the copy is
-        behind, and `list_studies` shows `published_behind`.
+        If this study also has a standalone copy (a `publish_page` URL, or a
+        page on any host), record it with `mark_study_published`; a later
+        rewrite then warns that the copy is behind, and `list_studies` shows
+        `published_behind`.
         """
         return _studies.write_study(
             state, title=title, html=html, summary=summary, status=status,
@@ -1148,13 +1149,14 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def mark_study_published(study_id: str, url: str | None) -> dict[str, Any]:
-        """Record the standalone copy of a study — the Artifact URL it was
-        also published as — or forget it with url=None. The study's staleness
+        """Record the standalone copy of a study — the URL it was also
+        published at (`publish_page`, or any host's page) — or forget it with
+        url=None. The study's staleness
         machinery stops at its own edge; this extends one step: a later
         `write_study`/`update_study` that changes the html warns that the copy
         is BEHIND, and `list_studies`/`read_study` report `published_behind`,
-        so a superseded Artifact cannot sit behind a link that reads as
-        current. Record it right after publishing; re-record after republishing."""
+        so a superseded copy cannot sit behind a link that reads as current.
+        Record it right after publishing; re-record after republishing."""
         return _studies.mark_study_published(state, study_id, url)
 
     @mcp.tool()

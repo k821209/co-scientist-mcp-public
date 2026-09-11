@@ -214,10 +214,10 @@ def update_study(
 
 
 def published_behind(doc: dict) -> bool:
-    """A derived copy (an Artifact) recorded on this study is older than the
+    """A derived copy (a standalone page) recorded on this study is older than the
     document's html. The staleness machinery used to stop at the study's own
     edge: the copy the skill told the agent to publish got none of it, and a
-    study rewritten twice in an hour left an Artifact saying things the study
+    study rewritten twice in an hour left a published copy saying things the study
     no longer said, with nothing anywhere recording that (feedback
     f4d8b5471e13)."""
     pub = doc.get("published_as") or {}
@@ -238,7 +238,7 @@ def _warn_published_behind(out: dict) -> None:
 
 def mark_study_published(state: State, study_id: str, url: str | None) -> dict:
     """Record (or, with url=None, forget) the standalone copy of this study —
-    an Artifact URL. From then on, a write to the study that leaves the copy
+    a publish_page URL or any host's page. From then on, a write to the study that leaves the copy
     behind says so, and list_studies shows it."""
     doc = _require(state, study_id)
     fields: dict = {"updated_at": now_iso()}

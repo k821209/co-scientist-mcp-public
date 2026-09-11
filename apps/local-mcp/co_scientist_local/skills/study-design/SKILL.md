@@ -1,6 +1,6 @@
 ---
 name: study-design
-description: Design a Study document — the explainer that reads inline in the dashboard's Study tab. Covers what the surface actually does (sandboxed frame, layered base stylesheet and its tokens, asset: images, links open in a new tab), how to design one on top of the base, how to see the rendered page before calling it done, and how to keep a standalone Artifact copy from drifting. Use before write_study, or when a study reads as an unstyled wall of text.
+description: Design a Study document — the explainer that reads inline in the dashboard's Study tab. Covers what the surface actually does (sandboxed frame, layered base stylesheet and its tokens, asset: images, links open in a new tab), how to design one on top of the base, how to see the rendered page before calling it done, and how to keep a standalone copy (a `publish_page` URL, or any host's page) from drifting. Use before write_study, or when a study reads as an unstyled wall of text.
 ---
 
 # /study-design
@@ -86,13 +86,21 @@ reasoning go in a material's `ai_note`, not here.
 
 `follows` chains a series into reading order.
 
-## Also publishing it as an Artifact
+## Also publishing a standalone copy
 
-A study lives next to the paper and carries sources and staleness. An Artifact
-is standalone, has its own URL and can be shared outside the project. When both
-are wanted, **build both from one source** — but they are not the same file:
+A study lives next to the paper and carries sources and staleness. A
+standalone copy has its own URL and can be shared outside the project. **The
+host-independent way is Scivo's own `publish_page(title, html=…)`** — an
+unlisted URL that works the same from Claude Code, Codex and Pi, and needs no
+host feature. A host's own page tool (Claude Code's Artifact, say) is an
+alternative when the user asks for it; nothing here depends on one. Publishing
+is outward-facing: the guide's rule applies — only after the user says so.
 
-- **Images.** An Artifact's CSP blocks external hosts, so figures must be
+When both are wanted, **build both from one source** — but they are not the
+same file:
+
+- **Images.** A standalone page does not get `asset:` resolution (and an
+  external host may block outside images altogether), so figures must be
   inlined as base64 there. In a study that is pure waste: use `asset:` and let
   the tab resolve it. The same page was 95 KB inlined and 25 KB by reference.
 - **Links.** Both need `target="_blank"`.
@@ -104,8 +112,8 @@ rewrite of the study warns in its return value that the copy is behind, and
 `list_studies` / the tab show `published_behind` — so the standalone copy
 cannot sit behind a link that reads as current after the study moved on. When
 that warning comes back, republish and re-record, or forget the copy with
-`url=None`. Also put the Artifact URL in the study as an ordinary anchor so a
-reader can open the standalone copy.
+`url=None`. Also put the copy's URL in the study as an ordinary anchor so a
+reader can open it.
 
 ## Before you call it done
 
