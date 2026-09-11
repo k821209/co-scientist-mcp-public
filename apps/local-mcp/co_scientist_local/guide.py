@@ -557,6 +557,13 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   the analysis outputs. Pass it file paths and the seat name, nothing else; do
   not hand-write its prompt, since the caller is by construction the agent that
   knows every contaminating fact.
+- `/cold-read [slug] [section]` — the abstract (or a section) read by the same
+  shipped reader under `profile: manuscript`, holding nothing but that text:
+  every term, number or claim it required from outside comes back as a
+  `source='ai'` comment. A self-check cannot do this — the author always knows
+  what the term means — and `lint_manuscript` cannot either (fifteen findings
+  once on an abstract it called clean). Run it before the abstract is marked
+  done.
 - `/journal-requirements` — capture a target journal's submission spec
   for a paper type (Article / Short Communication / Letter / Review …):
   the agent reads the journal's live author guidelines and stores word

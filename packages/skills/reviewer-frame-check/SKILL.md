@@ -1,6 +1,6 @@
 ---
 name: reviewer-frame-check
-description: Read a response letter or cover letter with ONLY what the real reviewer or editor holds — their own report and the manuscript they actually saw — and report every place the text required context they were never given. Use before a response/cover letter is final, when the user says "would a reviewer follow this," "is the letter self-contained," "check the letter from outside," "리뷰어 입장에서 읽어줘."
+description: Read a response letter or cover letter with ONLY what the real reviewer or editor holds — their own report and the manuscript they actually saw — and report every place the text required context they were never given. Use before a response/cover letter is final, when the user says "would a reviewer follow this," "is the letter self-contained," "check the letter from outside," "리뷰어 입장에서 읽어줘." For a manuscript section (the abstract), the same reader runs under /cold-read.
 ---
 
 # /reviewer-frame-check
@@ -338,6 +338,10 @@ uploaded file containing every reviewer, the split is not real: extract that sea
 section to its own file first, or expect the agent's `bundle_note` to tell you so.
 
 ## Where it fits
+
+**For a manuscript section, use `/cold-read`.** Same shipped agent, `profile:
+manuscript`, a bundle of one section. This skill's bundle rules are about
+letters; the abstract's reader holds nothing but the abstract.
 
 **In `/paper-revision`, before the letter is final.** After the reviewer points
 are addressed and the letter is compiled, before it is shown as done. The

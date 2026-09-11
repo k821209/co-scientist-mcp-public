@@ -139,7 +139,9 @@ Default to the **plainest phrasing that stays precise**. "Writerly" LLM prose
 gets bounced sentence-by-sentence by a careful PI; each bounce is a
 comment→edit→resolve round-trip. Draft in this register from the first pass,
 and run this **pre-submission self-check** on every section, caption, and
-legend:
+legend. Items 2 and 4 below (terms defined, definition before use) are the
+ones a self-check cannot catch — you always know what your term means — so for
+the abstract they are checked by a reader instead: `/cold-read`, in §4.
 
 1. **Plain declaratives, not writerly contrasts.** Avoid *"not X but Y"*,
    *"larger than X rather than a correction of it"*, and **elegant variation**
@@ -430,6 +432,13 @@ the offending sentences (each warning quotes the sentence + its section),
 re-run until `summary.clean == true`, then report the clean result to the
 user. If you leave any warning intentionally, say which and why.
 
+**Then, for the abstract: `/cold-read`.** `lint_manuscript` is clean on an
+abstract that uses "condition" three times and defines it nowhere, because
+every word is ordinary; the linter cannot know what a reader lacks. The cold
+reader can, and the abstract is the one place a reader has no context at all.
+Run it before the abstract is marked `complete`, and again after a rewrite.
+Its findings arrive as `source='ai'` comments in the usual triage loop.
+
 ## Citation Format
 
 Inline DOIs: `{doi:10.1234/example}`. A reference with NO DOI — software, a
@@ -483,3 +492,5 @@ you next session via `count_open_user_comments` in the SessionStart banner.
 Offer `/prose-review` on the finished draft. It reads the text as the journal's
 copy-editor and files only register problems, with the replacement sentence —
 the pass that catches what §2a describes when it did not hold while drafting.
+Offer `/cold-read` on the whole manuscript if it has never had an outside
+reader.

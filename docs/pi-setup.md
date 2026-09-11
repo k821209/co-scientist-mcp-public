@@ -13,7 +13,7 @@ pi install ~/co-scientist-mcp-public
 pip install -e ~/co-scientist-mcp-public/apps/local-mcp
 ```
 
-That gives you the 27 skills, the provenance guard, and the MCP. The MCP needs
+That gives you the 28 skills, the provenance guard, and the MCP. The MCP needs
 Python ≥ 3.11 (see [setup-user.md](setup-user.md) for a bare Ubuntu/WSL box);
 a venv is your choice, and the setup script finds the interpreter that has the
 package by itself. Then wire the tools.
@@ -60,13 +60,14 @@ rather than left to be discovered.
 
 ```bash
 pi install npm:pi-mcp-adapter   # required — every tool call goes through it
-pi install npm:pi-subagents     # /reviewer-frame-check, and /paper-revision +
-                                # /response-letter, which call it
+pi install npm:pi-subagents     # /reviewer-frame-check and /cold-read, and the
+                                # skills that call them (/paper-revision,
+                                # /response-letter, /paper-writing)
 pi install npm:pi-web-access    # /journal-requirements, /news-short,
                                 # /science-short
 ```
 
-3 of the 27 skills need each of the latter two; the remaining 21 need neither.
+Only the skills named beside each package need it; the rest need neither.
 
 `pi-subagents` is the unscoped package. `@tintinweb/pi-subagents` is a
 **different** extension that also exists on npm — the two are not
@@ -171,7 +172,7 @@ reads as rules switching on and off between projects.
 
 - **`toolPrefix: "mcp"` is not optional.** It produces `mcp__scivo__<tool>`,
   the name every skill writes. The adapter's DEFAULT is `<server>_<tool>`, and
-  under that every tool reference in all 27 skills is wrong. This is the single
+  under that every tool reference in all 28 skills is wrong. This is the single
   most likely thing to get wrong.
 - **`directTools` is a LIST, not `true`.** The server registers 229 tools and a
   direct tool costs ~150–300 tokens of system prompt on every turn. The
@@ -195,11 +196,11 @@ the prefix setting has not taken effect.
 
 | | |
 |---|---|
-| 27 skills | identical — `SKILL.md` folders, discovered recursively |
+| 28 skills | identical — `SKILL.md` folders, discovered recursively |
 | MCP tools | identical names, via the adapter settings above |
 | The ssh/provenance guard | ported as a Pi extension (`block-untracked-ssh`), same aliases file, same `# setup` / `# allow-untracked` overrides |
 | `session_start` hook | **not ported.** Claude Code ran the open-comment check itself. The same sequence is written into `CLAUDE.md` (§3), which Pi does read — so it runs because the agent is instructed to, not because a hook fires. Ask for it if a session starts without it |
-| `/reviewer-frame-check` (and `/paper-revision`, `/response-letter`, which call it) | needs `pi-subagents` (§1) — or run the check in a separate Pi session with only the bundle files open. The isolation is the point, not the mechanism |
+| `/reviewer-frame-check` and `/cold-read` (and `/paper-revision`, `/response-letter`, `/paper-writing`, which call them) | need `pi-subagents` (§1) — or run the check in a separate Pi session with only the bundle files open. The isolation is the point, not the mechanism |
 | Skills using `WebFetch` (`/news-short`, `/science-short`, `/journal-requirements`) | need `pi-web-access` (§1) |
 
 ## 6. What the guard does

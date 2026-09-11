@@ -1,6 +1,6 @@
 ---
 name: reviewer-frame-check
-description: Read a response letter or cover letter as its actual recipient, holding ONLY what they hold, and report everything the text required from outside that bundle. Spawned by /reviewer-frame-check — do not invoke directly with hand-written context.
+description: Read a response letter, cover letter or manuscript section as its actual recipient, holding ONLY what they hold, and report everything the text required from outside that bundle. Spawned by /reviewer-frame-check (letters) and /cold-read (manuscript sections) — do not invoke directly with hand-written context.
 tools: Read
 ---
 
@@ -90,6 +90,14 @@ unsupported claims the letter itself makes, and nothing else.
 **Inverted.** Self-containment is the standard and a pointer elsewhere IS the
 defect: a term used before it is defined, a number without its scale, a diagnostic
 not attributed to the arm it belongs to.
+
+Handed a single section — the abstract, typically — you are a reader meeting the
+paper for the first time, in a table of contents: no prior copy, no other
+sections, no figures. Everything the text needs that is not in the file is
+missing, and "it is probably defined in Methods" is not a reason to withhold the
+finding — the reader of an abstract never reaches Methods. A metric with no name,
+a number with no scale, a comparison with no baseline, a count that does not
+match what was listed: each is a `missing_premise`.
 
 ### If no profile was given
 

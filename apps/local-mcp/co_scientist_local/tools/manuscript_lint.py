@@ -494,6 +494,56 @@ def _jaccard(a: set, b: set) -> float:
     return inter / len(a | b)
 
 
+# A token with at least two capitals: DNA, qPCR, LoRA, scRNA, SNPs. Plain
+# capitalised words (Methods, Korea) have one and are not abbreviations.
+_ACRONYM = re.compile(r"\b[A-Za-z0-9]{2,8}\b")
+
+
+def _acronyms(text: str) -> set[str]:
+    out = set()
+    for m in _ACRONYM.finditer(text):
+        tok = m.group(0)
+        if tok.endswith("s") and sum(c.isupper() for c in tok[:-1]) >= 2:
+            tok = tok[:-1]                       # SNPs → SNP
+        if sum(c.isupper() for c in tok) >= 2 and not tok.isdigit():
+            out.add(tok)
+    return out
+
+
+def _defined_after_abstract(sections: list[dict]) -> list[dict]:
+    """Acronyms used in the abstract whose parenthetical expansion `… (ACR)`
+    first appears in a later section and nowhere in the abstract."""
+    ordered = sorted(sections, key=lambda x: (x.get("sort_order") is None, x.get("sort_order") or 0))
+    abstract = next((x for x in ordered if (x.get("key") or "") == "abstract"), None)
+    if abstract is None:
+        return []
+    a_body = abstract.get("body") or ""
+    used = _acronyms(a_body)
+    if not used:
+        return []
+    out: list[dict] = []
+    for acr in sorted(used):
+        expanded_here = re.search(r"\w[^()\n]{2,80}\(" + re.escape(acr) + r"s?\)", a_body)
+        if expanded_here:
+            continue
+        for sec in ordered:
+            if sec is abstract:
+                continue
+            body = sec.get("body") or ""
+            m = re.search(r"([^()\n.]{3,80}?)\s*\(" + re.escape(acr) + r"s?\)", body)
+            if m:
+                out.append({
+                    "kind": "defined_after_abstract", "section": abstract.get("title") or "Abstract",
+                    "match": acr, "defined_in": sec.get("title") or sec.get("key"),
+                    "note": f"'{acr}' is used in the abstract and expanded only in "
+                            f"{sec.get('title') or sec.get('key')} ('{m.group(1).strip()[-60:]} ({acr})'); "
+                            f"the abstract's reader never gets there — expand it on first use",
+                    "sentence": next((sn for sn in re.split(r"(?<=[.!?])\s+", a_body) if acr in sn), "")[:180],
+                })
+                break
+    return out
+
+
 def lint_manuscript(state, slug: str) -> dict:
     """Return QA warnings for a paper's sections:
 
@@ -793,6 +843,17 @@ def lint_manuscript(state, slug: str) -> dict:
             style.append({"kind": "overused_word", "word": word, "count": cnt,
                           "note": f"'{word}' used {cnt}x — vary or cut repeated "
                                   "rhetorical words"})
+
+    # ── 3b. defined after the abstract ────────────────────────────────────────
+    # An abbreviation the abstract uses and a LATER section expands — "(LoRA)"
+    # after "low-rank adaptation" in Methods — so the abstract's reader, who
+    # never reaches Methods, meets it undefined. Narrow on purpose: an acronym
+    # nobody expands anywhere may be field-native (DNA, PCR) and is not judged
+    # here; one the paper itself expands has said it needs expanding. The
+    # general form of this defect (any undefined term) is a reader's job
+    # (/cold-read), not a regex's (feedback a5423a3f59dd).
+    for hit in _defined_after_abstract(sections):
+        style.append(hit)
 
     # ── 4. insider context — prose framed from inside the authoring session ───
     insider: list[dict] = []

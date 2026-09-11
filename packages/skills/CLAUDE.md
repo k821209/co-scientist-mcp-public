@@ -37,6 +37,17 @@ The review sampled it. Do not add to it. The next edit that touches it should
 split a core `SKILL.md` (rules) from reference documents (examples, catalogs,
 recorded cases), the way its own `reference_corpus/` already works.
 
+## 4. A rule the author cannot check on themselves wants a reader, not a reminder.
+
+"Every term defined on first use" was stated twice in `/paper-writing` and
+violated fifteen times in one abstract, with the rule loaded. The author always
+knows what the term means; the missing gloss is invisible from inside. When a
+rule is of that shape — is this clear, is this defined, would a reader follow —
+do not add a paragraph (a longer skill is read less carefully). Point at a
+reader step: `/cold-read` for a manuscript section, `/reviewer-frame-check` for
+a letter, `/paper-review` for the science. Reserve prose rules for what an
+author CAN see from inside.
+
 ## Also
 
 - Do not state how many skills exist. The audit checks the two places that do.

@@ -148,7 +148,7 @@ Then verify — do not assume:
 | MCP tools | identical names. Not listed in every prompt: with current OpenAI models they sit behind Codex's tool search and are loaded when looked up by name (`mcp_tool_exposure.rs`). So no direct-tool list is needed, unlike Pi. With `--oss` / a local provider the search is unavailable and all tools are direct; then `enabled_tools = [...]` under `[mcp_servers.scivo]` is the equivalent of Pi's list |
 | `session_start` hook | **runs** (SessionStart, via `.codex/hooks.json`) — Claude Code parity, unlike Pi |
 | The ssh provenance guard | the same Python file, via `PreToolUse` with matcher `Bash` — Codex reports its shell tool to hooks under that name (`codex-rs/core/src/tools/hook_names.rs`). Same `# setup` / `# allow-untracked` overrides, same fail-open when the aliases cache is missing |
-| `/reviewer-frame-check` | needs a reader that holds only the bundle. Codex can spawn agents, but not one restricted to reading — run the check in a separate Codex session with only the bundle files open. The isolation is the point, not the mechanism |
+| `/reviewer-frame-check`, `/cold-read` | need a reader that holds only the bundle. Codex can spawn agents, but not one restricted to reading — run the check in a separate Codex session with only the bundle files open. The isolation is the point, not the mechanism |
 | `/news-short`, `/science-short`, `/journal-requirements` | need the web: start Codex with `--search`, or set `web_search = "live"` in your user config |
 
 ## 5. Updating
