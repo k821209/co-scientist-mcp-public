@@ -158,9 +158,15 @@ def write_study(
         "size_bytes": len(html.encode("utf-8")),
         "created_at": (existing or {}).get("created_at", now),
         "updated_at": now,
+        # When the DOCUMENT last changed, as opposed to any field on it — the
+        # clock a derived copy (published_as) is measured against.
+        "html_updated_at": now,
+        "published_as": (existing or {}).get("published_as"),
     }
     state.backend.set_doc(_study_path(state, study_id), doc)
-    return {**doc, "dashboard_url": state.dashboard_url("study")}
+    out = {**doc, "dashboard_url": state.dashboard_url("study")}
+    _warn_published_behind(out)
+    return out
 
 
 def update_study(
@@ -197,11 +203,51 @@ def update_study(
     if html is not None:
         state.backend.put_blob(doc["blob_path"], html.encode("utf-8"))
         fields["size_bytes"] = len(html.encode("utf-8"))
+        fields["html_updated_at"] = fields["updated_at"]
         if sources is None:
             now = now_iso()
             fields["sources"] = [{**s, "seen_at": now} for s in (doc.get("sources") or [])]
     state.backend.update_doc(_study_path(state, study_id), fields)
-    return {**doc, **fields, "dashboard_url": state.dashboard_url("study")}
+    out = {**doc, **fields, "dashboard_url": state.dashboard_url("study")}
+    _warn_published_behind(out)
+    return out
+
+
+def published_behind(doc: dict) -> bool:
+    """A derived copy (an Artifact) recorded on this study is older than the
+    document's html. The staleness machinery used to stop at the study's own
+    edge: the copy the skill told the agent to publish got none of it, and a
+    study rewritten twice in an hour left an Artifact saying things the study
+    no longer said, with nothing anywhere recording that (feedback
+    f4d8b5471e13)."""
+    pub = doc.get("published_as") or {}
+    at = pub.get("at")
+    html_at = doc.get("html_updated_at") or doc.get("updated_at")
+    return bool(pub.get("url")) and bool(at) and bool(html_at) and html_at > at
+
+
+def _warn_published_behind(out: dict) -> None:
+    if published_behind(out):
+        pub = out["published_as"]
+        out.setdefault("warnings", []).append(
+            f"this study has a published copy ({pub['url']}, recorded {pub['at']}) "
+            f"that is now BEHIND the document. Republish it and record the new "
+            f"copy with mark_study_published, or unlink it — a reader following "
+            f"the link gets the superseded version.")
+
+
+def mark_study_published(state: State, study_id: str, url: str | None) -> dict:
+    """Record (or, with url=None, forget) the standalone copy of this study —
+    an Artifact URL. From then on, a write to the study that leaves the copy
+    behind says so, and list_studies shows it."""
+    doc = _require(state, study_id)
+    fields: dict = {"updated_at": now_iso()}
+    if url:
+        fields["published_as"] = {"url": url.strip(), "at": fields["updated_at"]}
+    else:
+        fields["published_as"] = None
+    state.backend.update_doc(_study_path(state, study_id), fields)
+    return {**doc, **fields, "published_behind": False}
 
 
 def _source_clock(state: State) -> dict[str, str]:
@@ -311,6 +357,7 @@ def list_studies(state: State) -> list[dict]:
             "stale_sources": moved,
             "decisions_since": since,
             "decisions_since_count": len(since),
+            "published_behind": published_behind(r),
             "url": f"{state.dashboard_url('study')}?doc={r.get('study_id')}",
         })
     return out
@@ -334,6 +381,7 @@ def read_study(state: State, study_id: str) -> dict:
         "stale_sources": moved,
         "decisions_since": since,
         "decisions_since_count": len(since),
+        "published_behind": published_behind(doc),
     }
 
 

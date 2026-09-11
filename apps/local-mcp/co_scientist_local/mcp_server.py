@@ -54,6 +54,7 @@ from .tools import cross_project as _cross
 from .tools import discussion as _discussion
 from .tools import publications as _publications
 from .tools import studies as _studies
+from .tools import study_preview as _study_preview
 from .tools import submissions as _submissions
 from .tools import graphs as _graphs
 from .tools import materials as _materials
@@ -1072,10 +1073,15 @@ def build_mcp(state: State) -> FastMCP:
         stylesheet does NOT reach it:
 
         - Write semantic HTML — `<h2>`, `<p>`, `<table>` — and the tab supplies
-          a readable default: measure, type scale, ruled tables, tabular
-          numerals, and the reader's light/dark theme. Bring a `<style>` block
-          only to design the page deliberately; that switches the default off
-          entirely, so a partial stylesheet leaves the rest unstyled.
+          a base sheet: measure, type scale, ruled tables, tabular numerals, a
+          Latin+Korean font stack, both colour themes. It is a cascade LAYER,
+          so a `<style>` block of your own ADDS to it: style the one element
+          that needs it and the rest stays typeset. Compose with its tokens
+          (`--scivo-ground/-surface/-ink/-muted/-rule/-accent`). Motion is
+          available as CSS animation (scripts are off); the base turns it off
+          under prefers-reduced-motion.
+        - **See it before calling it done: `preview_study(study_id)`** returns
+          a screenshot rendered exactly as the tab renders it.
         - **Images: `<img src="asset:FILENAME">`**, where FILENAME is what
           `add_asset` stored. The tab resolves it to a download URL before
           rendering. Do NOT inline base64 — a figure pasted through the
@@ -1114,6 +1120,10 @@ def build_mcp(state: State) -> FastMCP:
 
         `follows` is the study this one continues; the tab lists a series in
         reading order.
+
+        If this study also has a standalone copy (an Artifact), record it with
+        `mark_study_published`; a later rewrite then warns that the copy is
+        behind, and `list_studies` shows `published_behind`.
         """
         return _studies.write_study(
             state, title=title, html=html, summary=summary, status=status,
@@ -1137,6 +1147,36 @@ def build_mcp(state: State) -> FastMCP:
             status=status, sources=sources, follows=follows)
 
     @mcp.tool()
+    def mark_study_published(study_id: str, url: str | None) -> dict[str, Any]:
+        """Record the standalone copy of a study — the Artifact URL it was
+        also published as — or forget it with url=None. The study's staleness
+        machinery stops at its own edge; this extends one step: a later
+        `write_study`/`update_study` that changes the html warns that the copy
+        is BEHIND, and `list_studies`/`read_study` report `published_behind`,
+        so a superseded Artifact cannot sit behind a link that reads as
+        current. Record it right after publishing; re-record after republishing."""
+        return _studies.mark_study_published(state, study_id, url)
+
+    @mcp.tool()
+    def preview_study(
+        study_id: str,
+        theme: str = "light",
+        width: int = 900,
+        height: int = 1400,
+    ) -> dict[str, Any]:
+        """See the study as the tab shows it: the html wrapped with the same
+        base sheet and theme the dashboard uses, `asset:` images inlined,
+        rendered by a headless Chrome/Chromium on this machine. Returns
+        `png` paths per theme (`theme` = light | dark | both) — Read them and
+        look for a wall of unstyled text, a table without rules, sideways
+        scroll, a missing image, a dark theme that did not follow. With no
+        browser on the machine it says so and returns the wrapped HTML path
+        instead; then ask the user to look, and do not report the page as
+        checked."""
+        return _study_preview.preview_study(
+            state, study_id, theme=theme, width=width, height=height)
+
+    @mcp.tool()
     def list_studies() -> list[dict[str, Any]]:
         """Every study, each with `stale` and which source moved.
 
@@ -1148,7 +1188,11 @@ def build_mcp(state: State) -> FastMCP:
         after the document was written that it does not cite. Often irrelevant,
         never a verdict — but it is the only thing that catches "the numbers are
         still right and the interpretation reversed", which no citation-tracking
-        can see. Judge it; do not treat it as staleness."""
+        can see. Judge it; do not treat it as staleness.
+
+        `published_behind`: the study's recorded standalone copy (see
+        mark_study_published) is older than its html — a reader following that
+        link gets a superseded version."""
         return _studies.list_studies(state)
 
     @mcp.tool()

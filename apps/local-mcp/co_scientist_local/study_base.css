@@ -1,0 +1,109 @@
+/* Scivo Study — base sheet.
+ *
+ * Injected into EVERY study by the dashboard's Study tab, inside a cascade
+ * layer. Unlayered rules always beat layered ones, so a document that writes
+ * `.strip { display: flex }` gets its flex row on top of this typography
+ * without restating any of it, and a document that writes nothing gets
+ * exactly this. (The old sheet switched off entirely the moment a document
+ * carried a <style> block, which forced every designed page to rebuild the
+ * base from scratch — feedback 9f22aae6c830.)
+ *
+ * Tokens, stable, for a designed page to compose with instead of beside:
+ *   --scivo-ground   page background
+ *   --scivo-surface  slightly raised background (code, table hover)
+ *   --scivo-ink      text
+ *   --scivo-muted    secondary text
+ *   --scivo-rule     hairlines, table rules
+ *   --scivo-accent   the one colour that says "look here"
+ * Both themes; the tab sets data-scivo-theme on <html> from the reader's
+ * setting, and the OS preference is the fallback.
+ *
+ * One copy: packages/study_base.css. The dashboard imports it; the MCP's
+ * preview_study wraps with the same file, so what the agent screenshots is
+ * what the reader sees.
+ */
+@layer scivo-base {
+  :root {
+    color-scheme: light;
+    --scivo-ground: #ffffff;
+    --scivo-surface: #f6f7f9;
+    --scivo-ink: #1a1d21;
+    --scivo-muted: #5b636c;
+    --scivo-rule: #e3e6ea;
+    --scivo-accent: #1f5fbf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-scivo-theme="light"]) {
+      color-scheme: dark;
+      --scivo-ground: #14171a;
+      --scivo-surface: #1b1f24;
+      --scivo-ink: #e6e8eb;
+      --scivo-muted: #9aa3ad;
+      --scivo-rule: #2b3138;
+      --scivo-accent: #7fb0ff;
+    }
+  }
+  :root[data-scivo-theme="dark"] {
+    color-scheme: dark;
+    --scivo-ground: #14171a;
+    --scivo-surface: #1b1f24;
+    --scivo-ink: #e6e8eb;
+    --scivo-muted: #9aa3ad;
+    --scivo-rule: #2b3138;
+    --scivo-accent: #7fb0ff;
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    /* The measure lives on body, so every child — a paragraph, a table, a
+       flex strip the document brought — shares one left edge. Setting it per
+       child centred the ones no later rule touched and left the rest flush
+       (seen in the first preview). A full-bleed element breaks out with
+       `margin-inline: calc(50% - 50vw)`. */
+    max-width: 46rem; margin: 0 auto; padding: 28px 24px 56px;
+    background: var(--scivo-ground); color: var(--scivo-ink);
+    /* One stack that covers Latin and Korean without a font request: font
+       CDNs do not load in the frame, so this is decided once, here. */
+    font: 16px/1.7 ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  h1, h2, h3, h4 { line-height: 1.3; margin: 1.8em 0 .6em; font-weight: 650; }
+  h1 { font-size: 1.75rem; margin-top: 0; }
+  h2 { font-size: 1.35rem; }
+  h3 { font-size: 1.1rem; }
+  p, li { margin: .7em 0; }
+  a { color: var(--scivo-accent); }
+  code, pre, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, "Noto Sans Mono CJK KR", monospace; }
+  code { background: var(--scivo-surface); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  /* Wide content scrolls inside itself; the page never scrolls sideways. */
+  pre { background: var(--scivo-surface); padding: 12px 14px; border-radius: 6px;
+        overflow-x: auto; font-size: .875rem; line-height: 1.5; }
+  blockquote { margin: 1em 0; padding: .2em 0 .2em 1em;
+               border-left: 3px solid var(--scivo-rule); color: var(--scivo-muted); }
+  hr { border: 0; border-top: 1px solid var(--scivo-rule); margin: 2em 0; }
+  img { max-width: 100%; height: auto; }
+  figure { margin: 1.5em 0; }
+  figcaption { color: var(--scivo-muted); font-size: .875rem; margin-top: .5em; }
+  /* A borderless table is the thing that made these unreadable. display:block
+     lets a wide table scroll inside itself instead of pushing the page
+     sideways; it also makes the table shrink to its content. */
+  table { border-collapse: collapse; margin: 1.2em 0; font-size: .925rem;
+          display: block; overflow-x: auto; max-width: 100%; }
+  th, td { border-bottom: 1px solid var(--scivo-rule); padding: .5em .7em;
+           text-align: left; vertical-align: top; }
+  th { font-weight: 650; border-bottom-width: 2px; white-space: nowrap; }
+  tbody tr:hover { background: var(--scivo-surface); }
+  small, .muted { color: var(--scivo-muted); }
+
+  /* Motion is available — CSS only, scripts are off — and this is where it
+     stops for a reader who asked it to. A designed page's keyframes inherit
+     this without writing it. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+  }
+}

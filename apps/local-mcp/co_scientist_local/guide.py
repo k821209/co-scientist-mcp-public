@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-09a"
+GUIDE_VERSION = "2026-09-11a"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -328,6 +328,13 @@ one moment someone can act on it.
 `status` is `confirmed` or `provisional`. There is no `stale` status: it is
 computed, because a flag someone has to remember to set is the same memory that
 already failed. `follows` chains a series so the tab lists it in reading order.
+
+**See it before calling it done: `preview_study(study_id)`** renders the html
+exactly as the tab does (layered base sheet, theme, `asset:` images inlined) in
+a headless browser and returns PNGs to Read. **If the study is also published
+as an Artifact, record it with `mark_study_published(study_id, url)`**; a later
+rewrite then warns that the copy is behind and `list_studies` shows
+`published_behind`. `/study-design` covers the surface.
 
 ## Publishing a page to people with no account
 

@@ -1,6 +1,6 @@
 ---
 name: study-design
-description: Design a Study document — the explainer that reads inline in the dashboard's Study tab. Covers what the surface actually does (sandboxed frame, default stylesheet, asset: images, links open in a new tab), how to design one deliberately, and when the same document should also be a standalone Artifact. Use before write_study, or when a study reads as an unstyled wall of text.
+description: Design a Study document — the explainer that reads inline in the dashboard's Study tab. Covers what the surface actually does (sandboxed frame, layered base stylesheet and its tokens, asset: images, links open in a new tab), how to design one on top of the base, how to see the rendered page before calling it done, and how to keep a standalone Artifact copy from drifting. Use before write_study, or when a study reads as an unstyled wall of text.
 ---
 
 # /study-design
@@ -21,17 +21,22 @@ guessable:
 
 | | |
 |---|---|
-| **Styling** | The dashboard's CSS does NOT reach the document. The tab injects a readable default — measure, type scale, ruled tables, tabular numerals, the reader's light/dark theme — but **only when the document has no `<style>` block or stylesheet link of its own.** |
+| **Styling** | The dashboard's CSS does NOT reach the document. The tab injects a base sheet into every document — measure, type scale, ruled tables, tabular numerals, a Latin+Korean font stack, both colour themes — as a cascade layer (`@layer scivo-base`). Your own `<style>` block sits above the layer and **adds to it**: style the one element that needs it and the rest stays typeset. |
 | **Images** | `<img src="asset:FILENAME">`, where FILENAME is what `add_asset` stored. The tab resolves it to a download URL before rendering. |
 | **Links** | Work, and open a NEW TAB. Write `<a href="…" target="_blank" rel="noopener">`. The frame is not allowed to navigate the dashboard away. |
-| **Scripts** | Off unless the reader turns them on. The document must be readable without them. |
+| **Scripts** | Off unless the reader turns them on. The document must be readable without them. Motion is CSS: `@keyframes` and `transition` run without scripts, and the base sheet turns them off under `prefers-reduced-motion` — do not re-enable it. |
 | **CSS scope** | The document owns its page. `:root`, `body` and bare element selectors are yours and leak nowhere — it is a separate document, not an injection into the dashboard. |
 | **Editing** | `update_study(study_id, html=…)` amends in place, and passing `html` **re-stamps `sources` as read-now** — rewriting the tables is what makes them current. `write_study(study_id=…)` replaces the whole record (every field) and does not re-stamp. Never write-new-then-delete: it breaks any `follows` chain and changes the URL. |
 
-**The styling switch is all-or-nothing.** Adding a `<style>` block turns the
-default off entirely, so a partial stylesheet leaves everything you did not
-cover unstyled — worse than either extreme. Bring one only when you are
-designing the whole page.
+**Compose with the base; do not rebuild it.** The base publishes its colours as
+tokens — `--scivo-ground`, `--scivo-surface`, `--scivo-ink`, `--scivo-muted`,
+`--scivo-rule`, `--scivo-accent` — that already follow the reader's theme. A
+card is `background: var(--scivo-surface); border: 1px solid var(--scivo-rule)`
+and it is right in both modes with no media query. Set your own colour only
+where the document needs a colour the base does not have, and then give both
+themes. (Before 2026-09-11 the first `<style>` block switched the base off
+entirely; a partial sheet then left everything else unstyled. That is gone —
+a `<style>` block with one rule is now the normal case, not a trap.)
 
 ## Which of the two to write
 
@@ -42,22 +47,26 @@ you have a reason not to.
 
 **A designed page.** Worth it when the document's structure IS the content — a
 comparison that wants a real table layout, a stepwise argument that wants
-numbered cards, a result that wants one figure given room. Then take the whole
-page:
+numbered cards, a result that wants one figure given room. Style that
+structure, on top of the base:
 
-- **Define colours as tokens on `:root`, and give BOTH themes.** The frame
-  carries the reader's setting; a page that only works in light mode is a white
-  slab in a dark dashboard. Use `@media (prefers-color-scheme: dark)` — the
-  default sheet sets `color-scheme`, so this resolves correctly.
-- **Set a measure.** Long-form text running the width of a monitor is the most
-  common way a designed page reads worse than the default one. ~46rem.
+- **Use the tokens for colour.** They follow the reader's theme; a colour of
+  your own must be given for both — the frame sets `data-scivo-theme` on
+  `<html>` (`light`/`dark`) and `color-scheme`, so both `[data-scivo-theme="dark"]`
+  and `@media (prefers-color-scheme: dark)` resolve correctly.
+- **Keep the measure.** The base sets ~46rem on `body`, centred; one element
+  that needs the full width breaks out with `margin-inline: calc(50% - 50vw)`
+  rather than widening the page.
 - **Wide content scrolls inside itself.** A table or a code block in its own
   `overflow-x: auto` container; the page must never scroll sideways.
-- **System font stack.** Font CDNs do not load here. `ui-sans-serif, system-ui,
-  "Noto Sans KR", sans-serif` covers Korean and Latin without a request.
-- **One accent colour**, used for the thing the reader should find first. A
-  study is an argument, not a dashboard; every additional colour is a claim
-  that something else matters equally.
+- **Fonts are handled.** The base stack covers Korean and Latin without a
+  request; font CDNs do not load here, so do not reference one.
+- **One accent colour** (`--scivo-accent`), used for the thing the reader
+  should find first. A study is an argument, not a dashboard; every additional
+  colour is a claim that something else matters equally.
+- **Motion, if any, is CSS and is small.** A reveal or a highlight; nothing
+  the argument depends on, because the base disables it for readers who asked
+  for no motion.
 
 ## What makes it a STUDY and not just a page
 
@@ -88,7 +97,14 @@ are wanted, **build both from one source** — but they are not the same file:
   the tab resolve it. The same page was 95 KB inlined and 25 KB by reference.
 - **Links.** Both need `target="_blank"`.
 
-Link the two: put the Artifact URL in the study as an ordinary anchor so a
+**Record the copy: `mark_study_published(study_id, url)` right after
+publishing, and again after every republish.** The study's staleness tracking
+stops at the study's own edge; this is the one step past it. From then on a
+rewrite of the study warns in its return value that the copy is behind, and
+`list_studies` / the tab show `published_behind` — so the standalone copy
+cannot sit behind a link that reads as current after the study moved on. When
+that warning comes back, republish and re-record, or forget the copy with
+`url=None`. Also put the Artifact URL in the study as an ordinary anchor so a
 reader can open the standalone copy.
 
 ## Before you call it done
@@ -98,6 +114,11 @@ reader can open the standalone copy.
    now refuses the obvious case, but a document that mixes real markup with
    escaped entities gets through.
 2. **Check every number has a source** in `sources`.
-3. **Ask the user to look at the tab.** You cannot see the rendered page from
-   here — the whole reason this file exists is that four studies were filed
-   before anyone did.
+3. **Look at it: `preview_study(study_id, theme="both")`, then Read the
+   PNGs.** It renders the html the way the tab does — same base sheet, same
+   theme attribute, `asset:` images inlined — in a headless browser on this
+   machine. What you are looking for: a wall of unstyled text, a table without
+   rules, sideways scroll, a missing image, a dark theme that did not follow.
+   If it reports no browser, ask the user to look at the tab and do not report
+   the page as checked — the whole reason this file exists is that four studies
+   were filed before anyone looked.
