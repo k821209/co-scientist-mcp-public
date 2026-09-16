@@ -24,6 +24,8 @@ CO_SCIENTIST_SKIP_VERSION_CHECK=1 to skip the network probe (used by tests).
 """
 from __future__ import annotations
 
+import pathlib
+
 import os
 import re
 import urllib.request
@@ -142,7 +144,58 @@ def runtime_info() -> dict:
         # under any shell whose PATH finds a different interpreter — and the
         # user sees "it worked yesterday".
         out["mcp_json_command"] = sys.executable
+    else:
+        checkout = find_checkout()
+        if checkout is not None:
+            out["checkout_on_disk"] = str(checkout)
+            out["install_warning"] = install_warning(
+                "site-packages", str(checkout), sys.executable)
     return out
+
+
+def find_checkout() -> "pathlib.Path | None":
+    """A source checkout of the MCP on this machine, if one exists: the
+    directory `$CO_SCIENTIST_CHECKOUT` names, else the documented clone path
+    `~/co-scientist-mcp-public`. Returns the path holding `apps/local-mcp`."""
+    import os
+    import pathlib as _pl
+    cands = []
+    env = os.environ.get("CO_SCIENTIST_CHECKOUT")
+    if env:
+        cands.append(_pl.Path(env).expanduser())
+    cands.append(_pl.Path.home() / "co-scientist-mcp-public")
+    for c in cands:
+        if (c / "apps" / "local-mcp" / "co_scientist_local" / "__init__.py").is_file():
+            return c
+    return None
+
+
+def install_warning(install_mode: str, checkout: str | None, python: str,
+                    previous_mode: str | None = None, previous_path: str | None = None) -> str | None:
+    """The line whoami and the session banner print when a snapshot in
+    site-packages is what runs while a source checkout sits on disk.
+
+    A `pip install` naming the package's git URL — a dependent's install, a
+    second setup, a reinstall after an error — pulls a non-editable snapshot
+    and uninstalls the editable one in the same step, reported as success.
+    Every project whose .mcp.json names that interpreter then runs the frozen
+    copy: edits to the checkout stop taking effect and git_sha goes to None,
+    and nothing said so (feedback 30be02eb90d6). None when nothing is wrong."""
+    if install_mode == "editable":
+        return None
+    if not checkout and previous_mode != "editable":
+        return None
+    where = checkout or (previous_path and str(pathlib.Path(previous_path).parents[2])) or "<checkout>"
+    flip = ""
+    if previous_mode == "editable":
+        flip = (f" This project last ran an EDITABLE install"
+                f"{' at ' + previous_path if previous_path else ''}; the flip was silent.")
+    return (f"{python} is running a site-packages SNAPSHOT of co-scientist-local while a "
+            f"source checkout exists at {where}.{flip} Edits to the checkout do not take "
+            f"effect and git_sha is lost. Restore with: "
+            f"{python} -m pip install -e {where}/apps/local-mcp --no-deps  "
+            f"(then restart the session). Cause is usually a `pip install` of something "
+            f"that names the MCP's git URL, into this environment.")
 
 
 def fetch_latest_version(timeout: float = 2.0) -> str | None:

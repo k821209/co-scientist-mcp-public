@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-16a"
+GUIDE_VERSION = "2026-09-16b"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -110,6 +110,10 @@ On every session start:
    `git_sha` and have the user check the checkout itself
    (`git status -sb && git pull`), because `pip install --upgrade` is a
    no-op there. Only `false` means "checked, and current".
+   **`install_warning` present → say it to the user first**: a site-packages
+   snapshot is running while a source checkout exists (a `pip install`
+   naming the MCP's git URL replaced the editable install, silently); the
+   line carries the restore command.
 2. Call `mcp__scivo__get_project_memory()` — the project's durable
    knowledge (user preferences, decisions, gotchas). Treat it as standing
    context for the whole session. See "## Project memory" below. Also call

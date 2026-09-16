@@ -60,6 +60,21 @@ def version_warning() -> str:
     return ""
 
 
+def install_mode_warning() -> str:
+    """A site-packages snapshot running while a source checkout sits on disk —
+    the state a `pip install` naming the MCP's git URL leaves behind, silently.
+    Checked for the python this hook runs under; whoami() checks the MCP's
+    own interpreter and remembers what ran last time."""
+    try:
+        from co_scientist_local.version_check import runtime_info
+        w = runtime_info().get("install_warning")
+        if w:
+            return "\n\n⚠️  " + w
+    except Exception:
+        pass
+    return ""
+
+
 def legacy_server_key_warning(cwd: Path) -> str:
     """A .mcp.json / .codex/config.toml that still names the server
     `co_scientist` exposes the tools as mcp__co_scientist__*, and every skill
@@ -82,7 +97,8 @@ def legacy_server_key_warning(cwd: Path) -> str:
 def main() -> None:
     cwd = Path.cwd()
     paper = detect_paper(cwd)
-    banner = build_banner(paper) + version_warning() + legacy_server_key_warning(cwd)
+    banner = (build_banner(paper) + version_warning() + install_mode_warning()
+              + legacy_server_key_warning(cwd))
     # The documented shape, for BOTH hosts. Claude Code and Codex read the
     # banner from hookSpecificOutput.additionalContext; a top-level key (what
     # this printed before) reached the model only because Claude Code appends

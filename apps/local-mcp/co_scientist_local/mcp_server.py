@@ -102,6 +102,11 @@ def build_mcp(state: State) -> FastMCP:
         forever), so a user who pulled the source and restarted has no other way
         to tell whether the new code is live. If they ask whether an update took
         effect, read these, not the version alone.
+
+        `install_warning`, when present, means a site-packages snapshot is
+        running while a source checkout exists (or this project last ran an
+        editable install): tell the user first, with the restore command it
+        carries, before relying on any tool behaviour.
         """
         info: dict[str, Any] = {
             "project_id": state.project_id,
@@ -120,6 +125,7 @@ def build_mcp(state: State) -> FastMCP:
                 "this project. Treat a leak as an account leak: rotate it in the "
                 "Setup tab."),
         }
+        proj = None
         try:
             proj = state.backend.get_doc(f"projects/{state.project_id}")
             if proj:
@@ -130,9 +136,20 @@ def build_mcp(state: State) -> FastMCP:
         # Staleness check: nudge the user to update if this install is behind
         # the latest published build (recently-fixed bugs may already be gone).
         try:
-            from .version_check import check_version, runtime_info
+            from .version_check import check_version, runtime_info, install_warning
             info.update(check_version())
-            info.update(runtime_info())
+            rt = runtime_info()
+            info.update(rt)
+            # The flip that matters is editable → site-packages on a machine
+            # that used to run the checkout; the project doc remembers what ran
+            # last time, so the warning does not depend on the checkout being
+            # at the documented path (feedback 30be02eb90d6).
+            prev_mode = (proj or {}).get("last_install_mode")
+            prev_path = (proj or {}).get("last_package_path")
+            w = install_warning(rt.get("install_mode", ""), rt.get("checkout_on_disk"),
+                                rt.get("python_executable", "python"), prev_mode, prev_path)
+            if w:
+                info["install_warning"] = w
         except Exception:
             pass
         # Record the build this project last ran, so dashboard/human-filed
@@ -146,6 +163,8 @@ def build_mcp(state: State) -> FastMCP:
                 "last_mcp_version": installed_version() or "unknown",
                 "last_guide_version": GUIDE_VERSION,
                 "last_git_sha": sha,
+                "last_install_mode": info.get("install_mode"),
+                "last_package_path": info.get("package_path"),
                 "last_active_at": now_iso(),
             })
         except Exception:

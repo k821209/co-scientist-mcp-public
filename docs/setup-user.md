@@ -37,6 +37,14 @@ Pip-only alternative (no source on disk):
 pip install "git+https://github.com/k821209/co-scientist-mcp-public.git#subdirectory=apps/local-mcp"
 ```
 
+Install into one environment you can see (a venv, or `which pip` first). A
+later `pip install` that names this git URL — a reinstall, a package that
+depends on the MCP — replaces an editable checkout in that environment with a
+non-editable snapshot in the same step, and pip reports success; every project
+whose `.mcp.json` names that interpreter then runs the frozen copy. `whoami()`
+and the session banner say so when it happens, with the restore command:
+`<python> -m pip install -e ~/co-scientist-mcp-public/apps/local-mcp --no-deps`.
+
 ### Export dependencies (needed for `export_to_path`)
 
 Manuscript export shells out to system binaries that pip can't install:
