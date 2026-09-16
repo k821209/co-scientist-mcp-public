@@ -55,6 +55,7 @@ from .tools import discussion as _discussion
 from .tools import publications as _publications
 from .tools import studies as _studies
 from .tools import study_preview as _study_preview
+from .tools import grid_lint as _grid_lint
 from .tools import submissions as _submissions
 from .tools import graphs as _graphs
 from .tools import materials as _materials
@@ -106,6 +107,18 @@ def build_mcp(state: State) -> FastMCP:
             "project_id": state.project_id,
             "owner_uid": state.owner_uid,
             "guide_version": GUIDE_VERSION,
+            # The key was downloaded from one project's Setup tab and sits in
+            # a per-project file, so everything about it reads "one project".
+            # The token it exchanges for is the account's: list_my_projects,
+            # list_user_secrets and list_servers all answer with it. Said here
+            # so a session that finds the key in a file about to be committed
+            # does not reason "just the project key" (feedback a0b1c2bc6f5b).
+            "key_scope": "account",
+            "key_scope_note": (
+                "CO_SCIENTIST_API_KEY reaches the whole account — every project "
+                "it owns, its stored secrets, its servers registry — not only "
+                "this project. Treat a leak as an account leak: rotate it in the "
+                "Setup tab."),
         }
         try:
             proj = state.backend.get_doc(f"projects/{state.project_id}")
@@ -2391,6 +2404,28 @@ def build_mcp(state: State) -> FastMCP:
     def delete_author(author_id: str) -> dict[str, Any]:
         """Delete an author from the account library. Returns {deleted: bool}."""
         return {"deleted": _authors.delete_author(state, author_id)}
+
+    @mcp.tool()
+    def lint_results_grid(
+        slug: str,
+        table_number: int,
+        pattern: str | None = None,
+        sections: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Every result number in the body must be one cell of the paper's
+        designated results grid (see /result-tables: one grid per quantity,
+        choices as columns). Parses the cells of table `table_number`, finds
+        the numbers in every section except Methods, and looks each up.
+
+        `not_in_grid` is the gate — a typed, stale, or breakdown number that
+        should cite its row. `ambiguous` is advisory: the number is in more
+        than one cell, so the sentence must name the crossing. By default a
+        "number" is a decimal or integer followed by `%`; pass `pattern` (a
+        regex) for another quantity, `sections` to narrow the scan. It does
+        not check that the grid's own cells are right — that is the script
+        that generated them."""
+        return _grid_lint.lint_results_grid(
+            state, slug, table_number, pattern=pattern, sections=sections)
 
     @mcp.tool()
     def lint_manuscript(slug: str) -> dict[str, Any]:

@@ -13,7 +13,7 @@ pi install ~/co-scientist-mcp-public
 pip install -e ~/co-scientist-mcp-public/apps/local-mcp
 ```
 
-That gives you the 28 skills, the provenance guard, and the MCP. The MCP needs
+That gives you the 29 skills, the provenance guard, and the MCP. The MCP needs
 Python ≥ 3.11 (see [setup-user.md](setup-user.md) for a bare Ubuntu/WSL box);
 a venv is your choice, and the setup script finds the interpreter that has the
 package by itself. Then wire the tools.
@@ -172,7 +172,7 @@ reads as rules switching on and off between projects.
 
 - **`toolPrefix: "mcp"` is not optional.** It produces `mcp__scivo__<tool>`,
   the name every skill writes. The adapter's DEFAULT is `<server>_<tool>`, and
-  under that every tool reference in all 28 skills is wrong. This is the single
+  under that every tool reference in all 29 skills is wrong. This is the single
   most likely thing to get wrong.
 - **`directTools` is a LIST, not `true`.** The server registers 229 tools and a
   direct tool costs ~150–300 tokens of system prompt on every turn. The
@@ -196,7 +196,7 @@ the prefix setting has not taken effect.
 
 | | |
 |---|---|
-| 28 skills | identical — `SKILL.md` folders, discovered recursively |
+| 29 skills | identical — `SKILL.md` folders, discovered recursively |
 | MCP tools | identical names, via the adapter settings above |
 | The ssh/provenance guard | ported as a Pi extension (`block-untracked-ssh`), same aliases file, same `# setup` / `# allow-untracked` overrides |
 | `session_start` hook | **not ported.** Claude Code ran the open-comment check itself. The same sequence is written into `CLAUDE.md` (§3), which Pi does read — so it runs because the agent is instructed to, not because a hook fires. Ask for it if a session starts without it |
