@@ -2510,7 +2510,14 @@ def build_mcp(state: State) -> FastMCP:
         destroy information. It and number_restatement can never fire on the same
         token — a parameter is claimed by caption_only, a measurement by the
         restatement rule — so the report never tells you to both keep and cut the
-        same value."""
+        same value.
+        A table's `content` is checked too: the prose outside the pipe table
+        (paragraphs above or below it) runs through the interpretive and
+        body-duplication detectors and reports as content_interpretive /
+        content_body_duplication with the sentences in content_prose_spans.
+        A mini-Results one field over from the caption is typeset with the
+        table all the same.
+        """
         return _legend_lint.lint_legends(state, slug)
 
     @mcp.tool()

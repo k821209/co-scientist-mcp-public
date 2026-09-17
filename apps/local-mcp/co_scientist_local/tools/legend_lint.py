@@ -138,9 +138,15 @@ _INTERP_STRONG = [re.compile(p, re.I) for p in (
 _INTERP_COMPARATIVE = [re.compile(p, re.I) for p in (
     r"\b(?:larger|smaller|higher|lower|greater|better|worse|stronger|weaker"
     r"|faster|slower|denser|sparser)\b",
-    r"\b(?:match(?:es|ed)?|exceed(?:s|ed|ing)?|outperform(?:s|ed)?"
+    r"\b(?:exceed(?:s|ed|ing)?|outperform(?:s|ed)?"
     r"|approach(?:es|ed)?|surpass(?:es|ed)?|recover(?:s|ed)?"
     r"|improve(?:s|d)?)\b",
+    # "match" is an outcome verb only WITH a comparison object: "matches
+    # ESM-1b", "matched the reference", "matches or exceeds BRAKER3". Bare, it
+    # is the regex procedure a caption exists to describe: "stopping at the
+    # first match", "chosen to match", "strings that match no rule" (feedback
+    # b6649fc40b3d: three of four hits were procedural).
+    r"\bmatch(?:es|ed)?\b(?=\s+(?:or\s+\w+\s+)?(?:the|our|its|their|that|those|these|every|each|all|both|(?-i:[A-Z])[\w-]+)\b)",
 )]
 
 # Encoding-description context: the sentence is about the graphic, not a result.
@@ -183,6 +189,23 @@ def _shingles(text: str, n: int = _SHINGLE) -> set:
     if len(toks) < n:
         return set()
     return {tuple(toks[i:i + n]) for i in range(len(toks) - n + 1)}
+
+
+_PIPE_ROW = re.compile(r"^\s*\|.*\|\s*$|^\s*\|?\s*:?-{2,}")
+
+
+def _content_prose(content: str) -> str:
+    """The lines of a table's `content` that are NOT the markdown pipe table:
+    paragraphs above or below it. A caption that grew a mini-Results was
+    caught; the same prose one field over, in `content`, was not, and
+    `content` is what gets typeset (feedback b6649fc40b3d)."""
+    out = []
+    for ln in (content or "").splitlines():
+        s = ln.strip()
+        if not s or _PIPE_ROW.match(s):
+            continue
+        out.append(s)
+    return " ".join(out)
 
 
 def _table_columns(content: str) -> dict:
@@ -443,8 +466,10 @@ def lint_legends(state: State, slug: str) -> dict:
     or in the body — every one listed in duplicated_numbers so they clear in a
     single pass), interpretive, sample_roster_restatement (a sample-composition
     list also in the body), bare_cross_reference (a "…described/listed in
-    Table/Results…" pointer), and table-only column_redundant /
-    excluded_data_note (in caption_smells). `level` is warn if any flag is
+    Table/Results…" pointer), table-only column_redundant /
+    excluded_data_note (in caption_smells), and content_interpretive /
+    content_body_duplication (the prose part of a table's `content`, outside
+    the pipe table; see content_prose_spans). `level` is warn if any flag is
     warn-grade, else info; an item with no flags is omitted.
     """
     sections = list_sections(state, slug)
@@ -630,6 +655,43 @@ def lint_legends(state: State, slug: str) -> dict:
         if caption_smells:
             finding["caption_smells"] = caption_smells
         findings.append(finding)
+        return finding
+
+    def _score_content_prose(item, kind, number, content):
+        """Interpretive and body-duplicated sentences in the prose part of a
+        table's `content`, merged into the item's finding (created if the
+        caption was clean). Warn-grade: this text is typeset with the table."""
+        prose = _content_prose(content)
+        if not prose:
+            return
+        interp = _interpretive(prose)
+        dup = _dup_spans(prose)
+        if not interp and not dup:
+            return
+        finding = next((f for f in findings if f["item"] == item), None)
+        if finding is None:
+            finding = {
+                "item": item, "type": kind, "number": number,
+                "word_count": len(_words(content or "")), "level": "info", "flags": [],
+                "duplicated_spans": [], "duplicated_numbers": [],
+                "caption_only_params": [], "interpretive_spans": [],
+                "interpretive_phrases": [], "suggestion": None,
+            }
+            findings.append(finding)
+        if interp:
+            finding["flags"].append("content_interpretive")
+        if dup:
+            finding["flags"].append("content_body_duplication")
+        finding["level"] = "warn"
+        finding["content_prose_spans"] = {"interpretive": interp, "duplicated": dup}
+        finding["content_prose_word_count"] = len(_words(prose))
+        prior = finding.get("suggestion")
+        finding["suggestion"] = (
+            (prior + " ALSO: " if prior else "")
+            + "the prose in this table's `content` (outside the pipe table) reads as "
+              "Results: bolded claims, interpretation, or sentences the body already "
+              "carries. It is typeset with the table, so the reader meets it twice. "
+              "Keep footnotes and column definitions there; move claims to Results.")
 
     for fig in list_figures(state, slug, supplementary=None):
         num = fig["figure_number"]
@@ -646,6 +708,7 @@ def lint_legends(state: State, slug: str) -> dict:
         cap = (tbl.get("caption") or tbl.get("title") or "")
         _score(label, "table", num, cap, _TAB_INFO, _TAB_WARN,
                table_content=tbl.get("content") or "")
+        _score_content_prose(label, "table", num, tbl.get("content") or "")
 
     findings.sort(key=lambda f: (0 if f["level"] == "warn" else 1, -f["word_count"]))
     by_level = {"warn": 0, "info": 0}
