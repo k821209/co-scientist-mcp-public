@@ -146,11 +146,37 @@ def runtime_info() -> dict:
         out["mcp_json_command"] = sys.executable
     else:
         checkout = find_checkout()
+        out["dedicated_venv"] = dedicated_venv()
         if checkout is not None:
             out["checkout_on_disk"] = str(checkout)
-            out["install_warning"] = install_warning(
-                "site-packages", str(checkout), sys.executable)
+            w = install_warning("site-packages", str(checkout), sys.executable,
+                                dedicated=out["dedicated_venv"])
+            if w:
+                out["install_warning"] = w
+            else:
+                out["install_note"] = install_note(str(checkout), sys.executable)
     return out
+
+
+def dedicated_venv(prefix: str | None = None, base_prefix: str | None = None) -> bool:
+    """Is this interpreter a virtualenv of its own — not the base interpreter,
+    not a conda env? A pip install into a dedicated venv cannot overwrite what
+    other projects run, so a snapshot there is the normal state, not a flip."""
+    import sys
+    prefix = prefix or sys.prefix
+    base = base_prefix or sys.base_prefix
+    if prefix == base:
+        return False
+    return not (pathlib.Path(prefix) / "conda-meta").exists()
+
+
+def install_note(checkout: str, python: str) -> str:
+    """The quiet form of path (a): a checkout exists on this disk, this
+    interpreter runs its own copy, and that is by design (a dedicated venv,
+    e.g. the harness's). Informational; nothing to restore."""
+    return (f"{python} runs its own copy of co-scientist-local (a dedicated venv); "
+            f"the checkout at {checkout} is not what runs here, by design. Nothing "
+            f"to restore.")
 
 
 def find_checkout() -> "pathlib.Path | None":
@@ -171,7 +197,8 @@ def find_checkout() -> "pathlib.Path | None":
 
 
 def install_warning(install_mode: str, checkout: str | None, python: str,
-                    previous_mode: str | None = None, previous_path: str | None = None) -> str | None:
+                    previous_mode: str | None = None, previous_path: str | None = None,
+                    dedicated: bool = False) -> str | None:
     """The line whoami and the session banner print when a snapshot in
     site-packages is what runs while a source checkout sits on disk.
 
@@ -180,10 +207,19 @@ def install_warning(install_mode: str, checkout: str | None, python: str,
     and uninstalls the editable one in the same step, reported as success.
     Every project whose .mcp.json names that interpreter then runs the frozen
     copy: edits to the checkout stop taking effect and git_sha goes to None,
-    and nothing said so (feedback 30be02eb90d6). None when nothing is wrong."""
+    and nothing said so (feedback 30be02eb90d6). None when nothing is wrong.
+
+    Two paths. (b) this project last ran an editable install and now runs
+    site-packages: the precise signal, always a warning. (a) site-packages
+    while a checkout sits on disk: a warning only in a SHARED environment
+    (base interpreter, conda env), where a pip install overwrites what other
+    projects run. In a dedicated venv a checkout on the disk is a consumer
+    clone or someone else's workflow, and (a) fired on every project set up
+    there, every session — which trains people to ignore (b) too (feedback
+    c6a20dc0936e). There it is install_note instead."""
     if install_mode == "editable":
         return None
-    if not checkout and previous_mode != "editable":
+    if previous_mode != "editable" and (not checkout or dedicated):
         return None
     where = checkout or (previous_path and str(pathlib.Path(previous_path).parents[2])) or "<checkout>"
     flip = ""

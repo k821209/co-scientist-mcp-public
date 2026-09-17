@@ -147,9 +147,11 @@ def build_mcp(state: State) -> FastMCP:
             prev_mode = (proj or {}).get("last_install_mode")
             prev_path = (proj or {}).get("last_package_path")
             w = install_warning(rt.get("install_mode", ""), rt.get("checkout_on_disk"),
-                                rt.get("python_executable", "python"), prev_mode, prev_path)
+                                rt.get("python_executable", "python"), prev_mode, prev_path,
+                                dedicated=bool(rt.get("dedicated_venv")))
             if w:
                 info["install_warning"] = w
+                info.pop("install_note", None)
         except Exception:
             pass
         # Record the build this project last ran, so dashboard/human-filed
