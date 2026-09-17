@@ -249,10 +249,35 @@ def list_responses(
     time by the rules — so two independent reviewers' judgements can be split
     apart and compared without trusting anything the page said about itself."""
     _require(state, pub_id)
-    rows = [d for _, d in state.backend.list_collection(
+    # The document id rides along, as it does on the page side
+    # (`window.scivo.list` returns `id`), so the two sides are symmetric and the
+    # owner can deduplicate or reply to a specific response without the page
+    # having to stamp its own id into the data (feedback 3bf2aace3ba0).
+    rows = [{"id": doc_id, **d} for doc_id, d in state.backend.list_collection(
         state.project_path("publications", pub_id, collection))]
     rows.sort(key=lambda r: r.get("created_at") or r.get("updated_at") or "")
     return rows
+
+
+def clear_page_data(
+    state: State, pub_id: str, *, collection: str, doc_id: str | None = None,
+) -> dict:
+    """Delete one document, or every document, in a publication's data
+    collection — items, content, or responses. The owner's reset: a page that
+    writes a doc per event accumulates, and the only way to start clean used
+    to be a new publication (feedback 3bf2aace3ba0). Passcodes are never
+    touched this way; revoke them."""
+    _require(state, pub_id)
+    if collection in ("passcodes",):
+        raise ValueError("passcodes are not page data; use revoke_passcode")
+    base = state.project_path("publications", pub_id, collection)
+    if doc_id is not None:
+        ok = state.backend.delete_doc(f"{base}/{doc_id}")
+        return {"collection": collection, "deleted": 1 if ok else 0, "doc_ids": [doc_id] if ok else []}
+    ids = [d for d, _ in state.backend.list_collection(base)]
+    for d in ids:
+        state.backend.delete_doc(f"{base}/{d}")
+    return {"collection": collection, "deleted": len(ids), "doc_ids": ids}
 
 
 def put_page_data(
