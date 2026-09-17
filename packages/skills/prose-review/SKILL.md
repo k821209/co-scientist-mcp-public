@@ -102,6 +102,52 @@ worst offender, not every instance.
 - **Korean manuscripts judged against English conventions.** Check §2's Korean
   register rules (`~하였다 / ~로 나타났다`, consistent endings) instead.
 
+## Run it cold, in a subagent — the session that wrote the prose cannot do this
+
+Everything below is the specification. Applying it from inside the session that
+drafted the text does not work, for the same reason `/cold-read` exists: the
+author picked each word because it was the natural word **to them**, and
+re-reading confirms the choice. A manuscript in this project used **artefact** as
+a column head meaning "the distributed file". It survived five drafts, the
+`/paper-writing` rule that forbids exactly this, and `lint_legends` — because it
+was perfectly clear to everyone who had been in the room.
+
+So hand the text to the shipped reader:
+
+```
+Task(subagent_type="journal-copyedit",
+     prompt="""Venue: Genome Biology (BMC). Field: plant computational genomics.
+     This section must stand alone; it is Results.
+
+     The section:  /tmp/copyedit-<slug>-<key>.md
+     """)
+```
+
+Give it **only** the section text written to a temp file, plus the venue and the
+field. Not the other sections, not the figures, not anything from this session —
+the isolation is what makes the pass work. Write `get_section(slug, key)`'s
+`body` to the file verbatim.
+
+It returns `--- FINDINGS --- / PASSED / PATTERN / BUNDLE_NOTE`. Each finding
+carries `kind`, a verbatim `span`, and the replacement sentence, which is what
+rule 2 below demands. Map them to `add_review(source="ai",
+reviewer_name="AI prose editor (<venue>)", anchor_text=<span>, …)` and apply the
+budget below to what comes back. **Read `PATTERN` first** — a defect repeated
+nine times is one editing decision, and filing nine rows for it wastes the
+author's attention.
+
+`REGISTER-BIO-AI.md` in `/paper-writing`'s directory is the same standard in
+reference form, for drafting. This skill is the pass that catches what drafting
+missed.
+
+The definition SHIPS (`packages/agents/journal-copyedit.md`, linked into
+`.claude/agents/` on MCP startup, `tools: Read`), the same way
+`reviewer-frame-check` does; a harness without a fresh-context subagent runs
+the check in a separate session with only the temp file open — the isolation
+is the point, not the mechanism. Run the pass yourself, in-session, only when
+neither is possible, and say so in the summary rather than reporting a clean
+result: a session checking its own register can only degrade the check.
+
 ## Flow
 
 1. `get_paper_state(slug)` — the stored bodies, which are what anchors match.

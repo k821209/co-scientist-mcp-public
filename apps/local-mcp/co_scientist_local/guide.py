@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-17b"
+GUIDE_VERSION = "2026-09-17c"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -635,7 +635,12 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
 - `/prose-review [slug]` — reads a FINISHED draft as a journal copy-editor and
   comments only where the prose is wrong for the venue: metaphor imported from
   another field, sentences left answering a reviewer, chat register, a register
-  break inside a paragraph. Each finding is a review row carrying the
+  break inside a paragraph. The read is done COLD by the shipped
+  `journal-copyedit` subagent (`tools: Read`; text, venue and field only) —
+  the session that wrote the prose cannot see its own register, and a word
+  that means something else in the field ("artefact") survived five drafts
+  that way. For a biology venue, `/paper-writing`'s `REGISTER-BIO-AI.md` is
+  the same standard in reference form, for drafting. Each finding is a review row carrying the
   REPLACEMENT sentence. Runs `lint_manuscript` first and never repeats it, and
   never touches claims or statistics — that is `/paper-review`. Use it on text
   that arrived some other way (imported, revised, or drafted by a session that

@@ -66,6 +66,14 @@ findings, no procedure. Discussion = meaning, no new data.**
 
 ### 2. Academic register (journal prose, not chat prose)
 
+**For a biology or computational-biology journal, read `REGISTER-BIO-AI.md`
+in this directory first.** It carries the field's register from a worked
+exemplar — tense, sentence shape, the terms that mean something else in
+biology, decimal format, figure-title convention, and the display-item
+budget. The rules below are generic; that file is what the field actually
+prints. It exists because every rule below was loaded and followed and a
+manuscript still came out in ML-workshop register.
+
 - **Tense:** Methods & Results in **past** ("cells were treated", "yield
   increased 32%"); established facts & interpretation in **present**
   ("BLUP improves accuracy"). Keep it consistent within a paragraph.
