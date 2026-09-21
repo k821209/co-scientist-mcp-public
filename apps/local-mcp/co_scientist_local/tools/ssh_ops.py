@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
+from . import analyses as _analyses
 from .runs import (
     _new_run_key,
     bump_heartbeat,
@@ -189,12 +190,8 @@ def server_status(
 def _collect_unfinished_pids_for_host(state: State, host: str) -> list[int]:
     """Walk all papers/analyses for the user and gather unfinished PIDs on `host`."""
     out: list[int] = []
-    papers_pairs = state.backend.list_collection(state.project_path("papers"))
-    for paper_slug, _ in papers_pairs:
-        analyses_pairs = state.backend.list_collection(
-            state.project_path("papers", paper_slug, "analyses")
-        )
-        for analysis_name, _ in analyses_pairs:
+    for paper_slug, analysis_name in _analyses.iter_analyses(state):
+        if True:
             for r in list_analysis_runs(
                 state, paper_slug, analysis_name, unfinished_only=True, host=host,
             ):
@@ -499,10 +496,8 @@ def _all_unfinished_runs_for_host(state: State, host: str) -> list[dict]:
     Returns dicts with paper_slug + analysis_name injected for easy follow-up.
     """
     out: list[dict] = []
-    for paper_slug, _ in state.backend.list_collection(state.project_path("papers")):
-        for analysis_name, _ in state.backend.list_collection(
-            state.project_path("papers", paper_slug, "analyses")
-        ):
+    for paper_slug, analysis_name in _analyses.iter_analyses(state):
+        if True:
             for r in list_analysis_runs(
                 state, paper_slug, analysis_name, unfinished_only=True, host=host,
             ):
@@ -644,10 +639,8 @@ def auto_finish_stale_runs(state: State, *, since_hours: float | None = None) ->
     # Build per-host buckets, keeping pid-less rows in their own bucket
     by_host: dict[str, list[dict]] = {}
     no_pid: list[dict] = []
-    for paper_slug, _ in state.backend.list_collection(state.project_path("papers")):
-        for analysis_name, _ in state.backend.list_collection(
-            state.project_path("papers", paper_slug, "analyses")
-        ):
+    for paper_slug, analysis_name in _analyses.iter_analyses(state):
+        if True:
             for r in list_analysis_runs(
                 state, paper_slug, analysis_name, unfinished_only=True,
             ):
@@ -925,10 +918,8 @@ def scan_recent_outputs(
 def _runs_for_host_since(state: State, host: str, cutoff: datetime) -> list[dict]:
     """Every recorded run on `host` started at/after `cutoff`, across all papers."""
     out: list[dict] = []
-    for slug, _ in state.backend.list_collection(state.project_path("papers")):
-        for analysis, _ in state.backend.list_collection(
-            state.project_path("papers", slug, "analyses")
-        ):
+    for slug, analysis in _analyses.iter_analyses(state):
+        if True:
             for r in list_analysis_runs(state, slug, analysis):
                 if (r.get("host") or "local") != host:
                     continue

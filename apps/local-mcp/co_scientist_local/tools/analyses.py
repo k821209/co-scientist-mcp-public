@@ -22,11 +22,45 @@ from ..util import now_iso, slugify
 from .papers import _paper_path
 
 
+# A project with no paper — a video project, a tooling project — still runs
+# jobs, and a job with no run record is the provenance gap every other rule
+# here exists to close. Analyses were keyed under a paper, so such a project
+# could not register one and raw ssh+nohup was blocked by the harness: video
+# jobs could not be launched with a record at all (feedback fb5f2b270d84).
+# This sentinel slug scopes an analysis to the PROJECT instead.
+PROJECT_SCOPE = "_project"
+
+
+def is_project_scope(slug: str | None) -> bool:
+    return not slug or slug == PROJECT_SCOPE
+
+
+def analyses_base(state: State, slug: str | None) -> str:
+    """The collection an analysis lives in: under its paper, or under the
+    project when `slug` is the project-scope sentinel."""
+    if is_project_scope(slug):
+        return state.project_path("analyses")
+    return state.project_path("papers", slug, "analyses")
+
+
+def iter_analyses(state: State):
+    """Every (slug, analysis_name) in the project — each paper's, then the
+    project-scoped ones — for the sweeps that walk all runs."""
+    for slug, _ in state.backend.list_collection(state.project_path("papers")):
+        for name, _ in state.backend.list_collection(
+                state.project_path("papers", slug, "analyses")):
+            yield slug, name
+    for name, _ in state.backend.list_collection(state.project_path("analyses")):
+        yield PROJECT_SCOPE, name
+
+
 def _analysis_path(state: State, slug: str, name: str) -> str:
-    return state.project_path("papers", slug, "analyses", name)
+    return f"{analyses_base(state, slug)}/{name}"
 
 
 def _ensure_paper(state: State, slug: str) -> None:
+    if is_project_scope(slug):
+        return
     if state.backend.get_doc(_paper_path(state, slug)) is None:
         raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
 
@@ -88,7 +122,7 @@ def get_analysis(state: State, slug: str, name: str) -> dict:
 def list_analyses(state: State, slug: str, *, status: str | None = None) -> list[dict]:
     """List analyses sorted by created_at desc. Optional status filter."""
     _ensure_paper(state, slug)
-    pairs = state.backend.list_collection(state.project_path("papers", slug, "analyses"))
+    pairs = state.backend.list_collection(analyses_base(state, slug))
     items = [data for _, data in pairs]
     if status is not None:
         items = [a for a in items if a.get("status") == status]

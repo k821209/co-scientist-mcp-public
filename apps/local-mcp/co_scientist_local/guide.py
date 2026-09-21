@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-21a"
+GUIDE_VERSION = "2026-09-21b"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -497,6 +497,9 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   or a bare local Bash run for a result-producing analysis.
 - **Already ran it ad-hoc?** Back-fill immediately: `create_analysis(...)`
   then `record_analysis_run(..., host=, command=, env_name=, log_path=, pid=)`.
+- **No paper in the project** (video, tooling)? Use `slug="_project"` for
+  `create_analysis` and every run tool — a job without a run record is the
+  gap this rule exists to close, whether or not a paper cites it.
   A quick `zcat | …`, a figure script, a one-off `gm_compare` — all count.
 - **A local run records which machine.** `host="local"` plus `hostname` (this
   machine's name, filled in automatically). With two laptops and a

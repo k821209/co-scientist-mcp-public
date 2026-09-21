@@ -101,7 +101,25 @@ front matter as one huge insertion in the first paragraph, the two files use
 different front-matter formats — which often means they are from different eras.
 Say so and re-confirm.
 
-### 2. Prepare an isolated LibreOffice profile
+### 2a. Build the marks directly — the first attempt
+
+`build_tracked_changes(old_path, new_path, out_path, author)` writes NEW with
+every difference from OLD as real `w:ins` / `w:del`, with no LibreOffice
+involved, and **verifies itself before writing**: accepting every mark must
+reproduce NEW and rejecting every mark must reproduce OLD, paragraph for
+paragraph. That is a check the LibreOffice path cannot make, and it is the
+one that catches a deleted paragraph landing one slot early — invisible to
+every row of the step 6 table. On a real revision round it produced the
+marked main text in seconds where the macro path below produced nothing
+(soffice idle, exit 0, empty log) on Linux, and the user reports the same
+flakiness on macOS.
+
+Read the tool's return: what it does not produce (formatting-only revisions,
+moved text — shown as delete + insert) is listed there. When the revision is
+mostly of that kind, or the result reads wrong, go on to the LibreOffice
+compare below; otherwise skip to step 5 (tables) and step 6.
+
+### 2. Prepare an isolated LibreOffice profile — the fallback
 
 Use a scratch profile so the user's own LibreOffice settings are untouched.
 
@@ -449,6 +467,7 @@ Repackage with `[Content_Types].xml` written first.
 | Media accounted for | `word/media/` count matches **the input you compared** — normally every figure, since you compare the real documents. 0 is only correct if you took the `strip_images()` fallback, which must then be stated in the response letter |
 | No empty tables | every `w:tbl` has text or graphics |
 | **python-docx sees the whole document** | compare its text against raw `w:t` — see below. Run this BEFORE any edit premised on something being absent |
+| **Accept-all == NEW and reject-all == OLD** | `verify_tracked_changes(marked, old, new)` — on the builder's output this already ran; on LibreOffice's output it is the only check that sees a mark in the wrong slot. Both booleans must be true |
 
 Report the insertion / deletion counts to the user **and the author set** —
 `authors: {'Yang Jae Kang': 848}`. Printing the value is as important as failing on
@@ -538,5 +557,5 @@ Fall back in this order:
 
 ## Requirements
 
-- LibreOffice (`soffice`) on PATH
-- Python with `lxml` and `python-docx`
+- Python with `lxml` and `python-docx` (the builder in 2a needs nothing else)
+- LibreOffice (`soffice`) on PATH — only for the fallback compare

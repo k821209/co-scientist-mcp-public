@@ -56,6 +56,7 @@ from .tools import publications as _publications
 from .tools import studies as _studies
 from .tools import study_preview as _study_preview
 from .tools import grid_lint as _grid_lint
+from .tools import tracked_changes as _tracked
 from .tools import submissions as _submissions
 from .tools import graphs as _graphs
 from .tools import materials as _materials
@@ -1878,6 +1879,11 @@ def build_mcp(state: State) -> FastMCP:
         name: str,
         description: str | None = None,
     ) -> dict[str, Any]:
+        """Register an analysis — the unit runs are recorded under. `slug` is
+        the paper it belongs to, or `"_project"` for a project with no paper
+        (a video or tooling project): a job still needs a run record there,
+        and every run tool (record_analysis_run, launch_local_job,
+        submit_remote_job) takes the same `"_project"` slug."""
         return _analyses.create_analysis(state, slug, name=name, description=description)
 
     @mcp.tool()
@@ -2452,6 +2458,33 @@ def build_mcp(state: State) -> FastMCP:
         return {"deleted": _authors.delete_author(state, author_id)}
 
     @mcp.tool()
+    def build_tracked_changes(
+        old_path: str, new_path: str, out_path: str, author: str,
+    ) -> dict[str, Any]:
+        """Write `out_path` = NEW with every difference from OLD marked as a
+        real Word revision (w:ins / w:del) by `author` — no LibreOffice.
+        Body paragraphs are aligned in order and diffed word by word; a
+        paragraph carrying a drawing or field is replaced whole; tables come
+        from NEW unmarked. Then it VERIFIES before writing: accepting every
+        mark must reproduce NEW and rejecting every mark must reproduce OLD,
+        paragraph for paragraph, and it raises instead of writing if either
+        fails. Not produced: formatting-only revisions and moved text (shown
+        as delete + insert) — the LibreOffice compare remains the fallback
+        for those. See /tracked-changes-export."""
+        return _tracked.build_tracked_changes(old_path, new_path, out_path, author=author)
+
+    @mcp.tool()
+    def verify_tracked_changes(
+        marked_path: str, old_path: str, new_path: str,
+    ) -> dict[str, Any]:
+        """The round-trip check on ANY marked .docx (this builder's or
+        LibreOffice's): accept-all must equal NEW and reject-all must equal
+        OLD by body paragraph text. Returns both booleans, the mark counts,
+        the author set, and the first mismatch when one fails — the check
+        that sees a deleted paragraph landing one slot early."""
+        return _tracked.verify_tracked_changes(marked_path, old_path, new_path)
+
+    @mcp.tool()
     def lint_results_grid(
         slug: str,
         table_number: int,
@@ -2660,7 +2693,7 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """Spawn a long-running local job (detached). Returns run row with pid + log_path.
         `params`: the arguments that define the run, as a dict — see
-        record_analysis_run."""
+        record_analysis_run. `slug` may be `"_project"` for a paper-less project."""
         return _runs.launch_local_job(
             state, slug, analysis, command=command, workdir=workdir,
             env_name=env_name, conda_root=conda_root, params=params,
@@ -2712,6 +2745,8 @@ def build_mcp(state: State) -> FastMCP:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Politeness-checked SSH job submission (rsync + nohup, pidfile-idempotent).
+        `slug` may be `"_project"` for a project with no paper (create the
+        analysis with that slug first).
         Runs in `<project root>/analysis/<analysis>` on the server — see
         remote_workdir for the root rule. `params`: the arguments that define
         the run, as a dict — see record_analysis_run."""

@@ -27,15 +27,15 @@ from datetime import datetime, timezone
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
-from .analyses import _analysis_path
+from .analyses import PROJECT_SCOPE, _analysis_path, is_project_scope, iter_analyses
 
 
 def _runs_path(state: State, slug: str, analysis: str) -> str:
-    return state.project_path("papers", slug, "analyses", analysis, "runs")
+    return f"{_analysis_path(state, slug, analysis)}/runs"
 
 
 def _run_path(state: State, slug: str, analysis: str, run_key: str) -> str:
-    return state.project_path("papers", slug, "analyses", analysis, "runs", run_key)
+    return f"{_analysis_path(state, slug, analysis)}/runs/{run_key}"
 
 
 def _ensure_analysis(state: State, slug: str, analysis: str) -> None:
@@ -120,7 +120,9 @@ def record_analysis_run(
         # Denormalized fields so cross-paper collectionGroup queries on
         # "runs" can filter by project_id and link back to origin paper.
         "project_id": state.project_id,
-        "paper_slug": slug,
+        # PROJECT_SCOPE for a paper-less project's run (the dashboard shows
+        # "project" instead of a paper link).
+        "paper_slug": PROJECT_SCOPE if is_project_scope(slug) else slug,
         "analysis_name": analysis,
         "command": command,
         "host": host,
@@ -407,10 +409,8 @@ def reap_all_local_runs(state: State) -> dict:
     jobs that died while no session was running (the registry is empty then).
     """
     checked = finished = other_machine = 0
-    for slug, _ in state.backend.list_collection(state.project_path("papers")):
-        for analysis, _ in state.backend.list_collection(
-            state.project_path("papers", slug, "analyses")
-        ):
+    for slug, analysis in iter_analyses(state):
+        if True:
             for r in list_analysis_runs(state, slug, analysis, unfinished_only=True):
                 if (r.get("host") or "local") != "local" or not r.get("pid"):
                     continue

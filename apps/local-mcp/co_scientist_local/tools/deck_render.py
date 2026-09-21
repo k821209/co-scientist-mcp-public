@@ -1243,6 +1243,11 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
     footer_y = int(sh * _FOOTER_BAND_FRAC)
 
     out: list[dict] = []
+    # Per slide, the smallest inner gap between a card and the labels in it —
+    # for the deck-level consistency check after the loop (a deck whose cards
+    # pad 8 / 12 / 14 / 16 / 18pt on different slides looks wrong flipping
+    # through, and no per-slide check can see it; feedback 6716ecc73b6f).
+    deck_card_gaps: dict[int, float] = {}
     for idx, slide in enumerate(prs.slides, start=1):
         pics: list[tuple] = []
         header_texts: list[tuple] = []
@@ -1261,13 +1266,13 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                 pics.append((l, t, w, h))
                 boxes.append((z, l, t, w, h, True))
             if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
-                autoshapes.append((z, l, t, w, h))
                 filled = False
                 try:
                     from pptx.enum.dml import MSO_FILL  # type: ignore
                     filled = shape.fill.type == MSO_FILL.SOLID
                 except Exception:
                     filled = True   # assume filled if the fill API can't say
+                autoshapes.append((z, l, t, w, h, filled))
                 boxes.append((z, l, t, w, h, filled))
             if getattr(shape, "has_text_frame", False):
                 text = (shape.text_frame.text or "").strip()
@@ -1353,6 +1358,25 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
         # check has now had twice, in two different disguises.
         for lz, ll, lt, lw, lh, leff_h, ltext in labels:
             child_area = max(1, lw * lh)
+            # Text that wraps past its own declared box, wherever the box sits.
+            # Reported before any container question: the common case is a
+            # mono line in a card row that folds onto a second line and prints
+            # across the 1pt separator drawn under it — no card edge is
+            # crossed, so the inner-margin checks never saw it, and the export
+            # said clean (feedback c7226bc1f531). `leff_h > lh` only when the
+            # estimate clearly exceeds the box (see _effective_text_bottom).
+            overflow_issue = None
+            if leff_h > lh:
+                overflow_issue = ({
+                    "kind": "text_overflow",
+                    "declared_pt": round(lh / _EMU_PER_PT, 1),
+                    "rendered_pt": round(leff_h / _EMU_PER_PT, 1),
+                    "label": ltext[:40],
+                    "note": (f"text wraps to ~{round(leff_h / _EMU_PER_PT)}pt in a "
+                             f"{round(lh / _EMU_PER_PT)}pt box — the last line prints "
+                             "below the box, across whatever is drawn under it. "
+                             "Widen the box, shorten the line, or lower the size"),
+                })
             # Two candidates, deliberately. `tight` keeps the ORIGINAL rule —
             # fully contained, container ≥ 2× the label — so nothing that used
             # to be flagged changes. `over` uses the looser rule, because text
@@ -1361,9 +1385,15 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
             # report's point (a): a hand-built card that its body text fills).
             best_over = None   # (-overlap, area, box)
             best_tight = None  # (area, box)
-            for az, al, at, aw, ah in autoshapes:
-                if az >= lz:
-                    continue  # container must be drawn BEHIND the label
+            for az, al, at, aw, ah, a_filled in autoshapes:
+                # A container is normally drawn BEHIND the label. An UNFILLED
+                # outline is the exception: a border drawn last over finished
+                # content hides nothing, so drawing order says nothing about
+                # containment — and a card built that way (content first,
+                # border on top) had every label exempted from the inner-margin
+                # checks (feedback 6716ecc73b6f).
+                if az >= lz and a_filled:
+                    continue
                 a_area = aw * ah
                 if a_area > 0.9 * slide_area:
                     continue  # full-bleed background, not a card
@@ -1406,9 +1436,19 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                              "content, or grow the container"),
                 })
                 continue  # overflow supersedes tightness on the same label
+            # The same wrap, with no card edge crossed: one finding, the
+            # plainer one. (When a card edge IS crossed, inner_margin_overflow
+            # above already said so — one defect, one finding.)
+            if overflow_issue is not None:
+                issues.append(overflow_issue)
             if best_tight is None:
                 continue
-            tight = {k: v for k, v in _gaps(best_tight[1]).items()
+            all_gaps = _gaps(best_tight[1])
+            side_gap = min(v for k, v in all_gaps.items() if k in ("left", "right"))
+            if side_gap >= 0:
+                prev = deck_card_gaps.get(idx)
+                deck_card_gaps[idx] = side_gap if prev is None else min(prev, side_gap)
+            tight = {k: v for k, v in all_gaps.items()
                      if 0 <= v < inner_thr}
             if tight:
                 side = min(tight, key=tight.get)
@@ -1529,6 +1569,23 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
 
         if issues:
             out.append({"slide_number": idx, "issues": issues})
+    # Deck-level: cards padded differently from slide to slide. Each slide
+    # passes on its own; the inconsistency is only visible flipping through.
+    if len(deck_card_gaps) >= 3:
+        pts = {n: round(g / _EMU_PER_PT) for n, g in deck_card_gaps.items()}
+        spread = max(pts.values()) - min(pts.values())
+        if spread > _UNEVEN_CARD_PT:
+            out.append({
+                "slide_number": 0, "deck_level": True,
+                "issues": [{
+                    "kind": "inner_margin_inconsistent",
+                    "gaps_pt": pts,
+                    "spread_pt": spread,
+                    "note": (f"card inner padding differs by {spread}pt across slides "
+                             f"({min(pts.values())}–{max(pts.values())}pt) — pick one "
+                             "inset and use it on every card"),
+                }],
+            })
     return out
 
 
@@ -1972,12 +2029,10 @@ def _effective_text_bottom(shape, top: int, width: int, height: int) -> int:
     of estimator noise). Otherwise returns the plain declared bottom."""
     declared = top + height
     tf = shape.text_frame
-    try:
-        from pptx.enum.text import MSO_AUTO_SIZE  # type: ignore
-        if tf.auto_size == MSO_AUTO_SIZE.TEXT_TO_SHAPE:
-            return declared  # text shrinks to fit → no wrap overflow
-    except Exception:
-        pass
+    # No auto-size guard, deliberately: python-pptx has no TEXT_TO_SHAPE
+    # member (the old check raised and was swallowed, so it never applied),
+    # and LibreOffice — which renders the PNG the author looks at — does not
+    # honour shrink-to-fit anyway. The estimate is what prints.
     sizes = [run.font.size.pt for para in tf.paragraphs for run in para.runs
              if run.font.size is not None]
     if not sizes:
