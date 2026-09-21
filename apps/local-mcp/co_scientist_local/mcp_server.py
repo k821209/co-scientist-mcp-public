@@ -1256,7 +1256,10 @@ def build_mcp(state: State) -> FastMCP:
         `kind="control"` marks a page that drives the owner's own local session
         (a harness control surface): the dashboard shows it in the Control dock
         in the project's corner, from every tab, and keeps it out of the
-        Published list. Leave `kind` unset for a reviewer page.
+        Published list. The signed-in owner opens it with no passcode (their
+        session writes as reviewer "owner"), so keep `require_passcode=True`
+        and issue no code — nobody else can open it then. Leave `kind` unset
+        for a reviewer page.
 
         Give exactly one of `html` (the page source) or `material_id` (an HTML
         material already uploaded). Returns the url.

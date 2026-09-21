@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-21b"
+GUIDE_VERSION = "2026-09-21c"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -382,7 +382,12 @@ A page that drives the owner's OWN local session (a harness control surface)
 is published with `kind="control"`: the dashboard shows it in the Control
 dock in the project's corner, reachable from every tab with a live
 connected/disconnected badge read from the page's `content/head` heartbeat,
-and keeps it out of the Published list, which is for reviewer links.
+and keeps it out of the Published list, which is for reviewer links. **The
+signed-in owner opens it without a passcode** — their session stands in,
+writing responses as reviewer `"owner"` — so publish it with
+`require_passcode=True` and issue NO passcode: then nobody but the owner
+can open it at all. (A reviewer page keeps its codes even for the owner;
+there the label is the attribution.)
 
 Two things about writing the page itself:
 
