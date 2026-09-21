@@ -121,8 +121,41 @@ class _Marks:
 
 
 def _first_rpr(p):
-    r = p.find(W + "r")
-    return r.find(W + "rPr") if r is not None else None
+    for r in p.iter(W + "r"):
+        rpr = r.find(W + "rPr")
+        if rpr is not None:
+            return rpr
+    return None
+
+
+_PAIR_MIN = 0.45   # quick_ratio below this: not the same paragraph revised, but a swap
+
+
+def _pair_by_similarity(old_texts, new_texts, i1, i2, j1, j2) -> list[tuple[int, int]]:
+    """Best matches first across the whole block (real ratio, not the
+    character-multiset upper bound, which pairs any two English sentences),
+    each old and new paragraph used once, then the longest increasing run of
+    (old index, new index) so pairings cannot cross."""
+    scored = []
+    for i in range(i1, i2):
+        for j in range(j1, j2):
+            r = difflib.SequenceMatcher(None, old_texts[i], new_texts[j], autojunk=False).ratio()
+            if r >= _PAIR_MIN:
+                scored.append((r, i, j))
+    scored.sort(reverse=True)
+    pair_of: dict[int, int] = {}
+    used_new: set[int] = set()
+    for _, i, j in scored:
+        if i in pair_of or j in used_new:
+            continue
+        pair_of[i] = j
+        used_new.add(j)
+    seq = sorted(pair_of.items())
+    runs: list[list[tuple[int, int]]] = []
+    for k in range(len(seq)):
+        cand = max((run for run in runs if run[-1][1] < seq[k][1]), key=len, default=[])
+        runs.append(cand + [seq[k]])
+    return max(runs, key=len, default=[])
 
 
 def _rebuild_word_diff(ET, marks: _Marks, new_p, old_text: str, new_text: str):
@@ -130,7 +163,7 @@ def _rebuild_word_diff(ET, marks: _Marks, new_p, old_text: str, new_text: str):
     Keeps w:pPr; formatting of the first run is applied to every run."""
     rpr = _first_rpr(new_p)
     for child in list(new_p):
-        if child.tag != W + "pPr":
+        if child.tag not in (W + "pPr", W + "bookmarkStart", W + "bookmarkEnd"):
             new_p.remove(child)
     a, b = _TOKEN.findall(old_text), _TOKEN.findall(new_text)
     sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
@@ -282,26 +315,37 @@ def build_tracked_changes(old_path: str, new_path: str, out_path: str, *,
             for k in range(j1, j2):
                 _mark_inserted(ET, marks, out_paras[k])
             continue
-        # replace: pair by position, then handle the remainder as delete/insert
-        n = min(i2 - i1, j2 - j1)
-        for k in range(n):
-            op_, np_ = old_paras[i1 + k], out_paras[j1 + k]
+        # replace: pair old and new paragraphs by SIMILARITY, keeping both
+        # documents' order (the pairing is the longest order-preserving run),
+        # so an uneven block — two old paragraphs against five new ones — does
+        # not pair by position and diff unrelated text. From the reporter's
+        # script (feedback 800d9cc0b737), which did it this way from the start.
+        pairs = _pair_by_similarity(old_texts, new_texts, i1, i2, j1, j2)
+        paired_old = {i for i, _ in pairs}
+        paired_new = {j for _, j in pairs}
+        for i, j in pairs:
+            op_, np_ = old_paras[i], out_paras[j]
             if _has_non_text(op_) or _has_non_text(np_):
                 np_.addprevious(_as_deleted_copy(ET, marks, op_))
                 _mark_inserted(ET, marks, np_)
                 replaced_whole += 1
             else:
-                _rebuild_word_diff(ET, marks, np_, old_texts[i1 + k], new_texts[j1 + k])
-        if i2 - i1 > n:
-            anchor = out_paras[j2] if j2 < len(out_paras) else None
-            for k in range(i1 + n, i2):
-                dp = _as_deleted_copy(ET, marks, old_paras[k])
-                if anchor is not None:
-                    anchor.addprevious(dp)
-                else:
-                    out_body.append(dp)
-        for k in range(j1 + n, j2):
-            _mark_inserted(ET, marks, out_paras[k])
+                _rebuild_word_diff(ET, marks, np_, old_texts[i], new_texts[j])
+        for j in range(j1, j2):
+            if j not in paired_new:
+                _mark_inserted(ET, marks, out_paras[j])
+        for i in range(i1, i2):
+            if i in paired_old:
+                continue
+            # an unpaired old paragraph goes before the next paired new one,
+            # else at the end of the block
+            nxt = [j for (k, j) in pairs if k > i]
+            at = nxt[0] if nxt else j2
+            dp = _as_deleted_copy(ET, marks, old_paras[i])
+            if at < len(out_paras):
+                out_paras[at].addprevious(dp)
+            else:
+                out_body.append(dp)
 
     # keep w:sectPr last
     sect = out_body.find(W + "sectPr")
