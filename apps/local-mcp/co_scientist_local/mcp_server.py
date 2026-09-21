@@ -1248,8 +1248,14 @@ def build_mcp(state: State) -> FastMCP:
         material_id: str | None = None,
         require_passcode: bool = True,
         description: str | None = None,
+        kind: str | None = None,
     ) -> dict[str, Any]:
         """Publish a page at an UNLISTED url, for people with no Scivo account.
+
+        `kind="control"` marks a page that drives the owner's own local session
+        (a harness control surface): the dashboard shows it in the Control dock
+        in the project's corner, from every tab, and keeps it out of the
+        Published list. Leave `kind` unset for a reviewer page.
 
         Give exactly one of `html` (the page source) or `material_id` (an HTML
         material already uploaded). Returns the url.
@@ -1268,7 +1274,7 @@ def build_mcp(state: State) -> FastMCP:
         anonymous bucket."""
         return _publications.publish_page(
             state, title=title, html=html, material_id=material_id,
-            require_passcode=require_passcode, description=description)
+            require_passcode=require_passcode, description=description, kind=kind)
 
     @mcp.tool()
     def update_publication(
@@ -1277,13 +1283,15 @@ def build_mcp(state: State) -> FastMCP:
         title: str | None = None,
         active: bool | None = None,
         require_passcode: bool | None = None,
+        kind: str | None = None,
     ) -> dict[str, Any]:
         """Amend a published page. `active=False` UNPUBLISHES it — checked when
         a visitor's token is minted, so it stops the next visitor even though
-        links already sent out cannot be recalled."""
+        links already sent out cannot be recalled. `kind="control"` moves an
+        existing page into the dashboard's Control dock (see publish_page)."""
         return _publications.update_publication(
             state, pub_id, html=html, title=title, active=active,
-            require_passcode=require_passcode)
+            require_passcode=require_passcode, kind=kind)
 
     @mcp.tool()
     def list_publications() -> list[dict[str, Any]]:

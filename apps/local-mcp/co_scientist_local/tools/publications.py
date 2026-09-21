@@ -77,8 +77,15 @@ def publish_page(
     material_id: str | None = None,
     require_passcode: bool = True,
     description: str | None = None,
+    kind: str | None = None,
 ) -> dict:
     """Publish a page and return its unlisted URL.
+
+    `kind` says what the page IS to the dashboard. None is an ordinary
+    reviewer page, listed in the Published tab. "control" is a page that
+    drives the owner's local session; the dashboard shows it in a dock in the
+    project's corner, reachable from every tab, and keeps it out of the
+    Published list — a link that sits among reviewer links is not one.
 
     Give either `html` (the page source) or `material_id` (an HTML material
     already uploaded). `require_passcode=True` is the default on purpose: a
@@ -115,6 +122,7 @@ def publish_page(
         "description": (description or "").strip() or None,
         "active": True,
         "require_passcode": bool(require_passcode),
+        "kind": (kind or "").strip() or None,
         "source_material_id": material_id,
         "blob_path": state.project_path("publications", pub_id, "page.html"),
         "created_at": now,
@@ -137,12 +145,15 @@ def update_publication(
     title: str | None = None,
     active: bool | None = None,
     require_passcode: bool | None = None,
+    kind: str | None = None,
 ) -> dict:
     """Amend a publication. `active=False` unpublishes it."""
     doc = _require(state, pub_id)
     fields: dict = {"updated_at": now_iso()}
     if title is not None:
         fields["title"] = title.strip()
+    if kind is not None:
+        fields["kind"] = kind.strip() or None
     if active is not None:
         fields["active"] = bool(active)
     if require_passcode is not None:
