@@ -2259,6 +2259,59 @@ def _render_pdf_to_pngs(pdf_path: pathlib.Path, out_dir: pathlib.Path,
     return pngs
 
 
+def render_requirements() -> dict:
+    """What the PNG preview needs on THIS machine, and what is missing.
+
+    `pdf_skipped: true` used to be the whole report. On a host with no
+    LibreOffice, no PyMuPDF and no Korean font, the agent got no PNG and no
+    reason, and the user heard "the preview does not render" with nothing to
+    install (feedback 635e07ec5631). Each requirement is named with the
+    command that provides it."""
+    import shutil
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    try:
+        import pymupdf  # type: ignore  # noqa: F401
+        has_pymupdf = True
+    except ImportError:
+        has_pymupdf = False
+    fams = _installed_font_families()
+    korean = None if fams is None else any(
+        k in f for f in fams for k in ("noto sans cjk", "noto sans kr", "nanum", "malgun",
+                                       "apple sd gothic", "batang", "gulim", "dotum", "d2coding"))
+    missing: list[dict] = []
+    if not soffice:
+        missing.append({
+            "what": "LibreOffice (soffice)", "for": "rendering the .pptx to PDF, the step every PNG comes from",
+            "install": "Debian/Ubuntu: sudo apt install -y libreoffice-impress · macOS: brew install --cask libreoffice",
+        })
+    if not has_pymupdf:
+        missing.append({
+            "what": "PyMuPDF (python module `pymupdf`)", "for": "rasterising the PDF pages to PNG",
+            "install": "<the MCP's python> -m pip install pymupdf   (it is a declared dependency — "
+                       "its absence means the install skipped dependencies; re-run pip without --no-deps)",
+        })
+    if korean is False:
+        missing.append({
+            "what": "a Korean font", "for": "Korean text on slides (otherwise boxes in the PDF/PNG)",
+            "install": "Debian/Ubuntu: sudo apt install -y fonts-noto-cjk · macOS: built in",
+        })
+    return {"soffice": soffice, "pymupdf": has_pymupdf,
+            "korean_font": korean, "missing": missing}
+
+
+def _render_skip_reason(req: dict, soffice_error: str | None = None) -> str | None:
+    if soffice_error:
+        return f"LibreOffice ran but produced no PDF: {soffice_error}"
+    if req["missing"]:
+        return "no PNG: missing " + "; ".join(
+            f"{m['what']} — install: {m['install']}" for m in req["missing"]
+            if m["what"] != "a Korean font")
+    return None
+
+
+_LAST_SOFFICE_ERROR: list[str | None] = [None]
+
+
 def _pdf_via_soffice(pptx_path: pathlib.Path) -> pathlib.Path | None:
     """Convert the .pptx to a sibling .pdf via LibreOffice. Returns the PDF
     path, or None if soffice/libreoffice is missing or the conversion fails.
@@ -2274,9 +2327,16 @@ def _pdf_via_soffice(pptx_path: pathlib.Path) -> pathlib.Path | None:
         except FileNotFoundError:
             continue  # try the next binary name
         except subprocess.TimeoutExpired:
+            _LAST_SOFFICE_ERROR[0] = "timed out after 180 s"
             return None
         pdf = pptx_path.with_suffix(".pdf")
-        return pdf if (proc.returncode == 0 and pdf.is_file()) else None
+        if proc.returncode == 0 and pdf.is_file():
+            _LAST_SOFFICE_ERROR[0] = None
+            return pdf
+        _LAST_SOFFICE_ERROR[0] = (f"exit {proc.returncode}: "
+                                  f"{(proc.stderr or proc.stdout or '').strip()[-300:] or 'no output'}")
+        return None
+    _LAST_SOFFICE_ERROR[0] = None
     return None
 
 
@@ -2412,6 +2472,11 @@ def preview_slide(
         "preview_png_local_path": png_local,
         "preview_png_blob_path": png_blob,
         "pdf_skipped": png_local is None,
+        # WHY there is no PNG, when there is none — name the missing piece and
+        # the install command, so "the preview does not render" becomes a
+        # one-line fix instead of a report.
+        "render_missing": (_req := render_requirements())["missing"] if png_local is None else [],
+        "pdf_skipped_reason": _render_skip_reason(_req, _LAST_SOFFICE_ERROR[0]) if png_local is None else None,
     }
 
 
@@ -2772,4 +2837,6 @@ def export_deck_to_pptx(
         "size_bytes": os.path.getsize(out),
         "slide_pngs": slide_pngs,
         "slide_pngs_skipped": pdf_path is None or not slide_pngs,
+        "render_missing": (_req := render_requirements())["missing"] if (pdf_path is None or not slide_pngs) else [],
+        "pdf_skipped_reason": _render_skip_reason(_req, _LAST_SOFFICE_ERROR[0]) if (pdf_path is None or not slide_pngs) else None,
     }

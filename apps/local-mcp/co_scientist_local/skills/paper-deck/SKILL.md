@@ -1886,11 +1886,16 @@ Returns `{ local_path, blob_path, pdf_local_path, pdf_blob_path,
 pdf_skipped, aspect_ratio, slide_count, image_slides, text_slides,
 hybrid_slides, missing_renders }`. `missing_renders[]` is the non-text slides that
 came out as text fallbacks because they weren't rendered yet — render
-those and re-export. If `pdf_skipped` is true, tell the user to
-install LibreOffice if they want the PDF.
+those and re-export. **If `pdf_skipped` is true, read `render_missing` and
+`pdf_skipped_reason` and tell the user exactly what to install** — each
+entry names the piece and the command. Without a PNG the visual check of
+this skill cannot run; `layout_warnings` is then the only verification, and
+say so rather than reporting the deck as looked at.
 
-python-pptx ships with the base install. LibreOffice is the only
-optional extra (PDF sibling only).
+python-pptx ships with the base install. LibreOffice (PDF, and every PNG
+comes from it), PyMuPDF (PDF → PNG; a declared dependency, so its absence
+means the install skipped dependencies) and a Korean font are the render
+host's extras — `preview_slide` reports which are missing.
 
 ## Addressing slide comments
 

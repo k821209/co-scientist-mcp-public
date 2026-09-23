@@ -3309,7 +3309,12 @@ def build_mcp(state: State) -> FastMCP:
         `preview_png_local_path` → fix → repeat; run export_deck_to_pptx ONCE
         at the end. Returns this slide's code_errors / overlap_warnings /
         bounds_warnings / font_warnings / placeholder_warnings too. (Image-only
-        slides should use render_slide — already fast.)"""
+        slides should use render_slide — already fast.)
+        No PNG (`pdf_skipped: true`)? `render_missing` names each missing
+        piece (LibreOffice, PyMuPDF, a Korean font) with its install command
+        and `pdf_skipped_reason` says why — tell the user, and do not report
+        the slide as looked at on `layout_warnings` alone.
+        """
         return _deck_render.preview_slide(
             state, slug, deck_id, slide_id, output_path=output_path,
         )
