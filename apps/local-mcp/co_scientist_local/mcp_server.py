@@ -83,8 +83,23 @@ from .tools import youtube as _youtube
 from . import features as _features
 
 
+def _reject_unknown_arguments() -> None:
+    """Make every tool refuse an argument it does not take.
+
+    FastMCP validates arguments with a pydantic model that IGNORES extra
+    keys, so `update_video_chunk(last_image=…)` — before the parameter
+    existed — returned success and stored nothing, and the caller believed
+    it (feedback 2bea78ec5bb0). A wrong argument name is a caller error and
+    has to come back as one. The argument models are subclasses created at
+    registration time, so the base config must change before `build_mcp`
+    registers anything."""
+    from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase
+    ArgModelBase.model_config["extra"] = "forbid"
+
+
 def build_mcp(state: State) -> FastMCP:
     """Construct the MCP server bound to a given State (uid + backend)."""
+    _reject_unknown_arguments()
     mcp = FastMCP("scivo")
 
     # ─── session / identity ──────────────────────────────────────────────────
@@ -3515,22 +3530,32 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         continuous: bool | None = None, status: str | None = None,
         metrics: dict[str, Any] | None = None, seed: int | None = None,
         notes: str | None = None, render: bool | None = None,
+        first_image: str | None = None, last_image: str | None = None,
     ) -> dict[str, Any]:
         """Patch a chunk row without touching its file — `status` is ok |
         regenerate | draft ("regenerate" is the to-do mark); `render` is the
-        GO toggle (generate this row on the next render)."""
+        GO toggle (generate this row on the next render); `first_image` /
+        `last_image` attach or replace the boundary keyframes (local paths)
+        without re-sending the prompt. Only the fields you pass change."""
         return _videos.update_video_chunk(
             state, video_id, n, prompt=prompt, continuous=continuous, status=status,
-            metrics=metrics, seed=seed, notes=notes, render=render)
+            metrics=metrics, seed=seed, notes=notes, render=render,
+            first_image=first_image, last_image=last_image)
 
     @mcp.tool()
-    def list_video_chunks(video_id: str) -> list[dict[str, Any]]:
+    def list_video_chunks(
+        video_id: str, fields: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """The video's chunks in order, each with `open_comments`, its boundary
-        images (`first_image_blob`, `last_image_blob`, and
-        `first_image_effective` = the previous row's last for a continuous
-        chunk) and `render` (GO). Generate only rows with `render` true; read
-        `list_video_comments(video_id, chunk=n)` for the notes on one."""
-        return _videos.list_video_chunks(state, video_id)
+        images (`first_image_blob`, `last_image_blob`; `first_image_effective`
+        = the previous row's last for a continuous chunk, `first_image_from`
+        = that row's n, and `first_image_missing` when the previous row has
+        no last image — generate nothing from such a row) and `render` (GO).
+        Generate only rows with `render` true; read
+        `list_video_comments(video_id, chunk=n, status=None)` for the notes
+        on one, resolved ones included. `fields=["n","render","last_image_blob"]`
+        narrows each row when the prompts make the full list long."""
+        return _videos.list_video_chunks(state, video_id, fields=fields)
 
     @mcp.tool()
     def delete_video_chunk(video_id: str, n: int) -> dict[str, Any]:

@@ -366,14 +366,27 @@ def add_video_chunk(
     return {"video_id": video_id, **doc, "join": join_state(video, list_video_chunks(state, video_id))}
 
 
-def update_video_chunk(state: State, video_id: str, n: int, **fields) -> dict:
-    """Patch a chunk's prompt, continuity, status, metrics, seed or notes
-    without touching its file."""
-    path = _chunk_path(state, video_id, int(n))
+def update_video_chunk(
+    state: State, video_id: str, n: int, *,
+    first_image: str | None = None, last_image: str | None = None, **fields,
+) -> dict:
+    """Patch a chunk's prompt, continuity, status, metrics, seed, notes or GO
+    without touching its file. `first_image` / `last_image` replace the
+    row's boundary images the same way `add_video_chunk` sets them (no
+    version bump): attaching a keyframe to a registered row used to need
+    the whole row re-sent through `add_video_chunk` (feedback 2bea78ec5bb0)."""
+    n = int(n)
+    path = _chunk_path(state, video_id, n)
     if state.backend.get_doc(path) is None:
         raise NotFound(f"chunk {n} not found for video {video_id!r}")
-    allowed = {k: v for k, v in fields.items()
-               if k in {"prompt", "continuous", "status", "metrics", "seed", "notes", "render"} and v is not None}
+    unknown = set(fields) - {"prompt", "continuous", "status", "metrics", "seed", "notes", "render"}
+    if unknown:
+        raise ValueError(f"update_video_chunk does not take {sorted(unknown)}")
+    allowed = {k: v for k, v in fields.items() if v is not None}
+    if first_image is not None:
+        allowed["first_image_blob"] = _upload_image(state, video_id, n, "first", first_image)
+    if last_image is not None:
+        allowed["last_image_blob"] = _upload_image(state, video_id, n, "last", last_image)
     if "render" in allowed:
         allowed["render"] = bool(allowed["render"])
     if "status" in allowed and allowed["status"] not in _VALID_CHUNK_STATUS:
@@ -393,8 +406,13 @@ def delete_video_chunk(state: State, video_id: str, n: int) -> bool:
     return True
 
 
-def list_video_chunks(state: State, video_id: str) -> list[dict]:
-    """The video's chunks in order, each with its open-comment count."""
+def list_video_chunks(
+    state: State, video_id: str, *, fields: list[str] | None = None,
+) -> list[dict]:
+    """The video's chunks in order, each with its open-comment count.
+    `fields` narrows each row to those keys (plus `n`): a video with long
+    prompts makes the full list heavy when only GO or the boundary images
+    are wanted."""
     if state.backend.get_doc(_video_path(state, video_id)) is None:
         raise NotFound(f"video not found: {video_id!r}")
     open_by_chunk: dict[int, int] = {}
@@ -406,11 +424,24 @@ def list_video_chunks(state: State, video_id: str) -> list[dict]:
     rows.sort(key=lambda r: int(r.get("n", 0)))
     # A continuous row's first frame is the previous row's last: say which
     # file that is, so the generator has both boundaries without guessing.
+    # Only the IMMEDIATELY previous row counts: when that row has no last
+    # image the answer is "missing", not an older row's last — a plausible
+    # wrong keyframe got approved that way (feedback 2bea78ec5bb0).
+    # `first_image_missing` says so in words; `first_image_from` names the
+    # row the effective image came from.
     prev_last = None
     for r in rows:
         own_first = r.get("first_image_blob")
-        r["first_image_effective"] = (prev_last if (r.get("continuous", True) and not own_first) else own_first)
-        prev_last = r.get("last_image_blob") or prev_last
+        inherits = r.get("continuous", True) and not own_first
+        r["first_image_effective"] = prev_last if inherits else own_first
+        r["first_image_from"] = (int(r.get("n", 0)) - 1) if (inherits and prev_last) else None
+        r["first_image_missing"] = (
+            f"chunk {int(r.get('n', 0)) - 1} has no last_image, so this continuous row has no first frame"
+            if inherits and not prev_last and int(r.get("n", 0)) > 1 else None)
+        prev_last = r.get("last_image_blob")
+    if fields:
+        keep = set(fields) | {"n"}
+        rows = [{k: v for k, v in r.items() if k in keep} for r in rows]
     return rows
 
 
