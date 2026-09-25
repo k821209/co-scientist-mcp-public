@@ -117,7 +117,15 @@ def add_video(
 def list_videos(state: State) -> list[dict]:
     """All videos in the project, newest first."""
     pairs = state.backend.list_collection(_videos_path(state))
-    vids = [{**data, "video_id": data.get("video_id", vid)} for vid, data in pairs]
+    vids = []
+    for vid, data in pairs:
+        row = {**data, "video_id": data.get("video_id", vid)}
+        chunks = [d for _, d in state.backend.list_collection(_chunks_path(state, vid))]
+        if chunks:
+            row["chunks"] = len(chunks)
+            row["join"] = join_state(row, chunks)
+            row["join_requested"] = bool(row.get("join_requested_at"))
+        vids.append(row)
     vids.sort(key=lambda v: v.get("created_at") or "", reverse=True)
     return vids
 
@@ -148,6 +156,8 @@ def delete_video(state: State, video_id: str) -> bool:
         return False
     for cid, _ in state.backend.list_collection(_comments_path(state, video_id)):
         state.backend.delete_doc(_comment_path(state, video_id, cid))
+    for n, _ in state.backend.list_collection(_chunks_path(state, video_id)):
+        state.backend.delete_doc(f"{_chunks_path(state, video_id)}/{n}")
     state.backend.delete_doc(path)
     return True
 
@@ -158,7 +168,7 @@ def delete_video(state: State, video_id: str) -> bool:
 def add_video_comment(
     state: State, video_id: str, *, text: str, t_seconds: float,
     frame: int | None = None, author: str | None = None, source: str = "user",
-    image_blob_path: str | None = None,
+    image_blob_path: str | None = None, chunk: int | None = None,
 ) -> dict:
     """Pin a comment to a timecode (seconds; optional frame number). A reviewer
     can attach a reference image (Storage blob path) — read it with get_blob."""
@@ -176,6 +186,9 @@ def add_video_comment(
         "source": source,
         "status": "open",
         "image_blob_path": image_blob_path,
+        # A comment on one CHUNK — "redo this shot" — rather than a timecode
+        # in the joined file. The row it belongs to shows it.
+        "chunk": int(chunk) if chunk is not None else None,
         "created_at": now,
     }
     state.backend.set_doc(_comment_path(state, video_id, cid), doc)
@@ -184,6 +197,7 @@ def add_video_comment(
 
 def list_video_comments(
     state: State, video_id: str | None = None, *, status: str | None = "open",
+    chunk: int | None = None,
 ) -> list[dict]:
     """Timecode comments, sorted by (video, t_seconds).
 
@@ -195,6 +209,8 @@ def list_video_comments(
     for vid in vids:
         for cid, c in state.backend.list_collection(_comments_path(state, vid)):
             if status is not None and c.get("status") != status:
+                continue
+            if chunk is not None and c.get("chunk") != int(chunk):
                 continue
             out.append({"comment_id": cid, "video_id": vid, **c})
     out.sort(key=lambda c: (c.get("video_id") or "", c.get("t_seconds") or 0.0))
@@ -228,3 +244,214 @@ def count_open_video_comments(state: State) -> int:
         1 for c in list_video_comments(state, status="open")
         if c.get("source") != "ai"
     )
+
+
+# ─── chunks: a video as a list of shots (feedback aa48c224fb82) ───────────────
+#
+# Generated video is made, judged and remade one chunk at a time: forty-plus
+# chunks for one scene, each regenerated one to three times, the verdicts
+# taken in conversation and lost with the session. The Video tab held one
+# finished file, so chunks were uploaded as separate videos with "which
+# video, which chunk" written into titles, the prompt buried in a description,
+# and the whole scene re-joined and re-uploaded for every single replacement.
+# A video now owns chunks: prompt + file + continuity + metrics + comments
+# per row, and joining only when asked, with the joined result knowing which
+# chunk versions it was made from — stale the moment one changes.
+
+_VALID_CHUNK_STATUS = {"ok", "regenerate", "draft"}
+
+
+def _chunks_path(state: State, video_id: str) -> str:
+    return state.project_path("videos", video_id, "chunks")
+
+
+def _chunk_path(state: State, video_id: str, n: int) -> str:
+    return state.project_path("videos", video_id, "chunks", f"{int(n):03d}")
+
+
+def _chunk_blob_path(state: State, video_id: str, n: int, version: int, ext: str) -> str:
+    return state.project_path("videos", video_id, "chunks", f"{int(n):03d}.v{version}.{ext}")
+
+
+def add_video_chunk(
+    state: State, video_id: str, n: int, *, prompt: str,
+    local_path: str | None = None, continuous: bool = True,
+    metrics: dict | None = None, seed: int | None = None, notes: str | None = None,
+    status: str = "ok",
+) -> dict:
+    """Register (or regenerate) chunk `n` of a video. A chunk that already
+    exists gets `version + 1` and a new blob — the old file stays until the
+    chunk is deleted, so a joined result can still say which version it holds.
+    `continuous`: this chunk continues from the previous one's last frame
+    (off = a cut). `metrics` is free-form (what the automatic checks measured)."""
+    if state.backend.get_doc(_video_path(state, video_id)) is None:
+        raise NotFound(f"video not found: {video_id!r}")
+    if not prompt or not prompt.strip():
+        raise ValueError("prompt is required — it is what the chunk row is for")
+    if status not in _VALID_CHUNK_STATUS:
+        raise ValueError(f"status must be one of {sorted(_VALID_CHUNK_STATUS)}")
+    n = int(n)
+    if n < 1:
+        raise ValueError("chunk numbers start at 1")
+    path = _chunk_path(state, video_id, n)
+    existing = state.backend.get_doc(path)
+    version = (existing.get("version", 0) + 1) if existing else 1
+    blob = existing.get("blob_path") if existing else None
+    if local_path:
+        p = pathlib.Path(local_path).expanduser()
+        if not p.is_file():
+            raise FileNotFoundError(f"chunk file not found: {local_path}")
+        blob = _chunk_blob_path(state, video_id, n, version, p.suffix.lstrip(".") or "mp4")
+        state.backend.put_blob(blob, p.read_bytes())
+    now = now_iso()
+    doc = {
+        "n": n,
+        "prompt": prompt.strip(),
+        "blob_path": blob,
+        "continuous": bool(continuous),
+        "status": status,
+        "metrics": metrics or None,
+        "seed": seed,
+        "notes": notes,
+        "version": version,
+        "created_at": existing.get("created_at", now) if existing else now,
+        "updated_at": now,
+    }
+    state.backend.set_doc(path, doc)
+    video = state.backend.get_doc(_video_path(state, video_id)) or {}
+    return {"video_id": video_id, **doc, "join": join_state(video, list_video_chunks(state, video_id))}
+
+
+def update_video_chunk(state: State, video_id: str, n: int, **fields) -> dict:
+    """Patch a chunk's prompt, continuity, status, metrics, seed or notes
+    without touching its file."""
+    path = _chunk_path(state, video_id, int(n))
+    if state.backend.get_doc(path) is None:
+        raise NotFound(f"chunk {n} not found for video {video_id!r}")
+    allowed = {k: v for k, v in fields.items()
+               if k in {"prompt", "continuous", "status", "metrics", "seed", "notes"} and v is not None}
+    if "status" in allowed and allowed["status"] not in _VALID_CHUNK_STATUS:
+        raise ValueError(f"status must be one of {sorted(_VALID_CHUNK_STATUS)}")
+    if "continuous" in allowed:
+        allowed["continuous"] = bool(allowed["continuous"])
+    allowed["updated_at"] = now_iso()
+    state.backend.update_doc(path, allowed)
+    return state.backend.get_doc(path)
+
+
+def delete_video_chunk(state: State, video_id: str, n: int) -> bool:
+    path = _chunk_path(state, video_id, int(n))
+    if state.backend.get_doc(path) is None:
+        return False
+    state.backend.delete_doc(path)
+    return True
+
+
+def list_video_chunks(state: State, video_id: str) -> list[dict]:
+    """The video's chunks in order, each with its open-comment count."""
+    if state.backend.get_doc(_video_path(state, video_id)) is None:
+        raise NotFound(f"video not found: {video_id!r}")
+    open_by_chunk: dict[int, int] = {}
+    for _, c in state.backend.list_collection(_comments_path(state, video_id)):
+        if c.get("chunk") is not None and (c.get("status") or "open") == "open":
+            open_by_chunk[int(c["chunk"])] = open_by_chunk.get(int(c["chunk"]), 0) + 1
+    rows = [{**d, "open_comments": open_by_chunk.get(int(d.get("n", 0)), 0)}
+            for _, d in state.backend.list_collection(_chunks_path(state, video_id))]
+    rows.sort(key=lambda r: int(r.get("n", 0)))
+    return rows
+
+
+def join_state(video: dict, chunks: list[dict]) -> dict:
+    """Is the joined file current for these chunks? `joined_from` on the
+    video records the (n, version) pairs the join was built from; any chunk
+    added, removed or regenerated since makes it stale — the Video-tab
+    analogue of a figure going stale under its analysis."""
+    joined = video.get("joined_from")
+    if not chunks:
+        return {"joined": bool(joined), "stale": False, "reason": None}
+    have = {(int(c["n"]), int(c.get("version", 1))) for c in chunks}
+    if not joined:
+        return {"joined": False, "stale": True, "reason": "never joined"}
+    was = {(int(j["n"]), int(j["version"])) for j in joined}
+    if was == have:
+        return {"joined": True, "stale": False, "reason": None,
+                "joined_at": video.get("joined_at")}
+    changed = sorted({n for n, _ in have ^ was})
+    return {"joined": True, "stale": True,
+            "reason": f"chunks changed since the join: {changed}",
+            "joined_at": video.get("joined_at")}
+
+
+def join_video_chunks(
+    state: State, video_id: str, *, output_path: str | None = None,
+    reencode: bool = False, _runner=None,
+) -> dict:
+    """Concatenate the chunk files, in order, into the video's own file —
+    only when asked. Needs ffmpeg on this machine. Copies streams by default
+    (chunks from one generator share a codec); `reencode=True` transcodes,
+    which is also the automatic fallback when a copy-join fails."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    video = get_video(state, video_id)
+    chunks = [c for c in list_video_chunks(state, video_id) if c.get("blob_path")]
+    if not chunks:
+        raise ValueError("no chunks with files to join")
+    missing = [c["n"] for c in list_video_chunks(state, video_id) if not c.get("blob_path")]
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None and _runner is None:
+        return {"error": "ffmpeg is not on PATH on this machine — install it "
+                         "(Debian/Ubuntu: sudo apt install -y ffmpeg · macOS: brew install ffmpeg)"}
+
+    def run(cmd: list[str]) -> tuple[int, str]:
+        if _runner is not None:
+            return _runner(cmd)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        return proc.returncode, (proc.stderr or proc.stdout or "")[-600:]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpd = pathlib.Path(tmp)
+        listing = []
+        for c in chunks:
+            data = state.backend.get_blob(c["blob_path"])
+            if data is None:
+                raise NotFound(f"chunk {c['n']} file missing in storage: {c['blob_path']}")
+            f = tmpd / f"chunk-{int(c['n']):03d}.mp4"
+            f.write_bytes(data)
+            listing.append(f"file '{f}'")
+        (tmpd / "list.txt").write_text("\n".join(listing) + "\n", encoding="utf-8")
+        out = tmpd / "joined.mp4"
+        base = [ffmpeg or "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(tmpd / "list.txt")]
+        attempts = []
+        if not reencode:
+            code, log = run(base + ["-c", "copy", str(out)])
+            attempts.append(("copy", code))
+        if reencode or attempts[-1][1] != 0 or not out.is_file():
+            code, log = run(base + ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                                    "-c:a", "aac", "-movflags", "+faststart", str(out)])
+            attempts.append(("reencode", code))
+        if code != 0 or not out.is_file():
+            return {"error": f"ffmpeg failed ({attempts}): {log}"}
+        data = out.read_bytes()
+        if output_path:
+            dest = pathlib.Path(output_path).expanduser()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+    blob = _blob_path(state, video_id, "mp4")
+    state.backend.put_blob(blob, data)
+    joined_from = [{"n": int(c["n"]), "version": int(c.get("version", 1))} for c in chunks]
+    fields = {
+        "blob_path": blob,
+        "joined_from": joined_from,
+        "joined_at": now_iso(),
+        "join_requested_at": None,
+        "updated_at": now_iso(),
+    }
+    state.backend.update_doc(_video_path(state, video_id), fields)
+    return {
+        "video_id": video_id, "blob_path": blob, "chunks": len(chunks),
+        "joined_from": joined_from, "how": attempts[-1][0], "bytes": len(data),
+        "skipped_without_file": missing,
+        "local_path": output_path,
+    }

@@ -65,3 +65,21 @@ analogue of `/paper-revision`, on top of `/video-harness`.
   set, both transcription and every ffmpeg/NVENC re-encode auto-offload to it;
   unset → everything local. Never hardcode an address — it lives only in the
   user's env.
+
+## Chunked videos — one row per shot
+
+A generated scene is made, judged and remade one chunk at a time. When the
+video has chunks (`list_video_chunks(video_id)`), a comment carrying `chunk`
+is a note on THAT row — "redo this shot", "the dissolve at the end is
+wrong" — not a timecode in the joined file:
+
+- `list_video_comments(video_id, chunk=n)` is one row's to-do list; mark the
+  row `update_video_chunk(video_id, n, status="regenerate")` while you work.
+- Regenerate = `add_video_chunk` again for the same `n` with the new file
+  (version + 1; the old file is kept, so the joined result can still say what
+  it holds). Record what your checks measured in `metrics` and the seed.
+- Then `resolve_video_comment` as usual. **Do not join.** The joined file is
+  rebuilt only when the user asks: the tab's "Request join" sets
+  `join_requested` on the video (`list_videos` shows it), and
+  `join_video_chunks` does the concatenation here (ffmpeg). Until then the tab
+  shows the joined result as behind, which is correct.

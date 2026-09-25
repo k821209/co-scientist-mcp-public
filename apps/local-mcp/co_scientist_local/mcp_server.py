@@ -3471,11 +3471,67 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
     @mcp.tool()
     def list_video_comments(
         video_id: str | None = None, status: str | None = "open",
+        chunk: int | None = None,
     ) -> list[dict[str, Any]]:
         """Timecode comments (open by default), sorted by (video, t_seconds).
         `video_id=None` spans all videos — the agent's re-cut/re-caption to-do
-        list. Each carries `t_seconds` (and `frame` when known)."""
-        return _videos.list_video_comments(state, video_id, status=status)
+        list. Each carries `t_seconds` (and `frame` when known); a comment on
+        a chunk row carries `chunk` (its number) — pass `chunk=` to see one
+        row's "redo this shot" notes."""
+        return _videos.list_video_comments(state, video_id, status=status, chunk=chunk)
+
+    # ─── chunks: a video as a list of shots ───────────────────────────────────
+    @mcp.tool()
+    def add_video_chunk(
+        video_id: str, n: int, prompt: str, local_path: str | None = None,
+        continuous: bool = True, metrics: dict[str, Any] | None = None,
+        seed: int | None = None, notes: str | None = None, status: str = "ok",
+    ) -> dict[str, Any]:
+        """Register chunk `n` (a shot) of a video: its prompt, its file, whether
+        it continues from the previous chunk's last frame (`continuous`; off =
+        a cut), the checks you measured (`metrics`, free-form) and the seed.
+        Calling it again for the same `n` is a REGENERATION: version + 1, new
+        file, the old one kept. Generated video is made and judged one chunk
+        at a time; this is where the judgement lives instead of the chat. The
+        returned `join` says whether the joined file is behind the chunks."""
+        return _videos.add_video_chunk(
+            state, video_id, n, prompt=prompt, local_path=local_path,
+            continuous=continuous, metrics=metrics, seed=seed, notes=notes, status=status)
+
+    @mcp.tool()
+    def update_video_chunk(
+        video_id: str, n: int, prompt: str | None = None,
+        continuous: bool | None = None, status: str | None = None,
+        metrics: dict[str, Any] | None = None, seed: int | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Patch a chunk row without touching its file — `status` is ok |
+        regenerate | draft ("regenerate" is the to-do mark)."""
+        return _videos.update_video_chunk(
+            state, video_id, n, prompt=prompt, continuous=continuous, status=status,
+            metrics=metrics, seed=seed, notes=notes)
+
+    @mcp.tool()
+    def list_video_chunks(video_id: str) -> list[dict[str, Any]]:
+        """The video's chunks in order, each with `open_comments`; read
+        `list_video_comments(video_id, chunk=n)` for the notes on one."""
+        return _videos.list_video_chunks(state, video_id)
+
+    @mcp.tool()
+    def delete_video_chunk(video_id: str, n: int) -> dict[str, Any]:
+        return {"deleted": _videos.delete_video_chunk(state, video_id, n)}
+
+    @mcp.tool()
+    def join_video_chunks(
+        video_id: str, output_path: str | None = None, reencode: bool = False,
+    ) -> dict[str, Any]:
+        """Concatenate the chunk files, in order, into the video's own file —
+        ONLY when the user asks (the tab's "Request join" sets
+        `join_requested` on the video; `list_videos` shows it). Needs ffmpeg
+        here. Records `joined_from` (chunk versions) so the tab shows the
+        joined result as behind the moment a chunk is regenerated."""
+        return _videos.join_video_chunks(
+            state, video_id, output_path=output_path, reencode=reencode)
 
     @mcp.tool()
     def resolve_video_comment(
