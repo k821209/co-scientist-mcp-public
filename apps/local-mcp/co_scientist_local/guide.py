@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-25c"
+GUIDE_VERSION = "2026-09-26"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1181,9 +1181,15 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
   no file yet — a continuous row needs only `last_image`), let the user judge
   them in the tab and turn GO (`render`) on, then generate ONLY those rows
   (`list_video_chunks` → `render` true; the tab's Render button sets
-  `render_requested`). Join only when the user asks (`join_video_chunks`,
+  `render_requested`). This is a gate, not advice: a row with keyframes and
+  GO off refuses a generated file. Wait — do not poll, do not generate "to
+  have it ready". Join only when the user asks (`join_video_chunks`,
   needs ffmpeg); the joined file records the chunk versions it was made from
-  and the tab shows it as behind the moment one changes.
+  and the tab shows it as behind the moment one changes. **The joined file
+  lives on the same video** — `join_video_chunks`, or `add_video(video_id=…,
+  local_path=…, overwrite=True)` (rows kept). Never register it as a second
+  video and delete the first: the rows are the provenance, and `delete_video`
+  refuses a chunked video unless told `delete_chunks=True`.
 - `/video-dub` — dub a video into another language (default English) with free
   Kokoro TTS on the render host: Claude translates each segment →
   `vh.steps.dub` (tts_segments → assemble_dub → mux_audio) + translated captions

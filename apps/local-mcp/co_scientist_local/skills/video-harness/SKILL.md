@@ -312,6 +312,11 @@ mcp__scivo__add_video(
 )
 ```
 
+If the video was built **chunk by chunk** (rows in the Video tab), the joined
+file goes on THAT video — `mcp__scivo__join_video_chunks(video_id)`, or the
+`add_video` above with the same `video_id` and `overwrite=True`. Not a new
+video: the rows are the provenance, and deleting the chunked one takes them.
+
 Then hand the user the **YouTube chapter block** from `youtube_chapters()`
 for the description, and tell them to leave timecode comments in the Video
 tab (→ act on them later with **`/video-revision`**).

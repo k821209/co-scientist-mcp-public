@@ -63,6 +63,10 @@ def add_video(
     `ass_local_path` caption sidecars) to Storage, or `blob_path` to reference an
     already-uploaded blob. `aspect_ratio` drives the dashboard player shape
     (16:9 long-form, 9:16 Shorts). Returns the video doc.
+
+    `overwrite=True` on an existing `video_id` replaces the FILE and the
+    metadata only: chunk rows and comments under the video are kept. That is
+    how a joined chunk video gets its final file without losing the rows.
     """
     if not title or not title.strip():
         raise ValueError("title is required")
@@ -152,10 +156,26 @@ def update_video(state: State, video_id: str, **fields) -> dict:
     return state.backend.get_doc(path)
 
 
-def delete_video(state: State, video_id: str) -> bool:
+def delete_video(state: State, video_id: str, *, delete_chunks: bool = False) -> bool:
+    """Delete a video with its comments. A video that has CHUNK ROWS is
+    refused unless `delete_chunks=True`: the rows hold the judgement history
+    (prompts, gate metrics, retries, the approved keyframes), and a joined
+    file registered as a second video followed by deleting the first lost
+    all of it (feedback f32c94ab1bbc). The joined result belongs on the
+    same video — `join_video_chunks`, or `add_video(video_id=…, local_path=…,
+    overwrite=True)`, both keep the rows."""
     path = _video_path(state, video_id)
     if state.backend.get_doc(path) is None:
         return False
+    chunk_ids = [n for n, _ in state.backend.list_collection(_chunks_path(state, video_id))]
+    if chunk_ids and not delete_chunks:
+        raise ValueError(
+            f"video {video_id!r} has {len(chunk_ids)} chunk rows (prompts, metrics, "
+            "keyframes, notes) that would go with it. If this is the chunked "
+            "source of a joined file, put the joined file on THIS video instead: "
+            "join_video_chunks(video_id) or add_video(video_id=..., local_path=..., "
+            "overwrite=True) — both keep the rows. To delete everything anyway, "
+            "pass delete_chunks=True.")
     for cid, _ in state.backend.list_collection(_comments_path(state, video_id)):
         state.backend.delete_doc(_comment_path(state, video_id, cid))
     for n, _ in state.backend.list_collection(_chunks_path(state, video_id)):
@@ -330,6 +350,19 @@ def add_video_chunk(
     if version == 0:
         version = 1 if local_path else 0
     blob = existing.get("blob_path") if existing else None
+    # The GO gate, enforced where it can be: a row that entered the keyframe
+    # approval flow (boundary images registered) takes a generated file only
+    # when the user turned GO on in the tab. A local model generated every
+    # row without waiting for GO; the guide sentence alone did not hold.
+    # `render=True` in the same call is the explicit override for "the user
+    # said so in chat" — visible in the transcript, not a default.
+    if (local_path and existing and not existing.get("render") and render is not True
+            and (existing.get("first_image_blob") or existing.get("last_image_blob"))):
+        raise ValueError(
+            f"chunk {n}: GO is off — the user has not approved this row's keyframes in "
+            "the Video tab. Generate only rows that list_video_chunks shows with render "
+            "true (or list_videos → render_go). If the user approved it in chat, pass "
+            "render=True with the file.")
     if local_path:
         p = pathlib.Path(local_path).expanduser()
         if not p.is_file():

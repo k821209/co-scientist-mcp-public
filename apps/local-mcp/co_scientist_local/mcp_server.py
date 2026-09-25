@@ -3465,7 +3465,13 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
     ) -> dict[str, Any]:
         """Register a project video deliverable. Upload the mp4 via `local_path`
         (+ optional .srt/.ass sidecars); `aspect_ratio` is "16:9" or "9:16".
-        Shown in the dashboard's Video tab (admin). Returns the video doc."""
+        Shown in the dashboard's Video tab (admin). Returns the video doc.
+
+        A video made of CHUNK ROWS gets its joined file on the SAME video —
+        `join_video_chunks`, or this call with its `video_id` and
+        `overwrite=True` (file and metadata replaced, rows and comments kept).
+        Never a second video: the rows (prompts, gate metrics, keyframes) are
+        the provenance, and `delete_video` on the first would take them."""
         return _videos.add_video(
             state, title=title, video_id=video_id, local_path=local_path,
             aspect_ratio=aspect_ratio, fps=fps, duration_s=duration_s,
@@ -3479,9 +3485,13 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         return _videos.list_videos(state)
 
     @mcp.tool()
-    def delete_video(video_id: str) -> dict[str, Any]:
-        """Delete a video (and its comments). Returns {deleted}."""
-        return {"deleted": _videos.delete_video(state, video_id)}
+    def delete_video(video_id: str, delete_chunks: bool = False) -> dict[str, Any]:
+        """Delete a video (and its comments). Returns {deleted}. A video with
+        chunk rows is REFUSED unless `delete_chunks=True` — the rows are the
+        judgement history; a joined file belongs on the same video
+        (`join_video_chunks` / `add_video(..., overwrite=True)`), not on a
+        new one with the old one deleted."""
+        return {"deleted": _videos.delete_video(state, video_id, delete_chunks=delete_chunks)}
 
     @mcp.tool()
     def list_video_comments(
@@ -3518,7 +3528,9 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         A continuous chunk needs only `last_image` — its first frame is the
         previous chunk's last (`first_image_effective` names that file). A
         chunk generated first and judged afterwards cost 4–5 minutes per try
-        where the keyframe would have shown the problem in one."""
+        where the keyframe would have shown the problem in one. A row with
+        keyframes and GO off REFUSES a file: wait for the user (pass
+        `render=True` only when they approved it in chat)."""
         return _videos.add_video_chunk(
             state, video_id, n, prompt=prompt, local_path=local_path,
             continuous=continuous, metrics=metrics, seed=seed, notes=notes, status=status,
