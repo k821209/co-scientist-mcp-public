@@ -147,6 +147,12 @@ The dashboard's Papers tab updates live as the agent writes sections.
 
 ## Common gotchas
 
+- **After an update, a tool's parameters look old** (the agent says the tool
+  schema is stale, or a documented argument is "unexpected"). Tool schemas are
+  read when a session starts, and Claude Code can cache MCP discovery across
+  starts. Restart the session; if the schema is still old, start Claude Code
+  once with `MCP_DISCOVERY_CACHE=false claude`. `scivo` sets this for you.
+
 - **Mixing `.mcp.json` + `CLAUDE.md` from different projects** — the MCP
   authenticates to whichever project the API key belongs to, but the
   agent reads project identity from `CLAUDE.md`. They must match.

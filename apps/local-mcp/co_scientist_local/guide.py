@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-25b"
+GUIDE_VERSION = "2026-09-25c"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -117,6 +117,12 @@ On every session start:
    carries the restore command. `install_note` is the quiet case — a
    dedicated venv running its own copy while a checkout sits elsewhere on the
    disk, by design — and needs no action.
+   **A tool whose parameters look older than this guide describes** means the
+   host read the tool list before the update (tool schemas are read at
+   session start, and Claude Code can cache MCP discovery across starts):
+   tell the user to restart the session — under Claude Code with
+   `MCP_DISCOVERY_CACHE=false` if it persists — rather than working around
+   the missing parameter.
 2. Call `mcp__scivo__get_project_memory()` — the project's durable
    knowledge (user preferences, decisions, gotchas). Treat it as standing
    context for the whole session. See "## Project memory" below. Also call
