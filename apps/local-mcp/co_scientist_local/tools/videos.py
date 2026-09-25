@@ -125,6 +125,8 @@ def list_videos(state: State) -> list[dict]:
             row["chunks"] = len(chunks)
             row["join"] = join_state(row, chunks)
             row["join_requested"] = bool(row.get("join_requested_at"))
+            row["render_requested"] = bool(row.get("render_requested_at"))
+            row["render_go"] = sorted(int(c["n"]) for c in chunks if c.get("render"))
         vids.append(row)
     vids.sort(key=lambda v: v.get("created_at") or "", reverse=True)
     return vids
@@ -273,17 +275,44 @@ def _chunk_blob_path(state: State, video_id: str, n: int, version: int, ext: str
     return state.project_path("videos", video_id, "chunks", f"{int(n):03d}.v{version}.{ext}")
 
 
+def _boundary_blob_path(state: State, video_id: str, n: int, which: str, ext: str) -> str:
+    # Version-free: a keyframe is remade in 30 s and simply replaces the last
+    # one; the chunk's video file is what carries a version.
+    return state.project_path("videos", video_id, "chunks", f"{int(n):03d}.{which}.{ext}")
+
+
+def _upload_image(state: State, video_id: str, n: int, which: str, local: str | None) -> str | None:
+    if not local:
+        return None
+    p = pathlib.Path(local).expanduser()
+    if not p.is_file():
+        raise FileNotFoundError(f"{which} image not found: {local}")
+    blob = _boundary_blob_path(state, video_id, n, which, p.suffix.lstrip(".") or "png")
+    state.backend.put_blob(blob, p.read_bytes())
+    return blob
+
+
 def add_video_chunk(
     state: State, video_id: str, n: int, *, prompt: str,
     local_path: str | None = None, continuous: bool = True,
     metrics: dict | None = None, seed: int | None = None, notes: str | None = None,
-    status: str = "ok",
+    status: str = "ok", first_image: str | None = None, last_image: str | None = None,
+    render: bool | None = None,
 ) -> dict:
-    """Register (or regenerate) chunk `n` of a video. A chunk that already
-    exists gets `version + 1` and a new blob — the old file stays until the
-    chunk is deleted, so a joined result can still say which version it holds.
-    `continuous`: this chunk continues from the previous one's last frame
-    (off = a cut). `metrics` is free-form (what the automatic checks measured)."""
+    """Register (or regenerate) chunk `n` of a video. A new VIDEO FILE
+    (`local_path`) gets `version + 1` and a new blob — the old file stays
+    until the chunk is deleted, so a joined result can still say which
+    version it holds. `continuous`: this chunk continues from the previous
+    one's last frame (off = a cut). `metrics` is free-form (what the
+    automatic checks measured).
+
+    Boundary images come first: a keyframe takes 30 s, a chunk 4–5 minutes
+    and one to three tries, and twice a wrong keyframe was only seen after
+    the chunk had been generated (feedback 94ebb383267d). Register
+    `first_image` / `last_image` with no `local_path`, let the user judge
+    them in the tab, and generate only the rows whose `render` (GO) is on.
+    A continuous chunk needs only `last_image`: its first frame IS the
+    previous chunk's last."""
     if state.backend.get_doc(_video_path(state, video_id)) is None:
         raise NotFound(f"video not found: {video_id!r}")
     if not prompt or not prompt.strip():
@@ -295,7 +324,11 @@ def add_video_chunk(
         raise ValueError("chunk numbers start at 1")
     path = _chunk_path(state, video_id, n)
     existing = state.backend.get_doc(path)
-    version = (existing.get("version", 0) + 1) if existing else 1
+    # The version counts VIDEO files: registering keyframes for a row, or
+    # remaking them, does not make the joined result stale.
+    version = (existing.get("version", 0) if existing else 0) + (1 if local_path else 0)
+    if version == 0:
+        version = 1 if local_path else 0
     blob = existing.get("blob_path") if existing else None
     if local_path:
         p = pathlib.Path(local_path).expanduser()
@@ -303,6 +336,10 @@ def add_video_chunk(
             raise FileNotFoundError(f"chunk file not found: {local_path}")
         blob = _chunk_blob_path(state, video_id, n, version, p.suffix.lstrip(".") or "mp4")
         state.backend.put_blob(blob, p.read_bytes())
+    first_blob = _upload_image(state, video_id, n, "first", first_image) \
+        or (existing.get("first_image_blob") if existing else None)
+    last_blob = _upload_image(state, video_id, n, "last", last_image) \
+        or (existing.get("last_image_blob") if existing else None)
     now = now_iso()
     doc = {
         "n": n,
@@ -314,6 +351,13 @@ def add_video_chunk(
         "seed": seed,
         "notes": notes,
         "version": version,
+        "first_image_blob": first_blob,
+        "last_image_blob": last_blob,
+        # GO: generate this row on the next render. Off until the user turns
+        # it on in the tab (or the caller says so); a row registered with its
+        # video already made keeps whatever it had.
+        "render": (bool(render) if render is not None
+                   else (existing.get("render", False) if existing else False)),
         "created_at": existing.get("created_at", now) if existing else now,
         "updated_at": now,
     }
@@ -329,7 +373,9 @@ def update_video_chunk(state: State, video_id: str, n: int, **fields) -> dict:
     if state.backend.get_doc(path) is None:
         raise NotFound(f"chunk {n} not found for video {video_id!r}")
     allowed = {k: v for k, v in fields.items()
-               if k in {"prompt", "continuous", "status", "metrics", "seed", "notes"} and v is not None}
+               if k in {"prompt", "continuous", "status", "metrics", "seed", "notes", "render"} and v is not None}
+    if "render" in allowed:
+        allowed["render"] = bool(allowed["render"])
     if "status" in allowed and allowed["status"] not in _VALID_CHUNK_STATUS:
         raise ValueError(f"status must be one of {sorted(_VALID_CHUNK_STATUS)}")
     if "continuous" in allowed:
@@ -358,6 +404,13 @@ def list_video_chunks(state: State, video_id: str) -> list[dict]:
     rows = [{**d, "open_comments": open_by_chunk.get(int(d.get("n", 0)), 0)}
             for _, d in state.backend.list_collection(_chunks_path(state, video_id))]
     rows.sort(key=lambda r: int(r.get("n", 0)))
+    # A continuous row's first frame is the previous row's last: say which
+    # file that is, so the generator has both boundaries without guessing.
+    prev_last = None
+    for r in rows:
+        own_first = r.get("first_image_blob")
+        r["first_image_effective"] = (prev_last if (r.get("continuous", True) and not own_first) else own_first)
+        prev_last = r.get("last_image_blob") or prev_last
     return rows
 
 
@@ -367,6 +420,7 @@ def join_state(video: dict, chunks: list[dict]) -> dict:
     added, removed or regenerated since makes it stale — the Video-tab
     analogue of a figure going stale under its analysis."""
     joined = video.get("joined_from")
+    chunks = [c for c in chunks if c.get("blob_path")]   # keyframe-only rows are not joinable yet
     if not chunks:
         return {"joined": bool(joined), "stale": False, "reason": None}
     have = {(int(c["n"]), int(c.get("version", 1))) for c in chunks}

@@ -78,6 +78,11 @@ wrong" — not a timecode in the joined file:
 - Regenerate = `add_video_chunk` again for the same `n` with the new file
   (version + 1; the old file is kept, so the joined result can still say what
   it holds). Record what your checks measured in `metrics` and the seed.
+- **Boundaries before chunks.** A keyframe takes 30 s; a chunk 4–5 minutes
+  and one to three tries. Register `first_image` / `last_image` first (no
+  file), wait for the user to turn GO (`render`) on in the tab — or ask —
+  and generate only rows whose `render` is true. A "redo this boundary"
+  note means remake the keyframe, not the chunk.
 - Then `resolve_video_comment` as usual. **Do not join.** The joined file is
   rebuilt only when the user asks: the tab's "Request join" sets
   `join_requested` on the video (`list_videos` shows it), and

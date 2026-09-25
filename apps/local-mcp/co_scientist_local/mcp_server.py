@@ -3486,34 +3486,49 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         video_id: str, n: int, prompt: str, local_path: str | None = None,
         continuous: bool = True, metrics: dict[str, Any] | None = None,
         seed: int | None = None, notes: str | None = None, status: str = "ok",
+        first_image: str | None = None, last_image: str | None = None,
+        render: bool | None = None,
     ) -> dict[str, Any]:
         """Register chunk `n` (a shot) of a video: its prompt, its file, whether
         it continues from the previous chunk's last frame (`continuous`; off =
         a cut), the checks you measured (`metrics`, free-form) and the seed.
-        Calling it again for the same `n` is a REGENERATION: version + 1, new
-        file, the old one kept. Generated video is made and judged one chunk
-        at a time; this is where the judgement lives instead of the chat. The
-        returned `join` says whether the joined file is behind the chunks."""
+        Calling it again for the same `n` with a new `local_path` is a
+        REGENERATION: version + 1, new file, the old one kept.
+
+        BOUNDARIES FIRST. Make the keyframes (30 s) and register them with
+        `first_image` / `last_image` and NO `local_path`; the user judges them
+        in the tab and turns GO (`render`) on for the rows that are right;
+        then generate ONLY those (`list_video_chunks` → rows with `render`
+        true; the tab's Render button sets `render_requested` on the video).
+        A continuous chunk needs only `last_image` — its first frame is the
+        previous chunk's last (`first_image_effective` names that file). A
+        chunk generated first and judged afterwards cost 4–5 minutes per try
+        where the keyframe would have shown the problem in one."""
         return _videos.add_video_chunk(
             state, video_id, n, prompt=prompt, local_path=local_path,
-            continuous=continuous, metrics=metrics, seed=seed, notes=notes, status=status)
+            continuous=continuous, metrics=metrics, seed=seed, notes=notes, status=status,
+            first_image=first_image, last_image=last_image, render=render)
 
     @mcp.tool()
     def update_video_chunk(
         video_id: str, n: int, prompt: str | None = None,
         continuous: bool | None = None, status: str | None = None,
         metrics: dict[str, Any] | None = None, seed: int | None = None,
-        notes: str | None = None,
+        notes: str | None = None, render: bool | None = None,
     ) -> dict[str, Any]:
         """Patch a chunk row without touching its file — `status` is ok |
-        regenerate | draft ("regenerate" is the to-do mark)."""
+        regenerate | draft ("regenerate" is the to-do mark); `render` is the
+        GO toggle (generate this row on the next render)."""
         return _videos.update_video_chunk(
             state, video_id, n, prompt=prompt, continuous=continuous, status=status,
-            metrics=metrics, seed=seed, notes=notes)
+            metrics=metrics, seed=seed, notes=notes, render=render)
 
     @mcp.tool()
     def list_video_chunks(video_id: str) -> list[dict[str, Any]]:
-        """The video's chunks in order, each with `open_comments`; read
+        """The video's chunks in order, each with `open_comments`, its boundary
+        images (`first_image_blob`, `last_image_blob`, and
+        `first_image_effective` = the previous row's last for a continuous
+        chunk) and `render` (GO). Generate only rows with `render` true; read
         `list_video_comments(video_id, chunk=n)` for the notes on one."""
         return _videos.list_video_chunks(state, video_id)
 

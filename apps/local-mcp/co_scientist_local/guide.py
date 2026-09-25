@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-25a"
+GUIDE_VERSION = "2026-09-25b"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1171,9 +1171,13 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
   call again (version + 1). The Video tab shows one row per chunk with its
   own comments — `list_video_comments(video_id, chunk=n)` is that row's
   "redo this shot" list, `update_video_chunk(status="regenerate")` the mark.
-  Join only when the user asks (`join_video_chunks`, needs ffmpeg); the
-  joined file records the chunk versions it was made from and the tab shows
-  it as behind the moment one changes.
+  **Boundaries first:** register the keyframes (`first_image` / `last_image`,
+  no file yet — a continuous row needs only `last_image`), let the user judge
+  them in the tab and turn GO (`render`) on, then generate ONLY those rows
+  (`list_video_chunks` → `render` true; the tab's Render button sets
+  `render_requested`). Join only when the user asks (`join_video_chunks`,
+  needs ffmpeg); the joined file records the chunk versions it was made from
+  and the tab shows it as behind the moment one changes.
 - `/video-dub` — dub a video into another language (default English) with free
   Kokoro TTS on the render host: Claude translates each segment →
   `vh.steps.dub` (tts_segments → assemble_dub → mux_audio) + translated captions
