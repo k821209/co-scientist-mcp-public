@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-26b"
+GUIDE_VERSION = "2026-09-26c"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1188,11 +1188,13 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
   6. The row's notes: `list_video_comments(video_id, chunk=n)` → fix →
      `resolve_video_comment(response=)`; `update_video_chunk(status=
      "regenerate")` is the to-do mark.
-  7. Join only when the user asks (`join_video_chunks`, needs ffmpeg). **The
-     joined file lives on the same video** — `join_video_chunks`, or
-     `add_video(video_id=…, local_path=…, overwrite=True)` (rows kept). Never a
-     second video with the first deleted: the rows are the provenance, and
-     `delete_video` refuses a chunked video unless told `delete_chunks=True`.
+  7. Join only when the user asks: `join_video_chunks(video_id)` (ffmpeg
+     here), or `join_video_chunks(video_id, local_path=…)` for a file you
+     joined yourself. **The joined file lives on the same video**, in the
+     player above the rows — never as a chunk row (a concat at n=4 pollutes
+     the shot list) and never as a second video with the first deleted (the
+     rows are the provenance; `delete_video` refuses a chunked video unless
+     told `delete_chunks=True`).
 - `/video-dub` — dub a video into another language (default English) with free
   Kokoro TTS on the render host: Claude translates each segment →
   `vh.steps.dub` (tts_segments → assemble_dub → mux_audio) + translated captions

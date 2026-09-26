@@ -319,7 +319,9 @@ def add_video_chunk(
     status: str = "ok", first_image: str | None = None, last_image: str | None = None,
     render: bool | None = None,
 ) -> dict:
-    """Register (or regenerate) chunk `n` of a video. A new VIDEO FILE
+    """Register (or regenerate) chunk `n` of a video. A row is ONE SHOT; the
+    joined file of the whole scene is never a row — it goes on the video
+    through `join_video_chunks` (feedback a5aefa9ac1f4). A new VIDEO FILE
     (`local_path`) gets `version + 1` and a new blob — the old file stays
     until the chunk is deleted, so a joined result can still say which
     version it holds. `continuous`: this chunk continues from the previous
@@ -502,12 +504,17 @@ def join_state(video: dict, chunks: list[dict]) -> dict:
 
 def join_video_chunks(
     state: State, video_id: str, *, output_path: str | None = None,
-    reencode: bool = False, _runner=None,
+    reencode: bool = False, local_path: str | None = None, _runner=None,
 ) -> dict:
-    """Concatenate the chunk files, in order, into the video's own file —
-    only when asked. Needs ffmpeg on this machine. Copies streams by default
-    (chunks from one generator share a codec); `reencode=True` transcodes,
-    which is also the automatic fallback when a copy-join fails."""
+    """The joined file of a chunked video — made here, or handed in.
+
+    Without `local_path`: concatenate the chunk files, in order, into the
+    video's own file (needs ffmpeg; streams copied, `reencode=True` or the
+    automatic fallback transcodes). With `local_path`: the caller already
+    joined it (its own pipeline, a crossfade, a mix) and this is that file;
+    it is stored the same way, with `joined_from` recorded from the rows as
+    they stand. Either way the joined file lives on the VIDEO, above the
+    rows — never as a chunk row of its own (feedback a5aefa9ac1f4)."""
     import shutil
     import subprocess
     import tempfile
@@ -517,6 +524,13 @@ def join_video_chunks(
     if not chunks:
         raise ValueError("no chunks with files to join")
     missing = [c["n"] for c in list_video_chunks(state, video_id) if not c.get("blob_path")]
+    if local_path:
+        p = pathlib.Path(local_path).expanduser()
+        if not p.is_file():
+            raise FileNotFoundError(f"joined file not found: {local_path}")
+        return _store_joined(state, video_id, p.read_bytes(), chunks, how="provided",
+                             missing=missing, local_path=str(p))
+    del video
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None and _runner is None:
         return {"error": "ffmpeg is not on PATH on this machine — install it "
@@ -556,6 +570,12 @@ def join_video_chunks(
             dest = pathlib.Path(output_path).expanduser()
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(data)
+    return _store_joined(state, video_id, data, chunks, how=attempts[-1][0],
+                         missing=missing, local_path=output_path)
+
+
+def _store_joined(state: State, video_id: str, data: bytes, chunks: list[dict], *,
+                  how: str, missing: list, local_path: str | None) -> dict:
     blob = _blob_path(state, video_id, "mp4")
     state.backend.put_blob(blob, data)
     joined_from = [{"n": int(c["n"]), "version": int(c.get("version", 1))} for c in chunks]
@@ -569,7 +589,7 @@ def join_video_chunks(
     state.backend.update_doc(_video_path(state, video_id), fields)
     return {
         "video_id": video_id, "blob_path": blob, "chunks": len(chunks),
-        "joined_from": joined_from, "how": attempts[-1][0], "bytes": len(data),
+        "joined_from": joined_from, "how": how, "bytes": len(data),
         "skipped_without_file": missing,
-        "local_path": output_path,
+        "local_path": local_path,
     }

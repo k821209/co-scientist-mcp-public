@@ -3514,9 +3514,12 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         first_image: str | None = None, last_image: str | None = None,
         render: bool | None = None,
     ) -> dict[str, Any]:
-        """Register chunk `n` (a shot) of a video: its prompt, its file, whether
+        """Register chunk `n` (ONE shot) of a video: its prompt, its file, whether
         it continues from the previous chunk's last frame (`continuous`; off =
         a cut), the checks you measured (`metrics`, free-form) and the seed.
+        The joined file of the whole scene is NEVER a chunk row — it goes on
+        the video itself via `join_video_chunks` (`local_path=` if you already
+        joined it); a concat registered as n=4 pollutes the shot list.
         Calling it again for the same `n` with a new `local_path` is a
         REGENERATION: version + 1, new file, the old one kept.
 
@@ -3576,14 +3579,19 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
     @mcp.tool()
     def join_video_chunks(
         video_id: str, output_path: str | None = None, reencode: bool = False,
+        local_path: str | None = None,
     ) -> dict[str, Any]:
-        """Concatenate the chunk files, in order, into the video's own file —
-        ONLY when the user asks (the tab's "Request join" sets
-        `join_requested` on the video; `list_videos` shows it). Needs ffmpeg
-        here. Records `joined_from` (chunk versions) so the tab shows the
-        joined result as behind the moment a chunk is regenerated."""
+        """The joined file of a chunked video, stored on the VIDEO (the player
+        above the rows), never as a row. Without `local_path`: concatenate
+        the chunk files in order here (needs ffmpeg) — ONLY when the user
+        asks (the tab's "Request join" sets `join_requested` on the video).
+        With `local_path`: you already joined it (your own concat, a
+        crossfade, a mix) — this stores that file as the joined result.
+        Either way `joined_from` (chunk versions) is recorded so the tab
+        shows the result as behind the moment a chunk is regenerated."""
         return _videos.join_video_chunks(
-            state, video_id, output_path=output_path, reencode=reencode)
+            state, video_id, output_path=output_path, reencode=reencode,
+            local_path=local_path)
 
     @mcp.tool()
     def resolve_video_comment(
