@@ -312,12 +312,35 @@ def _upload_image(state: State, video_id: str, n: int, which: str, local: str | 
     return blob
 
 
+def extract_last_frame(video_file: pathlib.Path, out_png: pathlib.Path, _runner=None) -> bool:
+    """The frame a chunk actually ends on, as a PNG. Needs ffmpeg; returns
+    False (and writes nothing) when it is not here or fails — the keyframe
+    then stays the only boundary, as before."""
+    import shutil
+    import subprocess
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None and _runner is None:
+        return False
+    # Decode the last second and keep overwriting one image: what is left is
+    # the final frame, without knowing the frame count up front.
+    cmd = [ffmpeg or "ffmpeg", "-y", "-sseof", "-1", "-i", str(video_file),
+           "-update", "1", "-frames:v", "1000", "-q:v", "2", str(out_png)]
+    try:
+        if _runner is not None:
+            code = _runner(cmd)
+        else:
+            code = subprocess.run(cmd, capture_output=True, timeout=120).returncode
+    except Exception:
+        return False
+    return code == 0 and out_png.is_file()
+
+
 def add_video_chunk(
     state: State, video_id: str, n: int, *, prompt: str,
     local_path: str | None = None, continuous: bool = True,
     metrics: dict | None = None, seed: int | None = None, notes: str | None = None,
     status: str = "ok", first_image: str | None = None, last_image: str | None = None,
-    render: bool | None = None,
+    render: bool | None = None, _frame_runner=None,
 ) -> dict:
     """Register (or regenerate) chunk `n` of a video. A row is ONE SHOT; the
     joined file of the whole scene is never a row — it goes on the video
@@ -352,6 +375,7 @@ def add_video_chunk(
     if version == 0:
         version = 1 if local_path else 0
     blob = existing.get("blob_path") if existing else None
+    last_frame = existing.get("last_frame_blob") if existing else None
     # The GO gate, enforced where it can be: a row that entered the keyframe
     # approval flow (boundary images registered) takes a generated file only
     # when the user turned GO on in the tab. A local model generated every
@@ -371,6 +395,20 @@ def add_video_chunk(
             raise FileNotFoundError(f"chunk file not found: {local_path}")
         blob = _chunk_blob_path(state, video_id, n, version, p.suffix.lstrip(".") or "mp4")
         state.backend.put_blob(blob, p.read_bytes())
+        # The frame the shot ACTUALLY ends on. The keyframe (`last_image`) is
+        # what the generator was aimed at; the generated shot ends where it
+        # ends, and the next continuous shot has to start from that or the
+        # join jumps (feedback 537a8b9bbdda: a sit-down transition was lost
+        # because the next shot started from the "sitting" keyframe while the
+        # previous one still ended standing).
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            png = pathlib.Path(tmp) / "last.png"
+            if extract_last_frame(p, png, _runner=_frame_runner):
+                last_frame = _boundary_blob_path(state, video_id, n, "tail", "png")
+                state.backend.put_blob(last_frame, png.read_bytes())
+            else:
+                last_frame = None
     first_blob = _upload_image(state, video_id, n, "first", first_image) \
         or (existing.get("first_image_blob") if existing else None)
     last_blob = _upload_image(state, video_id, n, "last", last_image) \
@@ -388,6 +426,8 @@ def add_video_chunk(
         "version": version,
         "first_image_blob": first_blob,
         "last_image_blob": last_blob,
+        # The frame the registered file ends on (None: no file, or no ffmpeg).
+        "last_frame_blob": last_frame,
         # GO: generate this row on the next render. Off until the user turns
         # it on in the tab (or the caller says so); a row registered with its
         # video already made keeps whatever it had.
@@ -459,21 +499,29 @@ def list_video_chunks(
     rows.sort(key=lambda r: int(r.get("n", 0)))
     # A continuous row's first frame is the previous row's last: say which
     # file that is, so the generator has both boundaries without guessing.
-    # Only the IMMEDIATELY previous row counts: when that row has no last
-    # image the answer is "missing", not an older row's last — a plausible
-    # wrong keyframe got approved that way (feedback 2bea78ec5bb0).
-    # `first_image_missing` says so in words; `first_image_from` names the
-    # row the effective image came from.
-    prev_last = None
+    # Once the previous row has a FILE, its actual last frame
+    # (`last_frame_blob`) is the truth and the keyframe was only the aim —
+    # a shot that was meant to end sitting but ends standing must be
+    # continued from standing (feedback 537a8b9bbdda). Before the file
+    # exists the keyframe is all there is. Only the IMMEDIATELY previous
+    # row counts: when that row has neither, the answer is "missing", not an
+    # older row's last — a plausible wrong keyframe got approved that way
+    # (feedback 2bea78ec5bb0). `first_image_source` says which it was.
+    prev_last, prev_source = None, None
     for r in rows:
         own_first = r.get("first_image_blob")
         inherits = r.get("continuous", True) and not own_first
         r["first_image_effective"] = prev_last if inherits else own_first
         r["first_image_from"] = (int(r.get("n", 0)) - 1) if (inherits and prev_last) else None
+        r["first_image_source"] = (prev_source if inherits and prev_last
+                                   else ("own" if own_first else None))
         r["first_image_missing"] = (
-            f"chunk {int(r.get('n', 0)) - 1} has no last_image, so this continuous row has no first frame"
+            f"chunk {int(r.get('n', 0)) - 1} has no last_image and no file, so this continuous row has no first frame"
             if inherits and not prev_last and int(r.get("n", 0)) > 1 else None)
-        prev_last = r.get("last_image_blob")
+        if r.get("last_frame_blob"):
+            prev_last, prev_source = r["last_frame_blob"], "previous_actual_last_frame"
+        else:
+            prev_last, prev_source = r.get("last_image_blob"), "previous_keyframe"
     if fields:
         keep = set(fields) | {"n"}
         rows = [{k: v for k, v in r.items() if k in keep} for r in rows]

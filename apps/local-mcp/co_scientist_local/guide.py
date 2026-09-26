@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-26c"
+GUIDE_VERSION = "2026-09-26d"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1185,6 +1185,11 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
      register each file with `add_video_chunk(n, prompt, local_path, metrics,
      seed)`; a regeneration is the same call (version + 1). A row with
      keyframes and GO off refuses a file — it is a gate, not advice.
+     **Start a continuous chunk from `first_image_effective`**, re-read
+     after the previous chunk's file is in: it then points at that chunk's
+     ACTUAL last frame (`last_frame_blob`, extracted on registration), not
+     the keyframe it was aimed at. A shot meant to end sitting that ends
+     standing must be continued from standing, or the join jumps.
   6. The row's notes: `list_video_comments(video_id, chunk=n)` → fix →
      `resolve_video_comment(response=)`; `update_video_chunk(status=
      "regenerate")` is the to-do mark.

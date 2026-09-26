@@ -3562,11 +3562,16 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         video_id: str, fields: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """The video's chunks in order, each with `open_comments`, its boundary
-        images (`first_image_blob`, `last_image_blob`; `first_image_effective`
-        = the previous row's last for a continuous chunk, `first_image_from`
-        = that row's n, and `first_image_missing` when the previous row has
-        no last image — generate nothing from such a row) and `render` (GO).
-        Generate only rows with `render` true; read
+        images (`first_image_blob`, `last_image_blob`, and `last_frame_blob`
+        = the frame its FILE actually ends on, extracted on registration),
+        `first_image_effective` = what a continuous chunk starts from: the
+        previous row's actual last frame once it has a file, else its
+        keyframe — `first_image_source` says which, `first_image_from` =
+        that row's n, `first_image_missing` when there is neither (generate
+        nothing from such a row) — and `render` (GO). Always start a
+        continuous chunk from `first_image_effective`, re-read after the
+        previous file is in: the shot ends where it ends, not where it was
+        aimed. Generate only rows with `render` true; read
         `list_video_comments(video_id, chunk=n, status=None)` for the notes
         on one, resolved ones included. `fields=["n","render","last_image_blob"]`
         narrows each row when the prompts make the full list long."""
