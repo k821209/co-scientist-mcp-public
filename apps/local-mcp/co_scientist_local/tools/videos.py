@@ -340,7 +340,7 @@ def add_video_chunk(
     local_path: str | None = None, continuous: bool = True,
     metrics: dict | None = None, seed: int | None = None, notes: str | None = None,
     status: str = "ok", first_image: str | None = None, last_image: str | None = None,
-    render: bool | None = None, _frame_runner=None,
+    render: bool | None = None, user_approved: bool = False, _frame_runner=None,
 ) -> dict:
     """Register (or regenerate) chunk `n` of a video. A row is ONE SHOT; the
     joined file of the whole scene is never a row — it goes on the video
@@ -376,19 +376,26 @@ def add_video_chunk(
         version = 1 if local_path else 0
     blob = existing.get("blob_path") if existing else None
     last_frame = existing.get("last_frame_blob") if existing else None
-    # The GO gate, enforced where it can be: a row that entered the keyframe
-    # approval flow (boundary images registered) takes a generated file only
-    # when the user turned GO on in the tab. A local model generated every
-    # row without waiting for GO; the guide sentence alone did not hold.
-    # `render=True` in the same call is the explicit override for "the user
-    # said so in chat" — visible in the transcript, not a default.
-    if (local_path and existing and not existing.get("render") and render is not True
-            and (existing.get("first_image_blob") or existing.get("last_image_blob"))):
-        raise ValueError(
-            f"chunk {n}: GO is off — the user has not approved this row's keyframes in "
-            "the Video tab. Generate only rows that list_video_chunks shows with render "
-            "true (or list_videos → render_go). If the user approved it in chat, pass "
-            "render=True with the file.")
+    # The GO gate, enforced where it can be. A video in the keyframe flow
+    # (any row with a boundary image) takes a generated file for a row only
+    # when the user turned GO on in the tab, or says so in chat — then the
+    # caller passes `user_approved=True`, a claim that stands in the
+    # transcript. A local model generated every row without waiting; the
+    # guide sentence alone did not hold. The gate is per VIDEO, not per row:
+    # gating only rows that already had keyframes let a brand-new row with a
+    # file straight through, which read as random (feedback 8d13ce57cd2a).
+    # `render` is not the approval — it is the "generate this next" mark.
+    if local_path and not user_approved and not (existing or {}).get("render"):
+        in_keyframe_flow = (existing or {}).get("first_image_blob") or (existing or {}).get("last_image_blob") \
+            or first_image or last_image or any(
+                c.get("first_image_blob") or c.get("last_image_blob")
+                for _, c in state.backend.list_collection(_chunks_path(state, video_id)))
+        if in_keyframe_flow:
+            raise ValueError(
+                f"chunk {n}: GO is off. This video is in the keyframe flow, so a generated "
+                "file is registered only for a row the user approved — GO on in the Video tab "
+                "(list_video_chunks → render true), or approval in chat, in which case pass "
+                "user_approved=True with the file. Do not pass it otherwise.")
     if local_path:
         p = pathlib.Path(local_path).expanduser()
         if not p.is_file():

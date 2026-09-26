@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-26d"
+GUIDE_VERSION = "2026-09-26e"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1183,8 +1183,10 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
      each row and turn GO (`render`) on. Do not generate; do not poll.
   5. When told, `list_video_chunks` → generate ONLY rows with `render` true,
      register each file with `add_video_chunk(n, prompt, local_path, metrics,
-     seed)`; a regeneration is the same call (version + 1). A row with
-     keyframes and GO off refuses a file — it is a gate, not advice.
+     seed)`; a regeneration is the same call (version + 1). In a video with
+     keyframes, a file is taken only for a row with GO on or with
+     `user_approved=True` when the user approved in chat — it is a gate, not
+     advice, and the flag is a claim about what the user said.
      **Start a continuous chunk from `first_image_effective`**, re-read
      after the previous chunk's file is in: it then points at that chunk's
      ACTUAL last frame (`last_frame_blob`, extracted on registration), not

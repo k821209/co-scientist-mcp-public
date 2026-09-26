@@ -3512,7 +3512,7 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         continuous: bool = True, metrics: dict[str, Any] | None = None,
         seed: int | None = None, notes: str | None = None, status: str = "ok",
         first_image: str | None = None, last_image: str | None = None,
-        render: bool | None = None,
+        render: bool | None = None, user_approved: bool = False,
     ) -> dict[str, Any]:
         """Register chunk `n` (ONE shot) of a video: its prompt, its file, whether
         it continues from the previous chunk's last frame (`continuous`; off =
@@ -3531,13 +3531,17 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         A continuous chunk needs only `last_image` — its first frame is the
         previous chunk's last (`first_image_effective` names that file). A
         chunk generated first and judged afterwards cost 4–5 minutes per try
-        where the keyframe would have shown the problem in one. A row with
-        keyframes and GO off REFUSES a file: wait for the user (pass
-        `render=True` only when they approved it in chat)."""
+        where the keyframe would have shown the problem in one. In a video
+        with keyframes a file is registered only for a row with GO on, or
+        with `user_approved=True` when the user approved it IN CHAT ("ㄱㄱ",
+        "go") — that flag is your statement that they did; never pass it to
+        get past the gate. `render` is not approval: it is the "generate
+        this next" mark."""
         return _videos.add_video_chunk(
             state, video_id, n, prompt=prompt, local_path=local_path,
             continuous=continuous, metrics=metrics, seed=seed, notes=notes, status=status,
-            first_image=first_image, last_image=last_image, render=render)
+            first_image=first_image, last_image=last_image, render=render,
+            user_approved=user_approved)
 
     @mcp.tool()
     def update_video_chunk(
