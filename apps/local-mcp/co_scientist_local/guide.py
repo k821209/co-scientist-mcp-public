@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-26e"
+GUIDE_VERSION = "2026-09-27"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1178,7 +1178,10 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
   3. Keyframes with `generate_image`, attached by
      `update_video_chunk(n, first_image=, last_image=)` — a continuous row
      needs only `last_image`; its first frame is the previous row's last
-     (`first_image_effective`).
+     (`first_image_effective`). If `generate_image` fails or is absent (free
+     plan 403, quota, network), go straight to the project's local
+     generation model (the script in project memory / the servers registry)
+     and attach the PNGs the same way — no retry, no asking, no stop.
   4. Tell the user the keyframes are in the Video tab and **stop**. They judge
      each row and turn GO (`render`) on. Do not generate; do not poll.
   5. When told, `list_video_chunks` → generate ONLY rows with `render` true,
