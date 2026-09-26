@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-26"
+GUIDE_VERSION = "2026-09-26b"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1171,25 +1171,28 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
   (`list_video_comments` → re-run only the stage each needs →
   `resolve_video_comment`). The video analogue of `/paper-revision`.
 - **Generated video, chunk by chunk** (a scene from a generator, judged and
-  remade one shot at a time): register each shot with `add_video_chunk`
-  (prompt, file, `continuous` = continues from the previous shot's last frame,
-  `metrics` = what your checks measured, seed); a regeneration is the same
-  call again (version + 1). The Video tab shows one row per chunk with its
-  own comments — `list_video_comments(video_id, chunk=n)` is that row's
-  "redo this shot" list, `update_video_chunk(status="regenerate")` the mark.
-  **Boundaries first:** register the keyframes (`first_image` / `last_image`,
-  no file yet — a continuous row needs only `last_image`), let the user judge
-  them in the tab and turn GO (`render`) on, then generate ONLY those rows
-  (`list_video_chunks` → `render` true; the tab's Render button sets
-  `render_requested`). This is a gate, not advice: a row with keyframes and
-  GO off refuses a generated file. Wait — do not poll, do not generate "to
-  have it ready". Join only when the user asks (`join_video_chunks`,
-  needs ffmpeg); the joined file records the chunk versions it was made from
-  and the tab shows it as behind the moment one changes. **The joined file
-  lives on the same video** — `join_video_chunks`, or `add_video(video_id=…,
-  local_path=…, overwrite=True)` (rows kept). Never register it as a second
-  video and delete the first: the rows are the provenance, and `delete_video`
-  refuses a chunked video unless told `delete_chunks=True`.
+  remade one shot at a time). The order is fixed; the waiting step is a step:
+  1. `add_video(title, aspect_ratio)` — one video for the scene, no file.
+  2. `add_video_chunk(video_id, n, prompt, continuous)` for every shot — no
+     file, no images. Row 1 is `continuous=False`.
+  3. Keyframes with `generate_image`, attached by
+     `update_video_chunk(n, first_image=, last_image=)` — a continuous row
+     needs only `last_image`; its first frame is the previous row's last
+     (`first_image_effective`).
+  4. Tell the user the keyframes are in the Video tab and **stop**. They judge
+     each row and turn GO (`render`) on. Do not generate; do not poll.
+  5. When told, `list_video_chunks` → generate ONLY rows with `render` true,
+     register each file with `add_video_chunk(n, prompt, local_path, metrics,
+     seed)`; a regeneration is the same call (version + 1). A row with
+     keyframes and GO off refuses a file — it is a gate, not advice.
+  6. The row's notes: `list_video_comments(video_id, chunk=n)` → fix →
+     `resolve_video_comment(response=)`; `update_video_chunk(status=
+     "regenerate")` is the to-do mark.
+  7. Join only when the user asks (`join_video_chunks`, needs ffmpeg). **The
+     joined file lives on the same video** — `join_video_chunks`, or
+     `add_video(video_id=…, local_path=…, overwrite=True)` (rows kept). Never a
+     second video with the first deleted: the rows are the provenance, and
+     `delete_video` refuses a chunked video unless told `delete_chunks=True`.
 - `/video-dub` — dub a video into another language (default English) with free
   Kokoro TTS on the render host: Claude translates each segment →
   `vh.steps.dub` (tts_segments → assemble_dub → mux_audio) + translated captions
