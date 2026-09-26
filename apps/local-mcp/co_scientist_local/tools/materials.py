@@ -70,6 +70,7 @@ def add_material(
     local_path: str,
     ai_note: str | None = None,
     description: str | None = None,
+    overwrite: bool = False,
 ) -> dict:
     """Upload a local file as a project reference material.
 
@@ -78,10 +79,27 @@ def add_material(
         Agents must NEVER write or overwrite it.
       - `ai_note` — the agent's metadata about the file (what it is, columns,
         how it's relevant). Set it here or later with `update_material`.
-    `description` is a legacy alias for `ai_note`."""
+    `description` is a legacy alias for `ai_note`.
+
+    `overwrite=True`: if a material with this filename already exists, replace
+    its FILE in place — same `material_id`, so a published page's
+    `source_material_id` and any other reference keep pointing at it, and the
+    tab shows one row with a new date instead of a new row (feedback
+    1c1417e51614). Two same-named materials → refused; name the id with
+    `update_material(local_path=)` instead."""
     p = pathlib.Path(local_path)
     if not p.is_file():
         raise FileNotFoundError(f"material file not found: {local_path}")
+
+    if overwrite:
+        same = [m for m in list_materials(state) if m.get("filename") == _nfc(p.name)]
+        if len(same) > 1:
+            raise ValueError(
+                f"{len(same)} materials are named {p.name!r}; say which with "
+                "update_material(material_id, local_path=...)")
+        if same:
+            return update_material(state, same[0]["material_id"], local_path=local_path,
+                                   ai_note=ai_note if ai_note is not None else description)
 
     data = p.read_bytes()
     material_id = new_id()
@@ -110,16 +128,43 @@ def add_material(
     return {**doc, "dashboard_url": state.dashboard_url("materials")}
 
 
-def update_material(state: State, material_id: str, *, ai_note: str) -> dict:
-    """Set/replace the agent's metadata note (`ai_note`) on a material — works
-    on any material, including ones the user uploaded. ONLY touches `ai_note`;
-    the user's `user_note` is never read or modified here, so the agent can't
-    clobber what the user wrote. Returns the updated doc."""
+def update_material(
+    state: State, material_id: str, *,
+    ai_note: str | None = None, local_path: str | None = None,
+) -> dict:
+    """Amend a material in place. `ai_note` sets/replaces the agent's metadata
+    note; `local_path` replaces the FILE (new bytes, size, content type and
+    filename — the `material_id` and every reference to it stay). The user's
+    `user_note` is never read or modified here, so the agent can't clobber
+    what the user wrote. Returns the updated doc."""
+    if ai_note is None and local_path is None:
+        raise ValueError("give ai_note= and/or local_path=")
     path = _material_path(state, material_id)
     existing = state.backend.get_doc(path)
     if existing is None:
         raise NotFound(f"material {material_id!r} not found")
-    fields = {"ai_note": ai_note, "updated_at": now_iso()}
+    fields: dict = {"updated_at": now_iso()}
+    if ai_note is not None:
+        fields["ai_note"] = ai_note
+        fields["description"] = ai_note
+    if local_path is not None:
+        p = pathlib.Path(local_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"material file not found: {local_path}")
+        data = p.read_bytes()
+        filename = _nfc(p.name)
+        # Same blob key when the name is unchanged, so a URL someone holds
+        # keeps working; a renamed file gets a new key and the old one goes.
+        blob_path = _material_path(state, f"{material_id}__{_safe_filename(p.name)}")
+        state.backend.put_blob(blob_path, data)
+        if existing.get("blob_path") and existing["blob_path"] != blob_path:
+            state.backend.delete_blob(existing["blob_path"])
+        fields.update({
+            "filename": filename,
+            "content_type": _guess_content_type(filename),
+            "size_bytes": len(data),
+            "blob_path": blob_path,
+        })
     state.backend.update_doc(path, fields)
     return {**existing, **fields}
 

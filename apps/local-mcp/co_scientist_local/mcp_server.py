@@ -910,11 +910,17 @@ def build_mcp(state: State) -> FastMCP:
         local_path: str,
         ai_note: str | None = None,
         description: str | None = None,
+        overwrite: bool = False,
     ) -> dict[str, Any]:
         """Upload a local file as a project reference material, so it also
         appears in the dashboard's Materials tab. Use when YOU produce a
         source file the user should see. For files the user uploaded, use
         list_materials/get_material instead.
+
+        Re-uploading a file you already registered: `overwrite=True` replaces
+        the file IN PLACE (same material_id — a published page's
+        source_material_id keeps working, the tab shows one row with a new
+        date). delete + add gives a new id and breaks every reference.
 
         `ai_note` is YOUR metadata about the file (what it is, key columns, how
         it's relevant). NEVER write the user's note — `user_note` is the user's
@@ -923,16 +929,20 @@ def build_mcp(state: State) -> FastMCP:
         """
         return _materials.add_material(
             state, local_path=local_path, ai_note=ai_note, description=description,
+            overwrite=overwrite,
         )
 
     @mcp.tool()
-    def update_material(material_id: str, ai_note: str) -> dict[str, Any]:
-        """Set/replace YOUR metadata note (`ai_note`) on a material — works on
-        any material, including ones the user uploaded (read them with
-        list_materials, then annotate what each file is). This only touches
-        `ai_note`; the user's `user_note` is left alone, so you can't overwrite
-        what the user wrote."""
-        return _materials.update_material(state, material_id, ai_note=ai_note)
+    def update_material(
+        material_id: str, ai_note: str | None = None, local_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Amend a material in place: `ai_note` sets/replaces YOUR metadata
+        note (works on user-uploaded materials too — read them with
+        list_materials, then annotate what each file is); `local_path`
+        replaces the FILE, keeping the material_id and every reference to
+        it. The user's `user_note` is left alone."""
+        return _materials.update_material(
+            state, material_id, ai_note=ai_note, local_path=local_path)
 
     @mcp.tool()
     def delete_material(material_id: str) -> dict[str, Any]:

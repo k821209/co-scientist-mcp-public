@@ -129,7 +129,25 @@ def publish_page(
         "updated_at": now,
     }
     state.backend.set_doc(_pub_path(state, pub_id), doc)
-    return {**doc, "url": _public_url(state, pub_id)}
+    out = {**doc, "url": _public_url(state, pub_id)}
+    note = page_data_note(body or "")
+    if note:
+        out["page_data_note"] = note
+    return out
+
+
+_READS_PAGE_DATA = ("scivo.list(", "scivo.get(", "scivo.subscribe(", "scivo.subscribeDoc(")
+
+
+def page_data_note(html: str) -> str | None:
+    """A page that READS page data starts empty when published anew: page data
+    lives under the publication, and a new pub_id has none. Said in the
+    result so the author fills it before sending the link (feedback
+    1c1417e51614 — a review app showed "no items" for an afternoon)."""
+    if any(k in html for k in _READS_PAGE_DATA):
+        return ("this page reads page data (window.scivo.list/get/subscribe); a NEW "
+                "publication has none — put_page_data(pub_id, ...) before sharing the link")
+    return None
 
 
 def _public_url(state: State, pub_id: str) -> str:
