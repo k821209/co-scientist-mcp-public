@@ -3468,14 +3468,16 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
     @mcp.tool()
     def add_video(
         title: str, video_id: str | None = None, local_path: str | None = None,
-        aspect_ratio: str = "16:9", fps: float | None = None,
+        aspect_ratio: str | None = None, fps: float | None = None,
         duration_s: float | None = None, description: str | None = None,
         srt_local_path: str | None = None, ass_local_path: str | None = None,
         overwrite: bool = False,
     ) -> dict[str, Any]:
         """Register a project video deliverable. Upload the mp4 via `local_path`
-        (+ optional .srt/.ass sidecars); `aspect_ratio` is "16:9" or "9:16".
-        Shown in the dashboard's Video tab (admin). Returns the video doc.
+        (+ optional .srt/.ass sidecars); `aspect_ratio` is "16:9" (default) or
+        "9:16". Shown in the dashboard's Video tab (admin). Returns the video doc.
+        `overwrite=True` on an existing video_id replaces the file and only the
+        fields you pass — description/fps/duration/aspect stay, rows stay.
 
         A video made of CHUNK ROWS gets its joined file on the SAME video —
         `join_video_chunks`, or this call with its `video_id` and

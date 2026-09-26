@@ -49,7 +49,7 @@ def add_video(
     video_id: str | None = None,
     local_path: str | None = None,
     blob_path: str | None = None,
-    aspect_ratio: str = "16:9",
+    aspect_ratio: str | None = None,
     fps: float | None = None,
     duration_s: float | None = None,
     description: str | None = None,
@@ -64,13 +64,17 @@ def add_video(
     already-uploaded blob. `aspect_ratio` drives the dashboard player shape
     (16:9 long-form, 9:16 Shorts). Returns the video doc.
 
-    `overwrite=True` on an existing `video_id` replaces the FILE and the
-    metadata only: chunk rows and comments under the video are kept. That is
-    how a joined chunk video gets its final file without losing the rows.
+    `overwrite=True` on an existing `video_id` replaces the FILE and only
+    the metadata you pass: `description`, `fps`, `duration_s`,
+    `aspect_ratio` left out stay as they were, and chunk rows, comments and
+    the video's other fields are kept (feedback 0612ed724352 — they used to
+    be reset). On a video with chunk rows the new file is recorded as the
+    JOINED result (`joined_from` = the rows' versions), the same as
+    `join_video_chunks(local_path=)`.
     """
     if not title or not title.strip():
         raise ValueError("title is required")
-    if aspect_ratio not in _VALID_ASPECT:
+    if aspect_ratio is not None and aspect_ratio not in _VALID_ASPECT:
         raise ValueError(f"aspect_ratio must be one of {sorted(_VALID_ASPECT)}")
 
     vid = video_id or slugify(title) or f"video-{new_id()[:8]}"
@@ -78,6 +82,7 @@ def add_video(
     existing = state.backend.get_doc(path)
     if existing is not None and not overwrite:
         raise ValueError(f"video already exists: {vid!r} (pass overwrite=True to replace)")
+    keep = existing or {}
 
     mp4_blob = blob_path
     if local_path:
@@ -99,21 +104,26 @@ def add_video(
 
     now = now_iso()
     doc = {
+        **keep,   # joined_from, render/join requests, anything else the row carries
         "video_id": vid,
         "title": title.strip(),
-        "description": description,
-        "blob_path": mp4_blob if mp4_blob is not None
-        else (existing.get("blob_path") if existing else None),
-        "srt_blob_path": _sidecar(srt_local_path, "srt",
-                                  existing.get("srt_blob_path") if existing else None),
-        "ass_blob_path": _sidecar(ass_local_path, "ass",
-                                  existing.get("ass_blob_path") if existing else None),
-        "aspect_ratio": aspect_ratio,
-        "fps": fps,
-        "duration_s": duration_s,
-        "created_at": existing.get("created_at", now) if existing else now,
+        "description": description if description is not None else keep.get("description"),
+        "blob_path": mp4_blob if mp4_blob is not None else keep.get("blob_path"),
+        "srt_blob_path": _sidecar(srt_local_path, "srt", keep.get("srt_blob_path")),
+        "ass_blob_path": _sidecar(ass_local_path, "ass", keep.get("ass_blob_path")),
+        "aspect_ratio": aspect_ratio or keep.get("aspect_ratio") or "16:9",
+        "fps": fps if fps is not None else keep.get("fps"),
+        "duration_s": duration_s if duration_s is not None else keep.get("duration_s"),
+        "created_at": keep.get("created_at", now),
         "updated_at": now,
     }
+    if existing and local_path:
+        chunks = [c for _, c in state.backend.list_collection(_chunks_path(state, vid)) if c.get("blob_path")]
+        if chunks:
+            chunks.sort(key=lambda c: int(c.get("n", 0)))
+            doc["joined_from"] = [{"n": int(c["n"]), "version": int(c.get("version", 1))} for c in chunks]
+            doc["joined_at"] = now
+            doc["join_requested_at"] = None
     state.backend.set_doc(path, doc)
     return doc
 
