@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-27b"
+GUIDE_VERSION = "2026-09-27c"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1170,6 +1170,11 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
 - `/video-revision` — address open Video-tab timecode comments
   (`list_video_comments` → re-run only the stage each needs →
   `resolve_video_comment`). The video analogue of `/paper-revision`.
+- `/h3-scene` — a GENERATED scene, chunk by chunk, with the `vh.h3` pipe
+  (MiniMax-H3 on ComfyUI, Krea2 keyframes): the chunk order below, with the
+  script's own conventions (config JSON, `###JSON###` manifests, `--first`
+  / `--last` from `get_video_chunk_image`). The script cannot reach the MCP;
+  the agent carries files between the row and the script.
 - **Generated video, chunk by chunk** (a scene from a generator, judged and
   remade one shot at a time). The order is fixed; the waiting step is a step:
   1. `add_video(title, aspect_ratio)` — one video for the scene, no file.
