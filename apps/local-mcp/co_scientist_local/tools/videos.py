@@ -305,20 +305,33 @@ def _chunk_blob_path(state: State, video_id: str, n: int, version: int, ext: str
     return state.project_path("videos", video_id, "chunks", f"{int(n):03d}.v{version}.{ext}")
 
 
-def _boundary_blob_path(state: State, video_id: str, n: int, which: str, ext: str) -> str:
-    # Version-free: a keyframe is remade in 30 s and simply replaces the last
-    # one; the chunk's video file is what carries a version.
-    return state.project_path("videos", video_id, "chunks", f"{int(n):03d}.{which}.{ext}")
+def _boundary_blob_path(state: State, video_id: str, n: int, which: str, ext: str,
+                        digest: str = "") -> str:
+    # The path carries a content hash: a remade keyframe is a NEW object, so
+    # every URL anyone holds (the tab, a CDN, a browser cache) changes with
+    # the picture. Writing over the same path replaced the bytes but the tab
+    # kept showing the old image and the caller saw "the same path back" and
+    # concluded nothing was stored (feedback 141d1bcfde42). The chunk's
+    # video file is what carries a version number; a keyframe just replaces
+    # the last one, and the old object is deleted.
+    tag = f".{digest}" if digest else ""
+    return state.project_path("videos", video_id, "chunks", f"{int(n):03d}.{which}{tag}.{ext}")
 
 
-def _upload_image(state: State, video_id: str, n: int, which: str, local: str | None) -> str | None:
+def _upload_image(state: State, video_id: str, n: int, which: str, local: str | None,
+                  previous: str | None = None) -> str | None:
     if not local:
         return None
+    import hashlib
     p = pathlib.Path(local).expanduser()
     if not p.is_file():
         raise FileNotFoundError(f"{which} image not found: {local}")
-    blob = _boundary_blob_path(state, video_id, n, which, p.suffix.lstrip(".") or "png")
-    state.backend.put_blob(blob, p.read_bytes())
+    data = p.read_bytes()
+    blob = _boundary_blob_path(state, video_id, n, which, p.suffix.lstrip(".") or "png",
+                               hashlib.md5(data).hexdigest()[:8])
+    state.backend.put_blob(blob, data)
+    if previous and previous != blob:
+        state.backend.delete_blob(previous)
     return blob
 
 
@@ -422,14 +435,15 @@ def add_video_chunk(
         with tempfile.TemporaryDirectory() as tmp:
             png = pathlib.Path(tmp) / "last.png"
             if extract_last_frame(p, png, _runner=_frame_runner):
-                last_frame = _boundary_blob_path(state, video_id, n, "tail", "png")
+                # Tied to the file's version: one tail per generated file.
+                last_frame = _boundary_blob_path(state, video_id, n, "tail", "png", f"v{version}")
                 state.backend.put_blob(last_frame, png.read_bytes())
             else:
                 last_frame = None
-    first_blob = _upload_image(state, video_id, n, "first", first_image) \
-        or (existing.get("first_image_blob") if existing else None)
-    last_blob = _upload_image(state, video_id, n, "last", last_image) \
-        or (existing.get("last_image_blob") if existing else None)
+    prev_first = existing.get("first_image_blob") if existing else None
+    prev_last = existing.get("last_image_blob") if existing else None
+    first_blob = _upload_image(state, video_id, n, "first", first_image, prev_first) or prev_first
+    last_blob = _upload_image(state, video_id, n, "last", last_image, prev_last) or prev_last
     now = now_iso()
     doc = {
         "n": n,
@@ -475,10 +489,13 @@ def update_video_chunk(
     if unknown:
         raise ValueError(f"update_video_chunk does not take {sorted(unknown)}")
     allowed = {k: v for k, v in fields.items() if v is not None}
+    existing = state.backend.get_doc(path) or {}
     if first_image is not None:
-        allowed["first_image_blob"] = _upload_image(state, video_id, n, "first", first_image)
+        allowed["first_image_blob"] = _upload_image(
+            state, video_id, n, "first", first_image, existing.get("first_image_blob"))
     if last_image is not None:
-        allowed["last_image_blob"] = _upload_image(state, video_id, n, "last", last_image)
+        allowed["last_image_blob"] = _upload_image(
+            state, video_id, n, "last", last_image, existing.get("last_image_blob"))
     if "render" in allowed:
         allowed["render"] = bool(allowed["render"])
     if "status" in allowed and allowed["status"] not in _VALID_CHUNK_STATUS:
