@@ -154,11 +154,17 @@ def get_video(state: State, video_id: str) -> dict:
 
 
 def update_video(state: State, video_id: str, **fields) -> dict:
+    """Metadata only — title, description, aspect_ratio, fps, duration_s.
+    Only the fields given (non-None) change; the file, the rows and the
+    comments are untouched. The metadata edit that does not belong in
+    `add_video(overwrite=True)`, whose job is the file (feedback c5ed2254e846)."""
     path = _video_path(state, video_id)
     if state.backend.get_doc(path) is None:
         raise NotFound(f"video not found: {video_id!r}")
     allowed = {k: v for k, v in fields.items()
-               if k in {"title", "description", "aspect_ratio", "fps", "duration_s"}}
+               if k in {"title", "description", "aspect_ratio", "fps", "duration_s"} and v is not None}
+    if not allowed:
+        raise ValueError("give at least one of title, description, aspect_ratio, fps, duration_s")
     if "aspect_ratio" in allowed and allowed["aspect_ratio"] not in _VALID_ASPECT:
         raise ValueError(f"aspect_ratio must be one of {sorted(_VALID_ASPECT)}")
     allowed["updated_at"] = now_iso()

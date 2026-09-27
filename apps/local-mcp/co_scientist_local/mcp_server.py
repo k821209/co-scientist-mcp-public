@@ -3555,6 +3555,19 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         return _videos.list_videos(state)
 
     @mcp.tool()
+    def update_video(
+        video_id: str, title: str | None = None, description: str | None = None,
+        aspect_ratio: str | None = None, fps: float | None = None,
+        duration_s: float | None = None,
+    ) -> dict[str, Any]:
+        """Change a video's metadata — only the fields you pass; the file,
+        chunk rows and comments stay. Use this for a description or a
+        duration; `add_video(overwrite=True)` is for replacing the FILE."""
+        return _videos.update_video(
+            state, video_id, title=title, description=description,
+            aspect_ratio=aspect_ratio, fps=fps, duration_s=duration_s)
+
+    @mcp.tool()
     def delete_video(video_id: str, delete_chunks: bool = False) -> dict[str, Any]:
         """Delete a video (and its comments). Returns {deleted}. A video with
         chunk rows is REFUSED unless `delete_chunks=True` — the rows are the
