@@ -88,6 +88,22 @@ def update_section(
     return result
 
 
+def replace_in_section(
+    state: State, slug: str, key: str, *, old: str, new: str, count: int | None = 1,
+) -> dict:
+    """A partial edit: replace `old` with `new` in the section body without
+    re-sending it. Exact match or fail (see util.exact_replace). Returns the
+    updated section plus `replaced` (how many)."""
+    from ..util import exact_replace
+    path = _section_path(state, slug, key)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(f"section not found: {slug!r}/{key!r}")
+    body, n = exact_replace(existing.get("body") or "", old, new, count)
+    out = update_section(state, slug, key, body=body)
+    return {**out, "replaced": n}
+
+
 def add_section(
     state: State,
     slug: str,

@@ -129,12 +129,62 @@ def update_table(
     return state.backend.get_doc(path)
 
 
-def get_table(state: State, slug: str, table_number: int) -> dict:
+def get_table(state: State, slug: str, table_number: int, *,
+              fields: list[str] | None = None) -> dict:
+    """`fields` narrows the doc to those keys (plus `table_number`): a legend
+    audit across eleven supplementary tables should not pull every grid."""
     _ensure_paper(state, slug)
     doc = state.backend.get_doc(_table_path(state, slug, table_number))
     if doc is None:
         raise NotFound(f"table {table_number} not found for {slug!r}")
+    if fields:
+        keep = set(fields) | {"table_number"}
+        return {k: v for k, v in doc.items() if k in keep}
     return doc
+
+
+_TABLE_TEXT_FIELDS = ("title", "content", "caption")
+
+
+def replace_in_table(
+    state: State, slug: str, table_number: int, *, field: str, old: str, new: str,
+    count: int | None = 1,
+) -> dict:
+    """A partial edit of one text field (title / content / caption) — exact
+    match or fail, see util.exact_replace. A one-word fix in a 20-row grid
+    used to cost re-sending the grid, the likeliest way to drop a row."""
+    from ..util import exact_replace
+    if field not in _TABLE_TEXT_FIELDS:
+        raise ValueError(f"field must be one of {_TABLE_TEXT_FIELDS}")
+    doc = get_table(state, slug, table_number)
+    text, n = exact_replace(doc.get(field) or "", old, new, count)
+    out = update_table(state, slug, table_number, **{field: text})
+    return {**out, "replaced": n}
+
+
+def search_tables(
+    state: State, slug: str, pattern: str, *, supplementary: bool | None = None,
+    regex: bool = False,
+) -> list[dict]:
+    """Which tables mention `pattern` (substring, or a regex), where, and how
+    often — one call instead of get_table on every table. Each hit: table_number,
+    title, `matches` = {field: count}, and one `snippet` per field."""
+    import re
+    rx = re.compile(pattern if regex else re.escape(pattern))
+    out = []
+    for t in list_tables(state, slug, supplementary=supplementary):
+        matches, snippets = {}, {}
+        for f in _TABLE_TEXT_FIELDS:
+            text = t.get(f) or ""
+            hits = list(rx.finditer(text))
+            if hits:
+                matches[f] = len(hits)
+                a = hits[0].start()
+                snippets[f] = text[max(0, a - 40):a + len(hits[0].group(0)) + 40].replace("\n", " ")
+        if matches:
+            out.append({"table_number": t["table_number"], "title": t.get("title"),
+                        "matches": matches, "snippet": snippets})
+    return out
 
 
 def list_tables(state: State, slug: str, *, supplementary: bool | None = False) -> list[dict]:

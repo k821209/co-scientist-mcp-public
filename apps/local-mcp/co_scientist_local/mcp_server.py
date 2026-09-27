@@ -463,8 +463,22 @@ def build_mcp(state: State) -> FastMCP:
         status: str | None = None,
         title: str | None = None,
     ) -> dict[str, Any]:
-        """Update a section's body/status/title; regenerates the manuscript blob."""
+        """Update a section's body/status/title; regenerates the manuscript blob.
+        For a few words, use `replace_in_section` instead of re-sending the body."""
         return _sections.update_section(state, slug, key, body=body, status=status, title=title)
+
+    @mcp.tool()
+    def replace_in_section(
+        slug: str, key: str, old: str, new: str, count: int | None = 1,
+    ) -> dict[str, Any]:
+        """Replace `old` with `new` in a section body WITHOUT re-sending it —
+        the fix for a word, a term, a sentence. Exact match or fail: `old` must
+        occur exactly `count` times (default 1; give more context to
+        disambiguate, or count=None to replace every occurrence). A
+        terminology sweep is a list of these; each failure names the count
+        found. Re-sending an 8,000-word body to change three words is how a
+        row or a digit gets lost."""
+        return _sections.replace_in_section(state, slug, key, old=old, new=new, count=count)
 
     @mcp.tool()
     def add_section(
@@ -1611,8 +1625,32 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
-    def get_table(slug: str, table_number: int) -> dict[str, Any]:
-        return _tables.get_table(state, slug, table_number)
+    def get_table(slug: str, table_number: int, fields: list[str] | None = None) -> dict[str, Any]:
+        """One table. `fields=["title","caption"]` returns only those keys —
+        auditing many tables need not pull every grid."""
+        return _tables.get_table(state, slug, table_number, fields=fields)
+
+    @mcp.tool()
+    def replace_in_table(
+        slug: str, table_number: int, field: str, old: str, new: str,
+        count: int | None = 1,
+    ) -> dict[str, Any]:
+        """Replace `old` with `new` in one text field of a table (`field` =
+        title | content | caption) without re-sending it. Same contract as
+        `replace_in_section`: exact match, exactly `count` occurrences (None =
+        all), or an error naming the count found."""
+        return _tables.replace_in_table(
+            state, slug, table_number, field=field, old=old, new=new, count=count)
+
+    @mcp.tool()
+    def search_tables(
+        slug: str, pattern: str, supplementary: bool | None = None, regex: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Which tables mention `pattern` (substring; `regex=True` for a
+        pattern), in which field, how many times, with a snippet — the cheap
+        first step of a consistency sweep. `supplementary`: False main only,
+        True S-tables only, None (default) all."""
+        return _tables.search_tables(state, slug, pattern, supplementary=supplementary, regex=regex)
 
     @mcp.tool()
     def list_tables(slug: str, supplementary: bool | None = False) -> list[dict[str, Any]]:

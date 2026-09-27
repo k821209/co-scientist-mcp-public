@@ -38,3 +38,22 @@ def word_count(text: str | None) -> int:
 def new_id() -> str:
     """Short opaque id for things that don't have a natural key (reviews, etc)."""
     return uuid.uuid4().hex[:12]
+
+
+def exact_replace(text: str, old: str, new: str, count: int | None = 1) -> tuple[str, int]:
+    """Replace `old` with `new` in `text` under the host Edit tool's contract:
+    `old` must be present, and — with `count` given — present exactly that
+    many times; `count=None` replaces every occurrence. Absent or a
+    different number → ValueError naming the number found, so a terminology
+    sweep learns which substitution did not match instead of re-sending the
+    whole body (feedback c1de307ee051)."""
+    if not old:
+        raise ValueError("old must not be empty")
+    found = text.count(old)
+    if found == 0:
+        raise ValueError(f"old text not found: {old[:80]!r}")
+    if count is not None and found != count:
+        raise ValueError(
+            f"old text occurs {found} time(s), expected {count}: {old[:80]!r} — "
+            "give more context, or count=<n> / count=None to replace all")
+    return text.replace(old, new), found
