@@ -66,6 +66,11 @@ git clone https://github.com/k821209/co-scientist-video-harness.git ~/co-scienti
 pip install -e ~/co-scientist-video-harness
 ```
 
+Under the `scivo` harness, `scivo update --video` updates it alongside the MCP
+(plain `scivo update` leaves it alone — most accounts never install it). The
+generated-scene pipe (`/h3-scene`, `vh.h3`) ships in the same package and
+needs the `VH_H3_*` variables described in `vh/h3/README.md`.
+
 Pip-only alternative (no source on disk):
 
 ```bash
