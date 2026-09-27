@@ -490,6 +490,51 @@ def update_video_chunk(
     return state.backend.get_doc(path)
 
 
+_CHUNK_IMAGE_WHICH = ("start", "first", "last", "tail")
+
+
+def get_video_chunk_image(
+    state: State, video_id: str, n: int, *, which: str = "start",
+    dest_path: str | None = None, dest_dir: str = ".",
+) -> dict:
+    """Write one of a chunk's images to disk and say which file it was.
+
+    `which`: "start" = what this row must be generated FROM
+    (`first_image_effective`: its own first image, else the previous row's
+    actual last frame, else the previous row's keyframe); "first" / "last" =
+    its own keyframes; "tail" = the frame its file actually ends on.
+
+    This is the file the user confirmed in the tab. Local files named by
+    hand ("shower_b3.png", "shower_b3_v2.png") drift from it — a session
+    generated a chunk from an older local image while the confirmed one sat
+    in the row (2026-09-27). Fetch, then generate from the fetched path."""
+    if which not in _CHUNK_IMAGE_WHICH:
+        raise ValueError(f"which must be one of {_CHUNK_IMAGE_WHICH}")
+    n = int(n)
+    rows = {int(r["n"]): r for r in list_video_chunks(state, video_id)}
+    row = rows.get(n)
+    if row is None:
+        raise NotFound(f"chunk {n} not found for video {video_id!r}")
+    key = {"start": "first_image_effective", "first": "first_image_blob",
+           "last": "last_image_blob", "tail": "last_frame_blob"}[which]
+    blob = row.get(key)
+    if not blob:
+        why = row.get("first_image_missing") if which == "start" else None
+        raise NotFound(f"chunk {n} has no {which} image" + (f": {why}" if why else ""))
+    data = state.backend.get_blob(blob)
+    if data is None:
+        raise NotFound(f"chunk {n} {which} image missing in storage: {blob}")
+    ext = blob.rsplit(".", 1)[-1] if "." in blob.rsplit("/", 1)[-1] else "png"
+    dest = (pathlib.Path(dest_path).expanduser() if dest_path
+            else pathlib.Path(dest_dir).expanduser() / f"{video_id}-{n:03d}.{which}.{ext}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    return {"video_id": video_id, "n": n, "which": which, "blob_path": blob,
+            "source": row.get("first_image_source") if which == "start" else which,
+            "from_chunk": row.get("first_image_from") if which == "start" else n,
+            "path": str(dest), "bytes": len(data), "updated_at": row.get("updated_at")}
+
+
 def delete_video_chunk(state: State, video_id: str, n: int) -> bool:
     path = _chunk_path(state, video_id, int(n))
     if state.backend.get_doc(path) is None:

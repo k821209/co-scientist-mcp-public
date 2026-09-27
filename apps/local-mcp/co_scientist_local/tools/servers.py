@@ -110,10 +110,18 @@ def update_server(
     default_workdir: str | None = None,
     polite_max_cores_pct: int | None = None,
     notes: str | None = None,
+    append_notes: bool = False,
     active: bool | None = None,
 ) -> dict:
+    """Amend a registered server. `notes` REPLACES the notes; with
+    `append_notes=True` it is added as a new dated line under what is there —
+    measured facts about a machine accumulate after registration (a warm-up
+    that looks like a slow API, a loopback-only service), and re-sending the
+    whole text to add one line is how the previous lines get lost (feedback
+    c239b8f55a62)."""
     path = _server_path(state, alias)
-    if state.backend.get_doc(path) is None:
+    existing = state.backend.get_doc(path)
+    if existing is None:
         raise NotFound(f"server {alias!r} not registered")
     fields: dict = {"updated_at": now_iso()}
     if host is not None: fields["host"] = host
@@ -128,8 +136,37 @@ def update_server(
         if not (1 <= polite_max_cores_pct <= 100):
             raise ValueError("polite_max_cores_pct must be in [1, 100]")
         fields["polite_max_cores_pct"] = polite_max_cores_pct
-    if notes is not None: fields["notes"] = notes
+    if notes is not None:
+        fields["notes"] = _append_notes(existing.get("notes"), notes) if append_notes else notes
     if active is not None: fields["active"] = active
+    state.backend.update_doc(path, fields)
+    return state.backend.get_doc(path)
+
+
+def _append_notes(current: str | None, addition: str) -> str:
+    stamp = now_iso()[:10]
+    line = f"[{stamp}] {addition.strip()}"
+    return f"{current.rstrip()}\n{line}" if current and current.strip() else line
+
+
+def update_server_env(
+    state: State, alias: str, env_name: str, *,
+    notes: str | None = None, append_notes: bool = False,
+    python_version: str | None = None, key_packages: list[str] | None = None,
+) -> dict:
+    """Amend a registered env — its notes (replace, or append a dated line),
+    python version or key packages."""
+    path = _env_path(state, alias, env_name)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(f"env {env_name!r} not registered on {alias!r}")
+    fields: dict = {"updated_at": now_iso()}
+    if notes is not None:
+        fields["notes"] = _append_notes(existing.get("notes"), notes) if append_notes else notes
+    if python_version is not None:
+        fields["python_version"] = python_version
+    if key_packages is not None:
+        fields["key_packages"] = list(key_packages)
     state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
 

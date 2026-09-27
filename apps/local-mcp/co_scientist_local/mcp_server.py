@@ -2261,11 +2261,19 @@ def build_mcp(state: State) -> FastMCP:
         polite_max_cores_pct: int | None = None,
         default_workdir: str | None = None,
         active: bool | None = None,
+        notes: str | None = None,
+        append_notes: bool = False,
     ) -> dict[str, Any]:
+        """Amend a registered server. `notes` holds MEASURED facts about the
+        machine (egress speed, a warm-up that looks like a slow API, a
+        loopback-only service and its tunnel command) — they accumulate, so
+        `append_notes=True` adds a dated line under what is there instead of
+        replacing it. Machine facts go HERE, never in project memory."""
         out = _servers.update_server(
             state, alias, host=host, user=user, cores=cores,
             polite_max_cores_pct=polite_max_cores_pct,
             default_workdir=default_workdir, active=active,
+            notes=notes, append_notes=append_notes,
         )
         _servers_cache.write_servers_cache(state)   # the guard reads a file
         return out
@@ -2283,11 +2291,23 @@ def build_mcp(state: State) -> FastMCP:
         env_type: str = "conda",
         python_version: str | None = None,
         key_packages: list[str] | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any]:
         return _servers.add_server_env(
             state, alias, env_name=env_name, env_type=env_type,
-            python_version=python_version, key_packages=key_packages,
+            python_version=python_version, key_packages=key_packages, notes=notes,
         )
+
+    @mcp.tool()
+    def update_server_env(
+        alias: str, env_name: str, notes: str | None = None, append_notes: bool = False,
+        python_version: str | None = None, key_packages: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Amend a registered env: `notes` (replace, or `append_notes=True` for a
+        dated line under the existing text), `python_version`, `key_packages`."""
+        return _servers.update_server_env(
+            state, alias, env_name, notes=notes, append_notes=append_notes,
+            python_version=python_version, key_packages=key_packages)
 
     @mcp.tool()
     def list_server_envs(alias: str) -> list[dict[str, Any]]:
@@ -3592,6 +3612,21 @@ def _register_video_tools(mcp: FastMCP, state: State) -> None:
         on one, resolved ones included. `fields=["n","render","last_image_blob"]`
         narrows each row when the prompts make the full list long."""
         return _videos.list_video_chunks(state, video_id, fields=fields)
+
+    @mcp.tool()
+    def get_video_chunk_image(
+        video_id: str, n: int, which: str = "start",
+        dest_path: str | None = None, dest_dir: str = ".",
+    ) -> dict[str, Any]:
+        """Download a chunk's image to disk — the file the user CONFIRMED in
+        the tab — and return its `path`. `which`: "start" = what to generate
+        this row from (own first image, else the previous row's actual last
+        frame, else its keyframe; `source` says which), "first" / "last" =
+        its keyframes, "tail" = the frame its file ends on. Generate from the
+        returned path, never from a local file picked by name: hand-named
+        copies (b3.png, b3_v2.png) drift from what the row holds."""
+        return _videos.get_video_chunk_image(
+            state, video_id, n, which=which, dest_path=dest_path, dest_dir=dest_dir)
 
     @mcp.tool()
     def delete_video_chunk(video_id: str, n: int) -> dict[str, Any]:

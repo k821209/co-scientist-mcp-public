@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-27"
+GUIDE_VERSION = "2026-09-27b"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1190,11 +1190,14 @@ _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → p
      keyframes, a file is taken only for a row with GO on or with
      `user_approved=True` when the user approved in chat — it is a gate, not
      advice, and the flag is a claim about what the user said.
-     **Start a continuous chunk from `first_image_effective`**, re-read
-     after the previous chunk's file is in: it then points at that chunk's
-     ACTUAL last frame (`last_frame_blob`, extracted on registration), not
-     the keyframe it was aimed at. A shot meant to end sitting that ends
-     standing must be continued from standing, or the join jumps.
+     **Start a continuous chunk from the file
+     `get_video_chunk_image(video_id, n, which="start")` writes** — fetched
+     right before generating, after the previous chunk's file is in: it is
+     that chunk's ACTUAL last frame (`last_frame_blob`, extracted on
+     registration) or else its confirmed keyframe. Never a local file picked
+     by name (b3.png vs b3_v2.png drift from what the row holds). A shot
+     meant to end sitting that ends standing must be continued from
+     standing, or the join jumps.
   6. The row's notes: `list_video_comments(video_id, chunk=n)` → fix →
      `resolve_video_comment(response=)`; `update_video_chunk(status=
      "regenerate")` is the to-do mark.
