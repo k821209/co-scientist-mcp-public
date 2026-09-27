@@ -445,7 +445,14 @@ def add_video_chunk(
     first_blob = _upload_image(state, video_id, n, "first", first_image, prev_first) or prev_first
     last_blob = _upload_image(state, video_id, n, "last", last_image, prev_last) or prev_last
     now = now_iso()
+    # When each PIECE last changed — the tab shows it under the image / file.
+    # One updated_at for the row said nothing about which of the four things
+    # in it was new (user, 2026-09-27).
+    prev = existing or {}
     doc = {
+        "first_image_at": now if first_image else prev.get("first_image_at"),
+        "last_image_at": now if last_image else prev.get("last_image_at"),
+        "file_at": now if local_path else prev.get("file_at"),
         "n": n,
         "prompt": prompt.strip(),
         "blob_path": blob,
@@ -493,9 +500,11 @@ def update_video_chunk(
     if first_image is not None:
         allowed["first_image_blob"] = _upload_image(
             state, video_id, n, "first", first_image, existing.get("first_image_blob"))
+        allowed["first_image_at"] = now_iso()
     if last_image is not None:
         allowed["last_image_blob"] = _upload_image(
             state, video_id, n, "last", last_image, existing.get("last_image_blob"))
+        allowed["last_image_at"] = now_iso()
     if "render" in allowed:
         allowed["render"] = bool(allowed["render"])
     if "status" in allowed and allowed["status"] not in _VALID_CHUNK_STATUS:
