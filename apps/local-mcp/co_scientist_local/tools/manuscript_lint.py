@@ -442,6 +442,126 @@ def _is_vague_comparative(sent: str, m: "re.Match") -> bool:
     return " than " not in tail and not tail.lstrip().startswith("than ")
 
 # Which canonical sections each check applies to.
+# ── heavy subject: a long noun phrase before the main verb ────────────────
+# "이제 글을 읽기 힘든 이유를 알았다. 주어를 니가 너무 길게 뽑네" — a PI, on
+# lint-clean prose (feedback c24501bdf365). Every term defined, every number
+# scaled; the defect was only the order of the words, and a model produces it
+# systematically because packing the qualifications in front of the verb is
+# the shortest way to make one sentence carry everything. Two details decide
+# whether the rule finds anything: a relative marker before the main verb
+# consumes the next finite verb (else "Structure whose introns WERE carried
+# ... is confirmed" reports a 3-word subject), and a leading adverbial closed
+# by a comma is not the subject ("Because it learns ..., GeneMark-ETP
+# detects" reads fine).
+_HEAVY_SUBJECT_WORDS = 12
+_CLAUSE_SPLIT = re.compile(r";|,\s+(?=(?:and|but|so|because|while|then|whereas|although)\b)", re.I)
+_ADVERBIAL_LEAD = re.compile(
+    r"^(?:because|although|though|when|whenever|while|if|unless|after|before|since|as|once|"
+    r"in|on|at|for|with|within|without|across|under|over|among|between|given|using|following|"
+    r"to|despite|during|unlike|like|here|thus|hence|finally|overall|however|therefore|"
+    r"moreover|first|second|third|next|then|instead|by|from|of|beyond|throughout|per|"
+    r"consistent|compared|relative|according|based|where|beginning|starting|except|notably|"
+    r"importantly|specifically|together|conversely|similarly|in\s+contrast)\b", re.I)
+_RELATIVE_MARKER = re.compile(r"^(?:that|which|whose|who|whom|where|when)$", re.I)
+_AUX_VERB = re.compile(
+    r"^(?:is|are|was|were|has|have|had|does|do|did|can|could|may|might|must|shall|should|"
+    r"will|would|cannot|isn't|aren't|wasn't|weren't|doesn't|don't|didn't)$", re.I)
+_VERB_STEMS = (
+    "occur require detect learn show indicate reveal suggest confirm score measure use provide "
+    "yield contain produce remain increase decrease differ reduce improve allow represent "
+    "correspond depend result lead cause affect include exclude form give take make find report "
+    "compare exhibit display reach exceed match fail account appear become follow precede achieve "
+    "obtain perform apply define describe place put set return hold carry support need lack retain "
+    "recover generate predict estimate identify assign classify cluster map align share tend vary "
+    "range span cover drop rise fall grow change contribute enable capture drive occupy involve "
+    "emerge propose revise explain determine limit constrain distinguish separate combine collect "
+    "sample select filter remove add count report record note mean imply argue assume treat consider "
+    "reflect mark flag call name label present offer serve act rely rest lie stand come go run work "
+    "hold keep leave begin start end stop continue seem prove turn bring pass raise lower highlight "
+    "underlie outperform recapitulate replicate reproduce validate verify test evaluate assess rank "
+    "sort order group split merge join link connect map bind encode express regulate mediate "
+    "modulate inhibit activate suppress enhance promote trigger induce"
+).split()
+def _verb_forms(stems: list[str]) -> set[str]:
+    out: set[str] = set()
+    for s in stems:
+        out.add(s)
+        out.add(s + "es" if s.endswith(("s", "x", "sh", "ch")) else (s[:-1] + "ies" if s.endswith("y") and s[-2] not in "aeiou" else s + "s"))
+        out.add(s + "d" if s.endswith("e") else (s[:-1] + "ied" if s.endswith("y") and s[-2] not in "aeiou" else s + "ed"))
+    return out
+_FINITE_VERBS = _verb_forms(_VERB_STEMS)
+
+
+_FUNCTION_WORDS = set(
+    "the a an this these those that which whose who whom where when in on at for with within without "
+    "across under over among between of to from by as than and or but nor so yet because although "
+    "though while if unless after before since once given using following despite during unlike like "
+    "not never also still only both either neither all each every some any no such more most less very "
+    "too per via toward towards into onto upon about against through throughout beyond except".split())
+_RELATIVE_OPENERS = {"the", "a", "an", "this", "these", "those", "it", "they", "we", "he", "she", "i", "you"}
+_PARENTHETICAL = re.compile(r",\s*(?:or|and|but)\s[^,]*,")
+
+
+def _heavy_subject(sent: str) -> dict | None:
+    """The first clause whose main verb comes after more than
+    _HEAVY_SUBJECT_WORDS words, or None. English prose only.
+
+    Verbs inside embedded clauses are not the main verb: a relative marker
+    (that/which/whose/…) and a reduced relative — a determiner or pronoun
+    straight after a noun ("the libraries THE catalogue was built from",
+    "tissues IT had never seen") — each consume the next finite verb, and a
+    coordinated aside between commas (", or revises a coding boundary,") is
+    skipped. A verb-form right after an auxiliary or "not"/"to" is the same
+    verb group, not a second verb."""
+    if not re.search(r"[A-Za-z]{3,}", sent) or re.search(r"[가-힣]", sent):
+        return None
+    for clause in _CLAUSE_SPLIT.split(sent):
+        clause = clause.strip()
+        if not clause:
+            continue
+        # A leading adverbial closed by a comma is scene-setting, not the subject.
+        if _ADVERBIAL_LEAD.match(clause) and "," in clause:
+            head, _, rest = clause.partition(",")
+            if len(head.split()) <= 20:
+                clause = rest.strip()
+        # Words inside a coordinated aside between commas do not carry the verb.
+        aside: set[int] = set()
+        marked = clause
+        for m in _PARENTHETICAL.finditer(clause):
+            before = len(re.findall(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,%]*", clause[:m.start()]))
+            inside = len(re.findall(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,%]*", m.group(0)))
+            aside.update(range(before, before + inside))
+        words = re.findall(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,%]*", marked)
+        if len(words) <= _HEAVY_SUBJECT_WORDS:
+            continue
+        pending = 0
+        for i, w in enumerate(words):
+            lw = w.lower()
+            prev = words[i - 1].lower() if i else ""
+            if i in aside:
+                continue
+            if _RELATIVE_MARKER.match(lw):
+                pending += 1
+                continue
+            if i and lw in _RELATIVE_OPENERS and prev not in _FUNCTION_WORDS \
+                    and prev not in _FINITE_VERBS and not _AUX_VERB.match(prev) \
+                    and not prev.endswith(("ing", "ed")):   # "placing A locus" is a participle, not a noun
+                pending += 1          # a reduced relative: "libraries THE catalogue was …"
+                continue
+            after_aux = bool(_AUX_VERB.match(prev)) or prev in ("not", "to", "never", "also", "still", "only")
+            finite = (bool(_AUX_VERB.match(lw)) or (lw in _FINITE_VERBS and not after_aux and prev not in
+                      ("the", "a", "an", "this", "these", "those", "of")))
+            if not finite:
+                continue
+            if pending:
+                pending -= 1          # the embedded clause's own verb
+                continue
+            if i > _HEAVY_SUBJECT_WORDS:
+                return {"words": i, "subject": " ".join(words[:i])[:160], "verb": w}
+            break
+    return None
+
+
 _METHODS_KEYS = {"methods", "materials", "materials_and_methods", "methods_and_materials"}
 _RESULTS_KEYS = {"results"}
 
@@ -766,6 +886,14 @@ def lint_manuscript(state, slug: str) -> dict:
             style.append({"kind": "run_on", "section": title,
                           "words": len(re.findall(r"[A-Za-z]+", sent)),
                           "note": f"sentence > {_LONG_SENTENCE_WORDS} words — split it",
+                          "sentence": sent[:180]})
+        heavy = _heavy_subject(sent)
+        if heavy:
+            style.append({"kind": "heavy_subject", "section": title, "words": heavy["words"],
+                          "subject": heavy["subject"],
+                          "note": (f"{heavy['words']} words before the main verb "
+                                   f"'{heavy['verb']}' — move the qualification behind the verb, "
+                                   "or split the sentence; the reader holds nothing until the verb"),
                           "sentence": sent[:180]})
         m = _VAGUE_COMPARATIVE.search(sent)
         if m and _is_vague_comparative(sent, m):

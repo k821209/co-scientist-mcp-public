@@ -45,6 +45,28 @@ whose `.mcp.json` names that interpreter then runs the frozen copy. `whoami()`
 and the session banner say so when it happens, with the restore command:
 `<python> -m pip install -e ~/co-scientist-mcp-public/apps/local-mcp --no-deps`.
 
+### System dependencies — check them now, by feature
+
+pip installs the Python side. The binaries and fonts below it cannot, and an
+agent cannot install them either (`sudo` asks you, not it) — so the only
+moment they get installed is now. Run the check and paste what is missing for
+the features you use:
+
+```bash
+python -m co_scientist_local doctor
+```
+
+| feature | needs | Debian/Ubuntu | macOS |
+|---|---|---|---|
+| export (`export_to_path`) | pandoc; LibreOffice recommended | `sudo apt install -y pandoc libreoffice-writer` | `brew install pandoc && brew install --cask libreoffice` |
+| presentations (`/paper-deck`) | LibreOffice (required for any PNG), PyMuPDF, a Korean font | `sudo apt install -y libreoffice-impress fonts-noto-cjk` | `brew install --cask libreoffice` |
+| Korean text anywhere | `fonts-noto-cjk` | `sudo apt install -y fonts-noto-cjk` | built in |
+| video (`/video-*`) | ffmpeg, the `vh` package (below) | `sudo apt install -y ffmpeg` | `brew install ffmpeg` |
+
+Install `fonts-noto-cjk` even if you are not sure: it is small, and without it
+Korean renders as boxes in a PNG that otherwise looks fine — the one failure
+an agent reports as success.
+
 ### Export dependencies (needed for `export_to_path`)
 
 Manuscript export shells out to system binaries that pip can't install:

@@ -233,6 +233,9 @@ def main() -> None:
     if argv and argv[0] == "install-hooks":
         from .hooks_install import cli as _install_hooks_cli
         sys.exit(_install_hooks_cli(argv[1:]))
+    if argv and argv[0] == "doctor":
+        from .doctor import cli as _doctor_cli
+        sys.exit(_doctor_cli(argv[1:]))
 
     if os.environ.get("CO_SCIENTIST_USE_MEMORY") == "1":
         state = _build_dev_state()

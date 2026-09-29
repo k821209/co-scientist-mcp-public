@@ -83,6 +83,15 @@ One patched sentence in a consistent paragraph — a tense shift, a synonym for 
 term already named, a sudden first-person aside. Read paragraphs whole; this is
 invisible sentence by sentence, which is why drafting checks miss it.
 
+### 4b. Heavy subjects — the verb arrives too late
+
+A clause whose main verb comes after a dozen or more words ("Structure whose
+introns were carried by … the catalogue was built from **is confirmed** …").
+`lint_manuscript` flags the worst as `heavy_subject`; what it cannot see is
+the cumulative load — a paragraph of eight-word subjects that is tiring
+without any one sentence crossing the line. Read `/paper-writing` §2b.7b for
+the before/after; flag the paragraph, and give the reordered first sentence.
+
 ### 5. Elegant variation
 
 The same thing called three names across a paper — "the model" / "our

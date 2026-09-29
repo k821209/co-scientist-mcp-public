@@ -177,10 +177,28 @@ the abstract they are checked by a reader instead: `/cold-read`, in §4.
    "comprehensive" appears many times, vary or cut it.
 7. **No result-like numbers in Methods.** Methods describes the method; actual
    values/metrics go to Results. (See §1 + the `results_in_methods` lint.)
+7b. **Keep the subject short — the verb within about twelve words.** A PI
+   read lint-clean prose and said the reason it was hard to read was that the
+   subjects were too long. Packing every qualification in front of the verb is
+   the shortest way to make one sentence carry everything, which is why a
+   model does it systematically; the reader holds all of it in mind until the
+   verb arrives. Move the qualification behind the verb, or split — same
+   length, different order:
+
+   | before (24 words before *is confirmed*) | after |
+   |---|---|
+   | Structure whose introns were carried by a spliced-read junction in the libraries the catalogue was built from is confirmed in tissues it had never seen at 91.9%. | Where an intron was carried by a spliced-read junction in the libraries the catalogue was built from, it is confirmed in tissues the catalogue had never seen at 91.9%. |
+   | Measuring recovery, structural concordance, boundary errors or the value of the confidence tiers requires a trusted annotation to measure against. | Recovery, concordance, boundary error and tier value can only be measured against a trusted annotation. |
+
+   A leading adverbial closed by a comma ("Because it learns …, GeneMark-ETP
+   detects …") is not a long subject. The `heavy_subject` lint counts the
+   words before the main verb per clause, skipping verbs inside relative
+   clauses; when it fires on a section repeatedly, the complaint is the
+   cumulative load, not one sentence.
 
 `lint_manuscript` (§4) now flags several of these deterministically —
-`overused_word`, `vague_comparative`, forward-reference/writerly `style_tell`s,
-and `results_in_methods` — but the judgment calls (jargon-without-gloss,
+`overused_word`, `vague_comparative`, `heavy_subject`, forward-reference/writerly
+`style_tell`s, and `results_in_methods` — but the judgment calls (jargon-without-gloss,
 term-before-definition, one-topic-per-paragraph) are yours: run the checklist.
 
 ### 2c. Write from the reader's context, not yours
