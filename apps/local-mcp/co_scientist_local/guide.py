@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-30"
+GUIDE_VERSION = "2026-09-30b"
 
 
 def installed_skills_block(inv: dict | None) -> str:

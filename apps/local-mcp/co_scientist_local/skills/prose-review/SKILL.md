@@ -98,6 +98,17 @@ The same thing called three names across a paper — "the model" / "our
 framework" / "the pipeline". Name it once and reuse the name. Flag the paper's
 worst offender, not every instance.
 
+### 6. Deictics with no referent, coined terms, deferred facts
+
+`/paper-writing` §2d-quinque, with the before/after pairs. The author always
+knows what 그것 refers to, so this survives drafting; the cold reader is the
+one who can catch it. `lint_manuscript` reports the decidable cases
+(`unnamed_referent`, `deferred_fact`) — do not repeat those. What only you can
+see: a demonstrative whose single "candidate" is itself a coined term; a term
+that names a measurement (*the interpretability floor*, 팔, 창) standing where
+the number should be — test it against `list_references(slug)` the way §1
+tests a metaphor; and a section that only makes sense after another one.
+
 ## Do NOT flag
 
 - **Field-standard terms.** GWAS, BLUP, transcript abundance, orthology, F4.

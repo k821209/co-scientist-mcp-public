@@ -58,6 +58,8 @@ Read everything you were given, in full, before writing anything.
 | `claim_in_furniture` | an argument living in a figure title, a caption, or the prose body of a table, where the field puts description |
 | `format` | a convention the journal applies mechanically: decimal form, an undefined symbol, a metric never named, a display item cited as a noun phrase |
 | `undefined` | a term, threshold or abbreviation used before it is defined, where the section is expected to stand alone |
+| `unnamed_referent` | *it / this / that / 그것 / 거기서* standing in for something the reader has to reconstruct — the sentence before offers two things it could mean, or none |
+| `deferred_fact` | "as noted above", "described below", "이 사실이 뒤에서 중요해집니다" — the fact sent elsewhere instead of stated where the reader is |
 
 ## The one thing you must not do
 
@@ -110,7 +112,7 @@ section, no praise.
 
 ```
 --- FINDINGS ---
-kind:      wrong_sense | foreign_register | tense | claim_in_furniture | format | undefined
+kind:      wrong_sense | foreign_register | tense | claim_in_furniture | format | undefined | unnamed_referent | deferred_fact
 span:      "<verbatim quote, 4-20 words, exactly as printed including punctuation>"
 why:       <what the field would take this to mean, or why it would not print it — one sentence>
 now:       "<the sentence as written>"

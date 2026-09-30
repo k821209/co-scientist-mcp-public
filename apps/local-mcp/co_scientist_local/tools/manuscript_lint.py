@@ -562,6 +562,52 @@ def _heavy_subject(sent: str) -> dict | None:
     return None
 
 
+# ── deictics with no named referent; facts deferred to elsewhere ────────────
+# "의미가 헷갈리는건 니가 대명사나 용어/은어를 막 쓰기 때문이거든" (feedback
+# a70583df0346). The author always knows what 그것 refers to, so re-reading
+# confirms rather than catches; and `it`/`this`/`that` as a sentence subject
+# reads fluent and passed every check here. Deterministic halves only: a
+# Korean sentence that opens on a demonstrative and names nothing (no
+# numeral, no Latin term), and an English sentence whose subject is a bare
+# demonstrative while the previous sentence offered two or more candidate
+# antecedents — under-determined whichever one the author meant.
+_KO_DEICTIC_OPEN = re.compile(
+    r"^(?:(?:그런데|그리고|하지만|그러나|또한|즉|따라서|결국|그래서)\s*)?"
+    r"(?:(?:이|그|저)\s?(?:것|게|사실|점|경우|수치|값|결과|차이|현상)|여기서|거기서|이때|그때|이것이|그것이|이게|그게)")
+_EN_DEICTIC_OPEN = re.compile(
+    # a bare demonstrative SUBJECT: the next word is a verb (an auxiliary, or
+    # a 3rd-person -s / past -ed form), not a noun as in "This model …"
+    r"^(?:This|That|It|These|Those)\s+(?:is|was|are|were|has|have|had|does|did|can|could|will|would|"
+    r"may|might|must|should|[a-z]{2,}(?:s|ed))\b")
+_EN_CANDIDATE = re.compile(r"\b(?:the|a|an|this|these|those|our|their|its|each|every)\s+(?:[a-z-]+\s+){0,2}[a-z-]{3,}|\b[A-Z][A-Za-z0-9-]{2,}", re.I)
+_DEFERRED = [
+    (re.compile(r"\b(?:as (?:noted|mentioned|described|discussed|shown|stated) (?:above|earlier|previously|before)|"
+                r"as we (?:will|shall) see|(?:described|discussed|explained|shown) (?:below|later)|"
+                r"later in this (?:section|paper|talk)|will become (?:clear|important|apparent)|"
+                r"(?:this|that) (?:point|fact|distinction) (?:matters|becomes important) (?:later|below)|"
+                r"we (?:return|come back) to this)\b", re.I),
+     "the fact itself, here — a section that must stand alone cannot send the reader elsewhere"),
+    (re.compile(r"(?:앞서\s?(?:말했|언급했|보았|설명했)듯이|전술한|후술하|(?:뒤에서|아래에서|나중에)[^.。]{0,24}?(?:중요해|다시|설명|다루|보겠))"),
+     "여기에서 그 사실을 바로 말할 것 — 청중은 앞뒤로 넘길 수 없고, 섹션은 홀로 서야 한다"),
+]
+
+
+def _unnamed_referent(sent: str, prev: str | None) -> str | None:
+    """Why this sentence points at something it does not name, or None."""
+    if _KO_DEICTIC_OPEN.match(sent):
+        if not re.search(r"\d|[A-Za-z]{2,}|[「『\"“][^」』\"”]+[」』\"”]", sent):
+            return "opens on a demonstrative (이/그/거기서…) and names nothing — say which number, which term"
+        return None
+    if _EN_DEICTIC_OPEN.match(sent):
+        if prev is None:
+            return "opens on a bare 'this/that/it' with no sentence before it — name the referent"
+        candidates = {m.group(0).lower() for m in _EN_CANDIDATE.finditer(prev)}
+        if len(candidates) >= 2:
+            return (f"'{sent.split()[0]}' could point at {len(candidates)} things in the previous "
+                    "sentence — name the one you mean")
+    return None
+
+
 _METHODS_KEYS = {"methods", "materials", "materials_and_methods", "methods_and_materials"}
 _RESULTS_KEYS = {"results"}
 
@@ -876,7 +922,21 @@ def lint_manuscript(state, slug: str) -> dict:
 
     # ── 3. style tells + run-on sentences ─────────────────────────────────────
     style: list[dict] = []
+    prev_key: str | None = None
+    prev_sent: str | None = None
     for key, title, sent, _t in sents:
+        prev = prev_sent if prev_key == key else None
+        prev_key, prev_sent = key, sent
+        why = _unnamed_referent(sent, prev)
+        if why:
+            style.append({"kind": "unnamed_referent", "section": title, "note": why,
+                          "sentence": sent[:180]})
+        for rx, why in _DEFERRED:
+            m = rx.search(sent)
+            if m:
+                style.append({"kind": "deferred_fact", "section": title, "match": m.group(0),
+                              "note": why, "sentence": sent[:180]})
+                break
         for rx, why in _STYLE_TELLS:
             m = rx.search(sent)
             if m:

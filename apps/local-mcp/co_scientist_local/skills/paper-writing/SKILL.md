@@ -414,6 +414,27 @@ in `interpretive_spans`. Comparisons in a sentence about the graphic are
 deliberately not flagged. One such sentence is `info`; two or more is `warn`,
 which is the signal that the legend has grown a mini-Results.
 
+### 2d-quinque. Name the referent, name the measurement, state the fact here
+
+"의미가 헷갈리는건 니가 대명사나 용어/은어를 막 쓰기 때문이거든" — a user, after a
+long session. Three habits, each fluent to write and opaque to read:
+
+| defect | ✗ | ✓ |
+|---|---|---|
+| **Deictic with no named referent** — 그것/거기서/this/that/it standing in for something the reader must reconstruct | "사전학습이 조성 이상을 담고 있고, 적응이 거기서 더 나아갑니다." / "the two are indistinguishable on the downstream task" | name the three numbers / name the task |
+| **Coined term presented as field vocabulary** — a phrase that names a measurement, dressed as a concept | "그 종 데이터로 훈련하는 단계가 그 종의 일을 합니다." / "the interpretability floor", "the arm" | "벼 전사체로 훈련하면 벼 프로모터를 읽는 정확도가 올라갑니다." — use the measurement |
+| **Forward or backward reference instead of the fact** | "이 사실이 뒤에서 중요해집니다" / "as noted above" | state the fact here; a section stands alone and a talk cannot flip back |
+
+The English half of the first is worse than it looks: *it / this / that* as a
+sentence subject reads fluent and passes every other check. `lint_manuscript`
+flags the decidable cases as `unnamed_referent` (a Korean sentence opening on a
+demonstrative that names nothing; an English one whose bare demonstrative
+subject follows a sentence with two or more candidates) and `deferred_fact`.
+The coined-term rule has no lint: `REGISTER-BIO-AI.md` §3 lists the words we
+were caught on, but the rule underneath is *if the phrase names a measurement,
+use the measurement* — and the author cannot check it on themselves, which is
+why `/prose-review` §6 exists.
+
 ### 2e. Cite display items parenthetically
 
 A figure or table is cited in parentheses, never woven into the sentence as a noun
