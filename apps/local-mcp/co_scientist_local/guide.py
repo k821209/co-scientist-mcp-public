@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-29"
+GUIDE_VERSION = "2026-09-30"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -117,6 +117,10 @@ On every session start:
    carries the restore command. `install_note` is the quiet case — a
    dedicated venv running its own copy while a checkout sits elsewhere on the
    disk, by design — and needs no action.
+   **Never edit a file under `.claude/skills/`** — it is a symlink into the
+   package checkout, shared by every project on the machine, and the edit
+   blocks the next update. A rule for this project goes in project memory /
+   CLAUDE.md; a rule for everyone goes through `report_feedback`.
    **A tool whose parameters look older than this guide describes** means the
    host read the tool list before the update (tool schemas are read at
    session start, and Claude Code can cache MCP discovery across starts):

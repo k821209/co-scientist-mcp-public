@@ -15,6 +15,14 @@ a failing suite. **It cannot catch the three things below.** Those are yours,
 every time you open one of these files — for the file you are touching, not as
 a sweep.
 
+## 0. A project's skill folder is a symlink into the package checkout.
+
+`install-skills` links `.claude/skills/<name>` to the checkout, so "editing
+the project's copy" edits the package for every project on the machine and
+blocks the next `git pull` (2026-09-30). A rule for ONE project goes in that
+project's CLAUDE.md or project memory; a rule for everyone is a `report_feedback`
+so it ships upstream. `scivo update` stashes such edits rather than losing them.
+
 ## 1. Point at the tool. Do not restate it.
 
 Never enumerate a tool's parameters, return keys, lint kinds, or status values
