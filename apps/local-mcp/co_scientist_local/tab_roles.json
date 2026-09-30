@@ -138,17 +138,6 @@
       ]
     },
     {
-      "key": "connect",
-      "label": "Connect",
-      "role": "The scivo web chat, full height: the same session as the terminal, with approvals and the model's questions answered here.",
-      "holds": "the live control page of the owner's local scivo session (nothing is stored here)",
-      "not": "a chat with the dashboard itself — a session must be running on the owner's machine",
-      "tools": [
-        "publish_page",
-        "put_page_data"
-      ]
-    },
-    {
       "key": "feedback",
       "label": "Feedback",
       "role": "Bugs and feature requests about the harness itself, triaged by the developer. The agent files here too, while working.",
