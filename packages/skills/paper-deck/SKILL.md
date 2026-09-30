@@ -599,7 +599,10 @@ HELPERS  (h.* — primitives)
             items=None, headline="", body="",              # auto-sizes its bg
             fonts=None, type_scale=None, pad_pt=14,        # rect to content
             gap_pt=6, min_height=None, text_color=None,    # height. Use this
-            border_color=None, border_pt=0)                # for dark/light
+            border_color=None, border_pt=0, valign="top")  # for dark/light
+            # returns {box, height_used, bottom} — stack the next thing at
+            # res["bottom"] (NOT `h.callout(...) + Pt(12)`: it is a dict).
+            # valign="middle" when min_height equalises a row of cards.
             # `items` is a vstack-style list[{text,         # callout boxes
             # size_pt?, color?, bold?, italic?, ...}]      # instead of drawing
             # OR pass headline= / body= shortcuts.          # rect+text manually

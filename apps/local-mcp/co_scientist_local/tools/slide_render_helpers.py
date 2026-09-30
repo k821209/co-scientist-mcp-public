@@ -981,7 +981,7 @@ def callout(slide, *, left, top, width, fill,
             headline: str = "", body: str = "",
             fonts=None, type_scale=None,
             pad_pt: int = 14, gap_pt: int = 6,
-            min_height=None, text_color=None,
+            min_height=None, text_color=None, valign="top",
             border_color=None, border_pt: float = 0):
     """Filled callout box whose background rectangle auto-sizes to fit
     its content (todo 014 callout-fix). Fixes the failure where bespoke
@@ -1007,7 +1007,14 @@ def callout(slide, *, left, top, width, fill,
     `palette["foreground"]` for light fills (auto-detected by
     relative luminance).
 
-    Returns `{"box": rect, "height_used": emu}`.
+    `valign`: where the content sits when `min_height` leaves slack —
+    "top" (default), "middle" or "bottom". A row of cards equalised with
+    `min_height` read bottom-heavy with all the slack under the text, which
+    the eye reads as uneven inner margins (feedback dfa25910c188).
+
+    Returns `{"box": rect, "height_used": emu, "bottom": top + emu}` —
+    `bottom` is the y to stack the next thing at (the dict is not a number;
+    `y = h.callout(...) + Pt(12)` raises).
     """
     # Build the item list. `headline` is ALWAYS honored — including when
     # `items=` is also passed (deck bug 2: `h.callout(headline=…, items=[…])`
@@ -1091,10 +1098,12 @@ def callout(slide, *, left, top, width, fill,
             if item.get("color") is None:
                 item["color"] = text_color
 
-    vstack(slide, items, left=left + pad, top=top + pad,
+    slack = max(0, box_h - needed_h)
+    shift = slack // 2 if valign == "middle" else (slack if valign == "bottom" else 0)
+    vstack(slide, items, left=left + pad, top=top + pad + shift,
            width=inner_w, palette=palette, fonts=fonts, gap_pt=gap_pt)
 
-    return {"box": bg, "height_used": box_h}
+    return {"box": bg, "height_used": box_h, "bottom": top + box_h}
 
 
 def bullet_list(slide, items, *, palette, fonts, type_scale,

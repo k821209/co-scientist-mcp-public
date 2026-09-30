@@ -2033,16 +2033,28 @@ def _effective_text_bottom(shape, top: int, width: int, height: int) -> int:
     # member (the old check raised and was swallowed, so it never applied),
     # and LibreOffice — which renders the PNG the author looks at — does not
     # honour shrink-to-fit anyway. The estimate is what prints.
-    sizes = [run.font.size.pt for para in tf.paragraphs for run in para.runs
-             if run.font.size is not None]
-    if not sizes:
-        return declared  # unknown font size → don't guess
     from pptx.util import Pt  # type: ignore
     from .slide_render_helpers import measure_text_height_pt
-    measured_pt = measure_text_height_pt(
-        tf.text or "", max_width_emu=width, font_pt=int(round(max(sizes))),
-        line_spacing=1.15,
-    )
+    # Per PARAGRAPH at that paragraph's own size, summed — the shape
+    # h.text_block's own auto-height path uses. Measuring the whole frame at
+    # the LARGEST run size tripled the estimate of every metric card (a 34pt
+    # value over 12pt body text) and reported phantom overflow on the most
+    # ordinary card in the corpus (feedback dfa25910c188). A paragraph with
+    # no explicit size is unknown → don't guess, as before.
+    measured_pt = 0.0
+    for para in tf.paragraphs:
+        sizes = [run.font.size.pt for run in para.runs if run.font.size is not None]
+        if not sizes:
+            return declared
+        text = para.text or ""
+        if not text.strip():
+            measured_pt += max(sizes) * 0.8      # a blank line at its own size
+            continue
+        ls = para.line_spacing if isinstance(para.line_spacing, (int, float)) and para.line_spacing else 1.15
+        measured_pt += measure_text_height_pt(
+            text, max_width_emu=width, font_pt=int(round(max(sizes))), line_spacing=float(ls))
+        if para.space_before is not None:
+            measured_pt += para.space_before.pt
     measured_emu = int(Pt(measured_pt))
     if measured_emu > height * 1.2:
         return top + measured_emu
