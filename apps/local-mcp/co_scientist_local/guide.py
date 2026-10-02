@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-09-30b"
+GUIDE_VERSION = "2026-10-02"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -92,6 +92,17 @@ the section. Re-anchoring a comment you are CLOSING also files the passage as
 it read before, so the addressed card shows the reader "was … / now …" — you
 don't need to restate the old wording in `response`, just say what changed and
 why.
+
+**The author can also edit a paragraph directly in the dashboard** (a pencil
+in each paragraph's margin). That edit is saved as a review of their own:
+`source='user'`, `status='resolved'`, `decision='accepted'`,
+`edit_kind='paragraph'`, with the paragraph before in `original_anchor_text`
+and after in `anchor_text`, and their reason (if any) in `comment`. It is a
+RECORD, not a to-do: `list_paper_comments(slug)` (open only) does not show it;
+`list_paper_comments(slug, status=None)` does. Never re-resolve or "address"
+one, and when you rewrite that section, the author's wording in `anchor_text`
+is the current text and wins — read the record before touching the passage.
+A revert in the dashboard flips the pair back and marks it `rejected`.
 
 On every session start:
 
