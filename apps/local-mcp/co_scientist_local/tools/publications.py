@@ -31,6 +31,14 @@ import hashlib
 import secrets
 
 
+# A page this small is also kept IN the publication document. The owner's
+# dashboard session can read the document straight away (the rules grant
+# the owner the project), while the Storage copy needs a per-project token
+# exchange through a Cloud Function first — a cold start on every open of
+# the control page. Visitors with a passcode still read Storage.
+INLINE_MAX_BYTES = 700_000
+
+
 def _digest(data: bytes) -> dict:
     """What was stored, so a caller can tell a truncated page from a whole
     one: a 110K-token data-URI page handed back through a tool argument can
@@ -124,6 +132,7 @@ def publish_page(
     state.backend.put_blob(state.project_path("publications", pub_id, "page.html"), data)
     doc = {
         **_digest(data),
+        "html": body if len(data) <= INLINE_MAX_BYTES else None,
         "pub_id": pub_id,
         "title": title.strip(),
         "description": (description or "").strip() or None,
@@ -206,6 +215,7 @@ def update_publication(
         data = html.encode("utf-8")
         state.backend.put_blob(doc["blob_path"], data)
         fields.update(_digest(data))
+        fields["html"] = html if len(data) <= INLINE_MAX_BYTES else None
     state.backend.update_doc(_pub_path(state, pub_id), fields)
     return {**doc, **fields, "url": _public_url(state, pub_id)}
 
