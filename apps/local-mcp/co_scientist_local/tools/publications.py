@@ -30,6 +30,14 @@ from __future__ import annotations
 import hashlib
 import secrets
 
+
+def _digest(data: bytes) -> dict:
+    """What was stored, so a caller can tell a truncated page from a whole
+    one: a 110K-token data-URI page handed back through a tool argument can
+    lose its tail at a read-page boundary and publish broken, silently
+    (feedback b4d8322ce1f5)."""
+    return {"size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
 from ..backends.base import NotFound
 from ..state import State
 from ..util import new_id, now_iso
@@ -112,11 +120,10 @@ def publish_page(
 
     pub_id = new_id()
     now = now_iso()
-    state.backend.put_blob(
-        state.project_path("publications", pub_id, "page.html"),
-        (body or "").encode("utf-8"),
-    )
+    data = (body or "").encode("utf-8")
+    state.backend.put_blob(state.project_path("publications", pub_id, "page.html"), data)
     doc = {
+        **_digest(data),
         "pub_id": pub_id,
         "title": title.strip(),
         "description": (description or "").strip() or None,
@@ -160,14 +167,33 @@ def update_publication(
     pub_id: str,
     *,
     html: str | None = None,
+    material_id: str | None = None,
     title: str | None = None,
     active: bool | None = None,
     require_passcode: bool | None = None,
     kind: str | None = None,
 ) -> dict:
-    """Amend a publication. `active=False` unpublishes it."""
+    """Amend a publication. `active=False` unpublishes it. `html` or
+    `material_id` replaces the page under the SAME url — the link already
+    sent keeps working and shows the new page. `material_id` copies the
+    material's current file, the way publish_page did, so a page too big to
+    hand back through a tool argument (a self-contained viewer with data
+    URIs) is updated from the material it came from (feedback b4d8322ce1f5).
+    The result carries `size_bytes` and `sha256` of what was stored."""
     doc = _require(state, pub_id)
+    if html is not None and material_id is not None:
+        raise ValueError("give html= or material_id=, not both")
+    if material_id is not None:
+        mdoc = state.backend.get_doc(state.project_path("materials", material_id))
+        if mdoc is None:
+            raise NotFound(f"material {material_id!r} not found")
+        blob = state.backend.get_blob(mdoc.get("blob_path") or "")
+        if blob is None:
+            raise NotFound(f"material {material_id!r} has no stored file")
+        html = blob.decode("utf-8", errors="replace")
     fields: dict = {"updated_at": now_iso()}
+    if material_id is not None:
+        fields["source_material_id"] = material_id
     if title is not None:
         fields["title"] = title.strip()
     if kind is not None:
@@ -177,7 +203,9 @@ def update_publication(
     if require_passcode is not None:
         fields["require_passcode"] = bool(require_passcode)
     if html is not None:
-        state.backend.put_blob(doc["blob_path"], html.encode("utf-8"))
+        data = html.encode("utf-8")
+        state.backend.put_blob(doc["blob_path"], data)
+        fields.update(_digest(data))
     state.backend.update_doc(_pub_path(state, pub_id), fields)
     return {**doc, **fields, "url": _public_url(state, pub_id)}
 

@@ -147,11 +147,19 @@ def preview_study(
             out["warnings"].append(f"{th}: browser exited {r.returncode}: {(r.stderr or '')[-200:]}")
             continue
         out["png"][th] = str(png_path)
+    # Static checks run with or without a browser: the breakages a parser
+    # makes (a CDATA wrapper, an unclosed <style>) are findable without one,
+    # and on a machine with no browser they were the only thing that would
+    # have caught a stylesheet printed as page text (feedback 160481377be0).
+    from .studies import static_checks
+    out["static_problems"] = static_checks(html)
+    for p in out["static_problems"]:
+        out["warnings"].append(f"static check: {p}")
     if not browser:
         out["warnings"].append(
             "no headless browser found (google-chrome / chromium on PATH) — no screenshot. "
-            "The wrapped HTML above is exactly what the tab renders; open it, or ask the user "
-            "to look at the tab. Do not report the page as checked.")
+            "The static checks above ran; the wrapped HTML is exactly what the tab renders — "
+            "open it, or ask the user to look at the tab. Do not report the page as checked.")
     out["next"] = ("Read the PNG(s) and look for: a wall of unstyled text, a table without rules, "
                    "a page that scrolls sideways, an image that did not load, dark-theme colours "
                    "that did not follow.") if out["png"] else None

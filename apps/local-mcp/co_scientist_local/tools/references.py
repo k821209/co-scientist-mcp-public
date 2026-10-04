@@ -149,7 +149,41 @@ def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
     except TimeoutError as e:
         raise RuntimeError(f"CrossRef timeout ({timeout}s) for {doi!r}") from e
     msg = payload.get("message", {})
-    return _normalize_crossref(msg, doi)
+    meta = _normalize_crossref(msg, doi)
+    if not (meta.get("volume") and meta.get("pages")):
+        # CrossRef's own record can be incomplete (a book chapter with no
+        # volume, an NAR database issue with neither); Europe PMC indexes
+        # the same DOI with the publisher's locators. Fill only the blanks.
+        pmc = _fetch_europepmc(doi, timeout=timeout)
+        for fld in ("volume", "issue", "pages"):
+            if not meta.get(fld) and pmc.get(fld):
+                meta[fld] = pmc[fld]
+    return meta
+
+
+_EUROPEPMC_SEARCH = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+
+def _fetch_europepmc(doi: str, *, timeout: int = 15) -> dict:
+    """volume / issue / pages for a DOI from Europe PMC, or {} — a fallback,
+    so every failure is an empty answer, never an error."""
+    try:
+        q = urllib.parse.urlencode({"query": f"DOI:{doi}", "format": "json", "pageSize": "1"})
+        req = urllib.request.Request(f"{_EUROPEPMC_SEARCH}?{q}", headers={"User-Agent": _CROSSREF_UA})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = _json.loads(resp.read())
+        hits = ((payload.get("resultList") or {}).get("result") or [])
+        if not hits:
+            return {}
+        r = hits[0]
+        jinfo = r.get("journalInfo") or {}
+        return {
+            "volume": r.get("journalVolume") or jinfo.get("volume") or None,
+            "issue": r.get("issue") or jinfo.get("issue") or None,
+            "pages": r.get("pageInfo") or None,
+        }
+    except Exception:  # noqa: BLE001 — a fallback that fails is just absent
+        return {}
 
 
 _DATACITE_BASE = "https://api.datacite.org/dois/"
@@ -276,7 +310,11 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
         # (volume:issue:pages). CrossRef gives `page` as "123-130".
         "volume": (msg.get("volume") or None),
         "issue": (msg.get("issue") or None),
-        "pages": (msg.get("page") or None),
+        # Journals that no longer paginate give an article number instead of
+        # a page range; a citation wants one or the other (feedback
+        # cd0447c2ed02: 8 of 26 references had `page` null and
+        # `article-number` set, and stayed blank for a year).
+        "pages": (msg.get("page") or msg.get("article-number") or None),
         "issn": (issn[0] if issn else None),
         "publisher": (msg.get("publisher") or None),
         "url": msg.get("URL"),

@@ -32,6 +32,8 @@ a "mark as stale" button is the same memory that already failed.
 """
 from __future__ import annotations
 
+import re
+
 from ..backends.base import NotFound
 from ..state import State
 from ..util import new_id, now_iso
@@ -97,6 +99,46 @@ def _norm_sources(state: State, sources: list[dict] | None) -> list[dict]:
     return out
 
 
+_CDATA_OPEN = "<![CDATA["
+_CDATA_CLOSE = "]]>"
+
+
+def _unwrap_cdata(html: str) -> str:
+    """A `<![CDATA[ … ]]>` wrapper around the whole document is stripped.
+
+    An HTML parser reads `<!` as a bogus comment that swallows up to the
+    first `>` — the closing bracket of the `<style>` that follows — so the
+    stylesheet spills onto the page as text and `]]>` is left at the end,
+    while the write reports success (feedback 160481377be0). The intent is
+    unambiguous and the recovery lossless, so it is unwrapped rather than
+    refused."""
+    s = html.strip()
+    if s.startswith(_CDATA_OPEN) and s.endswith(_CDATA_CLOSE):
+        return s[len(_CDATA_OPEN):-len(_CDATA_CLOSE)].strip()
+    return html
+
+
+def static_checks(html: str) -> list[str]:
+    """What a browser would show wrong, found without one: the checks that
+    stand in for the screenshot when no headless browser is installed."""
+    problems: list[str] = []
+    s = html.strip()
+    if _CDATA_OPEN in s or _CDATA_CLOSE in s:
+        problems.append("a CDATA marker is in the document — HTML parsers read <! as a comment "
+                        "that swallows the next tag; the stylesheet will print as text")
+    if "&lt;" in s and s.count("&lt;") > s.count("<") // 2:
+        problems.append("escaped tags (&lt;…&gt;) outnumber real ones — the markup renders as visible text")
+    opens, closes = len(re.findall(r"<style\b", s, re.I)), len(re.findall(r"</style>", s, re.I))
+    if opens != closes:
+        problems.append(f"<style> open/close mismatch ({opens} open, {closes} close) — CSS will print as text or styles will not apply")
+    opens, closes = len(re.findall(r"<script\b", s, re.I)), len(re.findall(r"</script>", s, re.I))
+    if opens != closes:
+        problems.append(f"<script> open/close mismatch ({opens} open, {closes} close)")
+    if re.search(r"<!--(?:(?!-->).)*$", s, re.S):
+        problems.append("an HTML comment is opened and never closed — everything after it is hidden")
+    return problems
+
+
 def write_study(
     state: State,
     *,
@@ -133,6 +175,7 @@ def write_study(
         raise ValueError("html is required — a study is a document to read")
     # Double-escaped HTML is accepted silently and renders as visible tags. It
     # is only ever noticed by a human opening the tab, so it is refused here.
+    html = _unwrap_cdata(html)
     if "&lt;" in html and "<" not in html:
         raise ValueError(
             "html looks HTML-escaped: it contains '&lt;' and no '<', so the "
@@ -201,6 +244,7 @@ def update_study(
     if sources is not None:
         fields["sources"] = _norm_sources(state, sources)
     if html is not None:
+        html = _unwrap_cdata(html)
         state.backend.put_blob(doc["blob_path"], html.encode("utf-8"))
         fields["size_bytes"] = len(html.encode("utf-8"))
         fields["html_updated_at"] = fields["updated_at"]

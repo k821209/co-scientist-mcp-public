@@ -198,6 +198,15 @@ Design language:
     lines=[(code, accent_or_surface), ...]).
   Body copy in Korean (~합니다체); keep only field English abbreviations
     (MCP, LLM, marker, …) in English.
+Writing rules:
+  A slide title, a contents item, a question line, a card headline stands
+    with no sentence before it. Three rules from `/paper-writing`, in the
+    order they fail: no deictic without its name (§2d-quinque: 그게 →
+    후보 목록의 상위 몇 개), no coined term where the measurement belongs,
+    and — Korean — keep the subject and the object in every predicate line
+    (§2d-quater-bis: "목록 맨 위가 실제로 맞는가" → "모델이 매긴 후보 목록의
+    상위 몇 개가 실제로 그 기관에서 켜지는가"). Deleting 그 and stopping is
+    the second defect dressed as a fix for the first.
 image_style:
   "isometric technical line illustration on cool off-white, single deep-blue
   accent (#1F6FEB) with one teal data-color (#0E7C66), thin precise strokes,

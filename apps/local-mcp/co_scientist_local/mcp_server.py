@@ -1327,13 +1327,19 @@ def build_mcp(state: State) -> FastMCP:
         active: bool | None = None,
         require_passcode: bool | None = None,
         kind: str | None = None,
+        material_id: str | None = None,
     ) -> dict[str, Any]:
         """Amend a published page. `active=False` UNPUBLISHES it — checked when
         a visitor's token is minted, so it stops the next visitor even though
         links already sent out cannot be recalled. `kind="control"` moves an
-        existing page into the dashboard's Control dock (see publish_page)."""
+        existing page into the dashboard's Control dock (see publish_page).
+        `material_id=` (or `html=`) REPLACES the page under the same url: for
+        a big self-contained page, update the material (add_material
+        overwrite=True) and pass its id — never read it into context and
+        hand it back. The result's `size_bytes` / `sha256` say exactly what
+        was stored; compare them with the file to catch a truncated page."""
         return _publications.update_publication(
-            state, pub_id, html=html, title=title, active=active,
+            state, pub_id, html=html, material_id=material_id, title=title, active=active,
             require_passcode=require_passcode, kind=kind)
 
     @mcp.tool()

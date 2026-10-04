@@ -906,6 +906,19 @@ def prepare_export(
         warnings.append(f"{len(placeholders)} placeholder marker(s) in manuscript")
     if unresolved:
         warnings.append(f"{len(unresolved)} unresolved {{doi:…}} citation(s)")
+    # A reference with a DOI but no volume and no pages prints as
+    # "Journal." and comes back from the copy editor as an author query —
+    # 26 at once, once (feedback cd0447c2ed02). backfill_references fills
+    # them from CrossRef with an Europe PMC fallback.
+    bare = [r.get("citation_key") for r in refs
+            if (r.get("doi") or "").strip() and not (r.get("volume") or r.get("pages"))
+            and (r.get("type") or "journal-article") not in ("dataset", "software")]
+    if bare:
+        warnings.append(
+            f"{len(bare)} reference(s) with a DOI but no volume/pages — the bibliography "
+            f"prints them as 'Journal.' and the copy editor will query each: run "
+            f"backfill_references(slug) first: {', '.join(str(b) for b in bare[:8])}"
+            + (" …" if len(bare) > 8 else ""))
     if not is_journal_paper:
         # The native .docx path renders <br> and nothing else of raw HTML.
         tags = [t.lower() for t in re.findall(r"<\s*/?\s*([a-zA-Z][a-zA-Z0-9-]*)[^>]*>", prose)]

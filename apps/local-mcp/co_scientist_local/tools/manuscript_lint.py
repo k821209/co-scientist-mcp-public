@@ -592,6 +592,28 @@ _DEFERRED = [
 ]
 
 
+# A short Korean line that stands alone — a heading, a question, a one-line
+# claim — with no case particle at all names neither who nor what. Korean
+# drops what the context restores, and a heading has no context (feedback
+# 611d981eccce: 16 of 31 slides). Predicate lines only: a noun-phrase title
+# has no verb to want a subject.
+_KO_PARTICLE = re.compile(r"[가-힣](이|가|은|는|을|를|께서|에서는)(?=\s|$|[,.?!])")
+# ㅂ니다 is a jamo and never matches a composed syllable (집니다, 릅니다):
+# any …니다 is a polite predicate ending.
+_KO_PREDICATE_END = re.compile(r"(?:는가|습니까|입니까|니까|나요|가요|는지)\s*\??$|니다\.?$|\?$")
+
+
+def _ko_omitted_argument(sent: str) -> str | None:
+    s = sent.strip()
+    if not re.search(r"[가-힣]", s) or len(s) > 24 or len(s) < 4:
+        return None
+    if not _KO_PREDICATE_END.search(s):
+        return None
+    if _KO_PARTICLE.search(s):
+        return None
+    return "a predicate line with no subject or object marked (이/가/은/는/을/를) — say who and what; a heading has no sentence before it to restore them from"
+
+
 def _unnamed_referent(sent: str, prev: str | None) -> str | None:
     """Why this sentence points at something it does not name, or None."""
     if _KO_DEICTIC_OPEN.match(sent):
@@ -758,6 +780,7 @@ def lint_manuscript(state, slug: str) -> dict:
     tokens_used = any(
         re.search(r"\{(?:doi|cite|ref):", sec.get("body", "") or "")
         for sec in sections)
+    heading_hits: list[dict] = []
     for sec in sections:
         key = sec.get("key", "")
         title = sec.get("title", key)
@@ -787,6 +810,15 @@ def lint_manuscript(state, slug: str) -> dict:
             toks = _tokens(sent)
             if len(toks) >= _DUP_MIN_TOKENS:
                 sents.append((key, title, sent, set(toks)))
+        # Headings and short standalone lines never reach the sentence loop
+        # (under the duplication token floor); the one rule about them runs
+        # here. Korean only.
+        for line in (sec.get("body") or "").splitlines():
+            text = line.strip().lstrip("#").strip()
+            why = _ko_omitted_argument(text)
+            if why and len(_tokens(text)) < _DUP_MIN_TOKENS:
+                heading_hits.append({"kind": "omitted_argument", "section": title, "note": why,
+                                     "sentence": text[:180]})
 
     # ── 1. duplication (near-duplicate sentences, any two sections/positions) ──
     duplication: list[dict] = []
@@ -921,7 +953,7 @@ def lint_manuscript(state, slug: str) -> dict:
             })
 
     # ── 3. style tells + run-on sentences ─────────────────────────────────────
-    style: list[dict] = []
+    style: list[dict] = list(heading_hits)
     prev_key: str | None = None
     prev_sent: str | None = None
     for key, title, sent, _t in sents:
@@ -930,6 +962,10 @@ def lint_manuscript(state, slug: str) -> dict:
         why = _unnamed_referent(sent, prev)
         if why:
             style.append({"kind": "unnamed_referent", "section": title, "note": why,
+                          "sentence": sent[:180]})
+        why = _ko_omitted_argument(sent)
+        if why:
+            style.append({"kind": "omitted_argument", "section": title, "note": why,
                           "sentence": sent[:180]})
         for rx, why in _DEFERRED:
             m = rx.search(sent)
