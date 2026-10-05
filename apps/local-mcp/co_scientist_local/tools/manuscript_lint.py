@@ -454,7 +454,6 @@ def _is_vague_comparative(sent: str, m: "re.Match") -> bool:
 # by a comma is not the subject ("Because it learns ..., GeneMark-ETP
 # detects" reads fine).
 _HEAVY_SUBJECT_WORDS = 12
-_CLAUSE_SPLIT = re.compile(r";|,\s+(?=(?:and|but|so|because|while|then|whereas|although)\b)", re.I)
 _ADVERBIAL_LEAD = re.compile(
     r"^(?:because|although|though|when|whenever|while|if|unless|after|before|since|as|once|"
     r"in|on|at|for|with|within|without|across|under|over|among|between|given|using|following|"
@@ -499,58 +498,84 @@ _FUNCTION_WORDS = set(
     "not never also still only both either neither all each every some any no such more most less very "
     "too per via toward towards into onto upon about against through throughout beyond except".split())
 _RELATIVE_OPENERS = {"the", "a", "an", "this", "these", "those", "it", "they", "we", "he", "she", "i", "you"}
-_PARENTHETICAL = re.compile(r",\s*(?:or|and|but)\s[^,]*,")
+
+
+_IRREGULAR_PAST = set(
+    "ran found gave took made built led held kept left began became came went got had did was were "
+    "saw set put rose fell grew drove chose wrote read met lost won bound split cut hit brought thought "
+    "taught caught sought bought fed bred spread shed drew threw knew sold told paid said meant sent "
+    "spent dealt felt slept swept stood understood withstood arose broke spoke woke froze stole rode "
+    "strove bled sped hid slid bit lit quit hung stuck struck swung flung clung sprang sang rang drank "
+    "sank shrank swam forgot lay laid shown shrunk".split())
+_SUBJECT_PRONOUNS = {"it", "we", "they", "he", "she", "i", "you", "this", "these", "those", "that", "which", "who", "what"}
+_POST_NOUN_PREP = {"by", "to", "with", "from", "in", "on", "at", "as", "for", "into", "onto", "under", "over", "across", "against", "through", "via"}
+_PAREN = re.compile(r"\([^()]*\)|\[[^\[\]]*\]")
+_CLAUSE_SPLIT = re.compile(r"[;:]|,\s+(?=(?:and|but|so|because|while|then|whereas|although)\b)", re.I)
+_LEAD_COMMA = re.compile(r",(?!\d)")        # a comma, but not the one inside 5,686
+_ASIDE = re.compile(r",\s*(?:or|and|but)\s[^,]*,")   # ", or revises a coding boundary," carries no main verb
 
 
 def _heavy_subject(sent: str) -> dict | None:
     """The first clause whose main verb comes after more than
     _HEAVY_SUBJECT_WORDS words, or None. English prose only.
 
-    Verbs inside embedded clauses are not the main verb: a relative marker
-    (that/which/whose/…) and a reduced relative — a determiner or pronoun
-    straight after a noun ("the libraries THE catalogue was built from",
-    "tissues IT had never seen") — each consume the next finite verb, and a
-    coordinated aside between commas (", or revises a coding boundary,") is
-    skipped. A verb-form right after an auxiliary or "not"/"to" is the same
-    verb group, not a second verb."""
+    What is NOT the main verb (feedback 52369b261936, six misparses in
+    seven findings): a participle after a noun and before a preposition
+    ("proteins ALIGNED to", "genes, MATCHED by"), a verb inside a relative
+    clause, anything after a colon or semicolon (its own clause, measured
+    on its own), and a verb-form right after an auxiliary. What is not the
+    subject: a parenthetical ("(13,962 genes / 30,752 transcripts)") and a
+    leading adverbial — closed by a comma, or, with no comma, ending where
+    the subject pronoun starts ("Against the annotation IT recovered")."""
     if not re.search(r"[A-Za-z]{3,}", sent) or re.search(r"[가-힣]", sent):
         return None
+    sent = _PAREN.sub(" ", sent)
     for clause in _CLAUSE_SPLIT.split(sent):
         clause = clause.strip()
         if not clause:
             continue
-        # A leading adverbial closed by a comma is scene-setting, not the subject.
-        if _ADVERBIAL_LEAD.match(clause) and "," in clause:
-            head, _, rest = clause.partition(",")
-            if len(head.split()) <= 20:
-                clause = rest.strip()
-        # Words inside a coordinated aside between commas do not carry the verb.
+        if _ADVERBIAL_LEAD.match(clause):
+            m = _LEAD_COMMA.search(clause)
+            if m and len(clause[:m.start()].split()) <= 20:
+                clause = clause[m.end():].strip()
+            else:
+                # no comma: the adverbial runs up to the subject pronoun
+                toks = clause.split()
+                for k, t in enumerate(toks[1:16], start=1):
+                    if t.lower() in _SUBJECT_PRONOUNS and t.lower() not in ("that", "which", "who", "what"):
+                        clause = " ".join(toks[k:]); break
         aside: set[int] = set()
-        marked = clause
-        for m in _PARENTHETICAL.finditer(clause):
+        for m in _ASIDE.finditer(clause):
             before = len(re.findall(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,%]*", clause[:m.start()]))
             inside = len(re.findall(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,%]*", m.group(0)))
             aside.update(range(before, before + inside))
-        words = re.findall(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,%]*", marked)
+        words = re.findall(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,%]*", clause)
         if len(words) <= _HEAVY_SUBJECT_WORDS:
             continue
         pending = 0
         for i, w in enumerate(words):
             lw = w.lower()
             prev = words[i - 1].lower() if i else ""
+            nxt = words[i + 1].lower() if i + 1 < len(words) else ""
             if i in aside:
                 continue
             if _RELATIVE_MARKER.match(lw):
                 pending += 1
                 continue
             if i and lw in _RELATIVE_OPENERS and prev not in _FUNCTION_WORDS \
-                    and prev not in _FINITE_VERBS and not _AUX_VERB.match(prev) \
-                    and not prev.endswith(("ing", "ed")):   # "placing A locus" is a participle, not a noun
+                    and prev not in _FINITE_VERBS and prev not in _IRREGULAR_PAST and not _AUX_VERB.match(prev) \
+                    and not prev.endswith(("ing", "ed")):
                 pending += 1          # a reduced relative: "libraries THE catalogue was …"
                 continue
             after_aux = bool(_AUX_VERB.match(prev)) or prev in ("not", "to", "never", "also", "still", "only")
-            finite = (bool(_AUX_VERB.match(lw)) or (lw in _FINITE_VERBS and not after_aux and prev not in
-                      ("the", "a", "an", "this", "these", "those", "of")))
+            past = lw.endswith("ed") and (lw in _FINITE_VERBS or lw in _IRREGULAR_PAST)
+            # "proteins aligned to", "genes matched by": a participle on a noun
+            participle = (past and i > 0 and prev not in _SUBJECT_PRONOUNS and prev not in _FUNCTION_WORDS
+                          and not _AUX_VERB.match(prev) and nxt in _POST_NOUN_PREP
+                          and not re.match(r"^(?:the|a|an)$", words[i - 2].lower() if i >= 2 else ""))
+            finite = ((bool(_AUX_VERB.match(lw)) or lw in _FINITE_VERBS or lw in _IRREGULAR_PAST)
+                      and not after_aux and not participle
+                      and prev not in ("the", "a", "an", "this", "these", "those", "of"))
             if not finite:
                 continue
             if pending:
