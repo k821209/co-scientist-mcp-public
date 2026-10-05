@@ -373,7 +373,14 @@ def diff_submission(
     # Stored per section so the Paper tab shows it beside the text
     # (feedback 493c71de0e75); the manuscript itself is untouched.
     word_diff = _word_diff_sections(sections, sub_paras)
-    _store_diff(state, slug, got, word_diff)
+    # The report is the valuable part and is already computed; a rejected
+    # cache write must not take it down.
+    stored = True
+    try:
+        _store_diff(state, slug, got, word_diff)
+    except Exception as exc:                                # noqa: BLE001
+        stored = False
+        warnings.append(f"the word-level diff could not be stored for the Paper tab: {exc}")
 
     return {
         "slug": slug,
@@ -387,6 +394,7 @@ def diff_submission(
             "sections": [{"key": d["key"], "changed": d["changed"], "added": d["added"],
                           "removed": d["removed"], "words_inserted": d["words_inserted"],
                           "words_deleted": d["words_deleted"]} for d in word_diff],
+            "stored": stored,
             "where": "Paper tab → Manuscript → 'vs submission'",
         },
         "submission_paragraphs": len(sub_paras),
@@ -438,18 +446,22 @@ _PAIR_MIN = 0.45          # below this a paragraph is new, not a revision of ano
 _WORD = re.compile(r"\S+|\s+")
 
 
-def _word_ops(old: str, new: str) -> list[list[str]]:
-    """[[tag, text], …] over whitespace-split tokens: 'same' / 'del' / 'ins'."""
+def _word_ops(old: str, new: str) -> list[dict]:
+    """[{k, t}, …] over whitespace-split tokens: k = 'same' / 'del' / 'ins'.
+
+    Maps, not pairs: Firestore refuses an array nested in an array at any
+    depth, and the first stored section killed the whole call — report
+    included (feedback 89fd51d43181)."""
     a, b = _WORD.findall(old), _WORD.findall(new)
-    ops: list[list[str]] = []
+    ops: list[dict] = []
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
         if tag == "equal":
-            ops.append(["same", "".join(a[i1:i2])])
+            ops.append({"k": "same", "t": "".join(a[i1:i2])})
         else:
             if i2 > i1:
-                ops.append(["del", "".join(a[i1:i2])])
+                ops.append({"k": "del", "t": "".join(a[i1:i2])})
             if j2 > j1:
-                ops.append(["ins", "".join(b[j1:j2])])
+                ops.append({"k": "ins", "t": "".join(b[j1:j2])})
     return ops
 
 
@@ -481,8 +493,8 @@ def _word_diff_sections(sections: list[dict], sub_paras: list[tuple[str, str]]) 
             if bj >= 0 and best >= _PAIR_MIN:
                 used.add(bj)
                 ops = _word_ops(sub_raw[bj], raw)
-                w_ins += sum(len(t.split()) for k, t in ops if k == "ins")
-                w_del += sum(len(t.split()) for k, t in ops if k == "del")
+                w_ins += sum(len(o["t"].split()) for o in ops if o["k"] == "ins")
+                w_del += sum(len(o["t"].split()) for o in ops if o["k"] == "del")
                 items.append({"kind": "changed", "text": raw, "old": sub_raw[bj], "ops": ops})
                 changed += 1
             else:
