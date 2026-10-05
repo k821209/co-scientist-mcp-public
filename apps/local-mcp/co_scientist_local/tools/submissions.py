@@ -30,6 +30,7 @@ registered when it is sent, and both are editable when it is not.
 """
 from __future__ import annotations
 
+import difflib
 import hashlib
 import pathlib
 import re
@@ -294,36 +295,46 @@ def diff_submission(
     where "0.94 similar" is not.
     """
     _require_paper(state, slug)
-    got = get_submission(state, slug, submission_id, dest_dir=tempfile.mkdtemp())
-    local = got["path"]
-    suffix = pathlib.Path(local).suffix.lower()
-    if suffix in {".md", ".markdown", ".txt"}:
-        # Already text. import_document would send it through pandoc, which
-        # converts markdown to markdown and makes the comparison depend on a
-        # binary it does not need — so a project that submitted a .md could not
-        # be diffed on a machine without pandoc, for no reason.
-        conv = {
-            "markdown": pathlib.Path(local).read_text(encoding="utf-8", errors="replace"),
-            "source_format": suffix.lstrip("."),
-            "warnings": [],
-        }
-    else:
-        try:
-            conv = imports.import_document(state, local_path=local)
-        except Exception as exc:                               # noqa: BLE001
-            raise ValueError(
-                f"could not read the submitted {suffix or 'file'}: {exc}. "
-                f"Download it with get_submission and compare by hand."
-            ) from exc
-
-    sub_paras = _paras(conv.get("markdown") or "")
-    sub_norm = {n for n, _ in sub_paras}
-
     sections = [
         data for _, data in state.backend.list_collection(
             state.project_path("papers", slug, "sections"))
     ]
     sections.sort(key=lambda s: s.get("sort_order", 999))
+    sec_norm_all = {n for sec in sections for n, _ in _paras(sec.get("body") or "")}
+
+    # Which file is the baseline. With no id, "the latest" picked a
+    # supplementary file registered after the main text and compared the
+    # manuscript against its tables — matched 0 everywhere, read as "the
+    # whole manuscript diverged" (feedback 493c71de0e75). So: the latest,
+    # unless nothing in it matches a section, in which case every registered
+    # file is read and the one sharing the most paragraphs with the
+    # sections wins. The result says which was chosen and why.
+    baseline_reason = "submission_id given"
+    if submission_id is None:
+        rows = list_submissions(state, slug)
+        if not rows:
+            raise NotFound(f"no submission registered for {slug!r}")
+        got, conv = _read_submission(state, slug, rows[0]["submission_id"])
+        overlap = sum(1 for n, _ in _paras(conv.get("markdown") or "") if n in sec_norm_all)
+        baseline_reason = f"the latest submission ({got.get('filename')})"
+        if overlap == 0 and len(rows) > 1:
+            best = (0, got, conv, rows[0])
+            for r in rows[1:]:
+                g2, c2 = _read_submission(state, slug, r["submission_id"])
+                o2 = sum(1 for n, _ in _paras(c2.get("markdown") or "") if n in sec_norm_all)
+                if o2 > best[0]:
+                    best = (o2, g2, c2, r)
+            if best[0] > 0:
+                got, conv = best[1], best[2]
+                baseline_reason = (f"{got.get('filename')} — the latest ({rows[0].get('filename')}) "
+                                   f"shares no paragraph with the sections, this one shares {best[0]}; "
+                                   "the latest is probably a supplementary file")
+    else:
+        got, conv = _read_submission(state, slug, submission_id)
+    local = got["path"]
+
+    sub_paras = _paras(conv.get("markdown") or "")
+    sub_norm = {n for n, _ in sub_paras}
 
     per_section, sec_norm = [], set()
     for sec in sections:
@@ -349,13 +360,35 @@ def diff_submission(
     # changed.
     rendering_only, missing, per_section = _fold_rerenderings(missing, per_section)
 
+    warnings = list(conv.get("warnings") or [])
+    if per_section and all(s["matched"] == 0 for s in per_section):
+        warnings.append(
+            "no section paragraph matches the baseline — far more often the wrong "
+            "file (a supplementary, a cover letter) than a manuscript rewritten "
+            "end to end; check `filename`, or pass submission_id")
+
+    # What changed INSIDE each paragraph, word by word — the question a
+    # revision author has, which containment cannot answer: 4 of 39 matched
+    # is "35 paragraphs differ by a clause or a number", not 35 rewrites.
+    # Stored per section so the Paper tab shows it beside the text
+    # (feedback 493c71de0e75); the manuscript itself is untouched.
+    word_diff = _word_diff_sections(sections, sub_paras)
+    _store_diff(state, slug, got, word_diff)
+
     return {
         "slug": slug,
         "submission_id": got["submission_id"],
+        "baseline_reason": baseline_reason,
         "filename": got.get("filename"),
         "submitted_on": got.get("submitted_on"),
         "source_format": conv.get("source_format"),
-        "warnings": conv.get("warnings") or [],
+        "warnings": warnings,
+        "word_diff": {
+            "sections": [{"key": d["key"], "changed": d["changed"], "added": d["added"],
+                          "removed": d["removed"], "words_inserted": d["words_inserted"],
+                          "words_deleted": d["words_deleted"]} for d in word_diff],
+            "where": "Paper tab → Manuscript → 'vs submission'",
+        },
         "submission_paragraphs": len(sub_paras),
         "sections": per_section,
         # The hand-edits: what the journal has and this project does not.
@@ -376,6 +409,113 @@ def diff_submission(
 
 def _clip(text: str, n: int = 300) -> str:
     return text if len(text) <= n else f"{text[:n]}…"
+
+
+def _read_submission(state: State, slug: str, submission_id: str) -> tuple[dict, dict]:
+    got = get_submission(state, slug, submission_id, dest_dir=tempfile.mkdtemp())
+    local = got["path"]
+    suffix = pathlib.Path(local).suffix.lower()
+    if suffix in {".md", ".markdown", ".txt"}:
+        # Already text. import_document would send it through pandoc, which
+        # converts markdown to markdown and makes the comparison depend on a
+        # binary it does not need — so a project that submitted a .md could not
+        # be diffed on a machine without pandoc, for no reason.
+        return got, {
+            "markdown": pathlib.Path(local).read_text(encoding="utf-8", errors="replace"),
+            "source_format": suffix.lstrip("."),
+            "warnings": [],
+        }
+    try:
+        return got, imports.import_document(state, local_path=local)
+    except Exception as exc:                               # noqa: BLE001
+        raise ValueError(
+            f"could not read the submitted {suffix or 'file'}: {exc}. "
+            f"Download it with get_submission and compare by hand."
+        ) from exc
+
+
+_PAIR_MIN = 0.45          # below this a paragraph is new, not a revision of another
+_WORD = re.compile(r"\S+|\s+")
+
+
+def _word_ops(old: str, new: str) -> list[list[str]]:
+    """[[tag, text], …] over whitespace-split tokens: 'same' / 'del' / 'ins'."""
+    a, b = _WORD.findall(old), _WORD.findall(new)
+    ops: list[list[str]] = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if tag == "equal":
+            ops.append(["same", "".join(a[i1:i2])])
+        else:
+            if i2 > i1:
+                ops.append(["del", "".join(a[i1:i2])])
+            if j2 > j1:
+                ops.append(["ins", "".join(b[j1:j2])])
+    return ops
+
+
+def _word_diff_sections(sections: list[dict], sub_paras: list[tuple[str, str]]) -> list[dict]:
+    """Per section: its paragraphs paired with the submission's (each used
+    once, best similarity first, pairings in order), with word ops."""
+    sub_norms = [n for n, _ in sub_paras]
+    sub_raw = [r for _, r in sub_paras]
+    used: set[int] = set()
+    out = []
+    for sec in sections:
+        paras = _paras(sec.get("body") or "")
+        items: list[dict] = []
+        changed = added = w_ins = w_del = 0
+        for norm, raw in paras:
+            if norm in sub_norms and sub_norms.index(norm) not in used:
+                j = sub_norms.index(norm); used.add(j)
+                items.append({"kind": "same", "text": raw}); continue
+            best, bj = 0.0, -1
+            for j, sn in enumerate(sub_norms):
+                if j in used:
+                    continue
+                m = difflib.SequenceMatcher(None, norm, sn, autojunk=False)
+                if m.quick_ratio() < _PAIR_MIN:
+                    continue
+                r = m.ratio()
+                if r > best:
+                    best, bj = r, j
+            if bj >= 0 and best >= _PAIR_MIN:
+                used.add(bj)
+                ops = _word_ops(sub_raw[bj], raw)
+                w_ins += sum(len(t.split()) for k, t in ops if k == "ins")
+                w_del += sum(len(t.split()) for k, t in ops if k == "del")
+                items.append({"kind": "changed", "text": raw, "old": sub_raw[bj], "ops": ops})
+                changed += 1
+            else:
+                items.append({"kind": "added", "text": raw}); added += 1
+                w_ins += len(raw.split())
+        out.append({"key": sec.get("key"), "title": sec.get("title"), "items": items,
+                    "changed": changed, "added": added, "removed": 0,
+                    "words_inserted": w_ins, "words_deleted": w_del})
+    # Submission paragraphs no section claimed: removed in the revision (or
+    # front matter / tables the sections never held). Listed under a
+    # trailing pseudo-section so nothing the reviewers read is dropped from
+    # view; the tab shows it last.
+    left = [sub_raw[j] for j in range(len(sub_raw)) if j not in used]
+    if left:
+        out.append({"key": "_unmatched", "title": "In the submission, not in any section",
+                    "items": [{"kind": "removed", "text": t} for t in left],
+                    "changed": 0, "added": 0, "removed": len(left),
+                    "words_inserted": 0, "words_deleted": sum(len(t.split()) for t in left)})
+    return out
+
+
+def _store_diff(state: State, slug: str, got: dict, word_diff: list[dict]) -> None:
+    col = state.project_path("papers", slug, "submission_diffs")
+    for d, _ in list(state.backend.list_collection(col)):
+        state.backend.delete_doc(f"{col}/{d}")
+    now = now_iso()
+    for d in word_diff:
+        state.backend.set_doc(f"{col}/{d['key']}", {**d, "computed_at": now})
+    state.backend.set_doc(f"{col}/_meta", {
+        "submission_id": got["submission_id"], "filename": got.get("filename"),
+        "submitted_on": got.get("submitted_on"), "computed_at": now,
+        "sections": [d["key"] for d in word_diff],
+    })
 
 
 def acknowledge_submission_sync(

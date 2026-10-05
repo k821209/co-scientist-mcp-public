@@ -1096,6 +1096,13 @@ def build_mcp(state: State) -> FastMCP:
         way out, so the sections are not what the reviewers hold, and a revision
         written on them starts from a document that exists nowhere.
 
+        With no `submission_id` the latest file is the baseline unless nothing
+        in it matches a section — then the file sharing the most paragraphs
+        with the sections is used, and `baseline_reason` says so (a
+        supplementary registered after the main text used to be picked
+        silently). A word-level diff per section is stored for the Paper tab
+        ('vs submission'); `word_diff` summarises it.
+
         Read `missing_from_sections` first: those are the paragraphs the journal
         has and this project does not. `rendering_only` is set aside separately
         — paragraphs whose WORDS match on both sides, differing only in how they
