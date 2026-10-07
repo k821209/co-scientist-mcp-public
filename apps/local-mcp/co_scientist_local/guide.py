@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-10-04"
+GUIDE_VERSION = "2026-10-07"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -572,6 +572,13 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   `source_analysis="manual"`: a statement, not a gap, and it satisfies the
   check. Figures are listed there but do not fail it; the server cannot tell
   a chart from a schematic.
+- **A manuscript that changed a week or more after its last recorded run
+  fails `check_requirements` too** (`provenance_recency`; `prepare_export`
+  warns, the Runs tab lists the paper). The question is "what got computed
+  during that revision round?" — back-fill with `record_analysis_run` /
+  `scan_recent_outputs`, or answer that the changes were prose-only. This
+  is the structural version of the rule above: guidance fires at session
+  start, a three-week revision round has no session start.
 - **The exploratory stretch is where this is lost, not the big jobs.** Nine short
   interactive `ssh … python script.py` runs never feel like "time to use
   /analysis-run", and then six tables depend on them. One measured case: 9 hours
@@ -645,7 +652,11 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   itself** — ANY file you build locally (tracked-changes docx, a response
   letter, a converted table) needs an explicit
   `attach_export(slug, local_path=…, scope=…)`, or it silently never
-  reaches the dashboard. A registered table/figure defaults to a `Tables` /
+  reaches the dashboard. The other direction is `get_export(slug,
+  filename)` (downloads to disk, like `get_material`): to reread a page or
+  a docx an earlier session built — on another machine too — as a design
+  or structure reference, instead of asking the user to re-upload it as a
+  material. A registered table/figure defaults to a `Tables` /
   `Figures` section at the END; to place one IN the body put `![](table:N)` /
   `![](figure:N)` alone on its own line there. Reports/proposals
   (`doc_type="report"`) render A4 via python-docx and are NOT subject to the

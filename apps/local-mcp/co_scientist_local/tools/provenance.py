@@ -230,6 +230,62 @@ def compare_run_params(
 
 # ── the enforcement point ───────────────────────────────────────────────
 
+RECENCY_GAP_DAYS = 7
+
+
+def recency_check(state, slug: str) -> dict:
+    """Did the manuscript move on after its last recorded analysis run?
+
+    The July fix for silent provenance (RECORD EVERY RUN in the guide,
+    scan_untracked_jobs) was guidance, and guidance fires at session start;
+    a three-week revision round with no natural checkpoint ran dozens of
+    ssh/bash chains across three machines and recorded none of them, and
+    the only trace was free-text prose in a local memory file (feedback
+    4772a8d95a27). This makes the gap structural: the latest content change
+    (sections, figure/table content) against the latest run output, on the
+    paper's own analyses. Fires only when there IS a run to compare against
+    — a paper with no analyses is the coverage warning's case."""
+    from . import exports as _exports
+    from ..backends.base import NotFound
+    sections = [d for _, d in state.backend.list_collection(state.project_path("papers", slug, "sections"))]
+    figures = [d for _, d in state.backend.list_collection(state.project_path("papers", slug, "figures"))]
+    tables = [d for _, d in state.backend.list_collection(state.project_path("papers", slug, "tables"))]
+    stamps = [s.get("updated_at") for s in sections if s.get("updated_at")]
+    stamps += [a.get("content_updated_at") or a.get("updated_at") or a.get("created_at")
+               for a in (*figures, *tables)]
+    stamps = [s for s in stamps if s]
+    latest_change = max(stamps) if stamps else None
+    last_run = None
+    for name, _ in state.backend.list_collection(state.project_path("papers", slug, "analyses")):
+        try:
+            t = _exports._latest_analysis_output_at(state, slug, name)
+        except NotFound:
+            t = None
+        if t and (last_run is None or t > last_run):
+            last_run = t
+    base = {"name": "provenance_recency", "label": "Analysis runs recorded since the manuscript last changed",
+            "kind": "recency", "latest_content_change": latest_change, "last_run_output": last_run,
+            "gap_days": None}
+    if not last_run or not latest_change or latest_change <= last_run:
+        return {**base, "ok": True, "message": None}
+    from datetime import datetime
+    def _dt(s: str) -> datetime:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    try:
+        gap = (_dt(latest_change) - _dt(last_run)).days
+    except Exception:  # noqa: BLE001 — an odd stamp is not worth failing the check
+        gap = None
+    ok = gap is not None and gap < RECENCY_GAP_DAYS
+    msg = None if ok else (
+        f"the manuscript's content last changed on {latest_change[:10]}, "
+        f"{gap if gap is not None else '?'} days after the last recorded analysis run "
+        f"({last_run[:10]}). If a revision round computed anything in between — a regen, a "
+        f"comparison, a selection analysis — its runs are not recorded: back-fill with "
+        f"record_analysis_run (host=, command=, log_path=) or scan_recent_outputs, or say "
+        f"the changes were prose-only.")
+    return {**base, "ok": ok, "gap_days": gap, "message": msg}
+
+
 def provenance_check(tables: list[dict], figures: list[dict]) -> dict:
     """The `check_requirements` entry. Fails for a table with numbers in its
     cells and no analysis behind it (and no `manual` statement). Figures are

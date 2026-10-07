@@ -125,15 +125,17 @@ def check_requirements(state: State, slug: str) -> dict:
         _tables.list_tables(state, slug, supplementary=None),
         _figures.list_figures(state, slug, supplementary=None),
     )
+    recency = _prov.recency_check(state, slug)
     if not req:
+        base_checks = [prov, recency]
         return {
             "configured": False,
             "requirements": None,
             "message": "No journal requirements set for this paper. "
                        "Run /journal-requirements to set them.",
-            "checks": [prov],
-            "violations": [] if prov["ok"] else [prov],
-            "ok": prov["ok"],
+            "checks": base_checks,
+            "violations": [c for c in base_checks if not c["ok"]],
+            "ok": all(c["ok"] for c in base_checks),
         }
 
     bundle = _papers.get_paper_state(state, slug)
@@ -194,6 +196,7 @@ def check_requirements(state: State, slug: str) -> dict:
         })
 
     checks.append(prov)
+    checks.append(recency)
 
     violations = [c for c in checks if not c["ok"]]
     return {

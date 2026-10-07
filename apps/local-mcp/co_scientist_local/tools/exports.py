@@ -1036,6 +1036,9 @@ def prepare_export(
                                              tbls + supp_tbls))
     # ...and the counterpart: artifacts with no link at all, which the staleness
     # check cannot see by construction.
+    recency = _prov.recency_check(state, slug)
+    if not recency["ok"]:
+        warnings.append(recency["message"])
     warnings.extend(_provenance_coverage_warnings(state, slug, figs + supp_figs,
                                                  tbls + supp_tbls))
 
@@ -1679,6 +1682,35 @@ def attach_export(
     else:
         state.backend.update_doc(blob_path, meta)
     return {**meta, "dashboard_url": state.dashboard_url("papers", slug)}
+
+
+def get_export(
+    state: State, slug: str, filename: str, *,
+    dest_dir: str = ".", dest_path: str | None = None,
+) -> dict:
+    """Download a file from the paper's Exports area to local disk — the
+    pair of `get_material` / `get_figure` that Exports never had, so a page
+    designed in an earlier session on another machine could only be reread
+    by a person downloading it and re-uploading it as a material (feedback
+    e0965bf5a853). Writes to `dest_path`, else `dest_dir`/<filename>."""
+    if state.backend.get_doc(state.project_path("papers", slug)) is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    name = (filename or "").strip()
+    doc_path = state.project_path("papers", slug, "exports", name)
+    doc = state.backend.get_doc(doc_path) if name else None
+    if doc is None:
+        have = [x.get("filename") for x in list_exports(state, slug)]
+        raise NotFound(f"export {name!r} not found for {slug!r}; have: {have}")
+    data = state.backend.get_blob(doc.get("blob_path") or doc_path)
+    if data is None:
+        raise NotFound(f"export {name!r} has no stored file")
+    out = (pathlib.Path(dest_path).expanduser() if dest_path
+           else pathlib.Path(dest_dir).expanduser() / name)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    return {"path": str(out.resolve()), "filename": name, "size_bytes": len(data),
+            "format": doc.get("format"), "kind": doc.get("kind"), "scope": doc.get("scope"),
+            "updated_at": doc.get("updated_at")}
 
 
 def list_exports(state: State, slug: str) -> list[dict]:

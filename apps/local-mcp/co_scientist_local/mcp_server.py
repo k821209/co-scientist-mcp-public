@@ -3030,6 +3030,16 @@ def build_mcp(state: State) -> FastMCP:
         return _exports.list_exports(state, slug)
 
     @mcp.tool()
+    def get_export(
+        slug: str, filename: str, dest_dir: str = ".", dest_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Download a file from the paper's Exports tab to local disk (same
+        shape as get_material / get_figure) — to reread a page or a .docx an
+        earlier session made, on this or another machine, as a design or
+        structure reference. Returns {path, filename, size_bytes, …}."""
+        return _exports.get_export(state, slug, filename, dest_dir=dest_dir, dest_path=dest_path)
+
+    @mcp.tool()
     def delete_export(slug: str, filename: str) -> dict[str, Any]:
         """Remove an attached/exported file from a paper's Exports area (doc +
         blob) so a stale supplementary file doesn't ship in the package.
