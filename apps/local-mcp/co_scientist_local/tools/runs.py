@@ -97,6 +97,7 @@ def record_analysis_run(
     run_key: str | None = None,
     params: dict | None = None,
     hostname: str | None = None,
+    report_token: str | None = None,
 ) -> dict:
     """Insert a new analysis_runs doc. Used by `launch_local_job` and
     `submit_remote_job`.
@@ -111,7 +112,13 @@ def record_analysis_run(
 
     `params` is the dict of arguments that DEFINE this run — every value that
     could change the result. The harness never interprets it; it diffs it
-    against the other runs behind the same table (see tools/provenance.py)."""
+    against the other runs behind the same table (see tools/provenance.py).
+
+    `report_token` is a bearer secret for the report_run endpoint, so the job
+    itself can beat and close this row with no session alive — the case that
+    leaves an eternal spinner. `submit_remote_job` generates it, embeds it in
+    the job it launches and passes it here, so the row and the job agree on it.
+    It authorises exactly this one run and the endpoint clears it on finish."""
     from .provenance import normalize_params
     _ensure_analysis(state, slug, analysis)
     run_key = run_key or _new_run_key()
@@ -145,6 +152,10 @@ def record_analysis_run(
         "last_heartbeat": now_iso(),
         "stale": False,
         "created_at": now_iso(),
+        # A bearer secret scoped to this ONE run (see cloud-functions/report-run).
+        # Deliberately not the project key, which reaches the whole account and
+        # would be world-readable in `ps` on a shared compute server.
+        "report_token": report_token,
     }
     state.backend.set_doc(_run_path(state, slug, analysis, run_key), doc)
     return doc

@@ -17,9 +17,11 @@ Provides:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import pathlib
 import re
+import secrets
 import shlex
 from datetime import datetime, timedelta, timezone
 
@@ -205,6 +207,64 @@ def _collect_unfinished_pids_for_host(state: State, host: str) -> list[int]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+# Where a job reports its own state. Public on purpose: every call is
+# authorised by a token that is good for one run and is cleared when that run
+# closes (apps/cloud-functions/report-run).
+REPORT_RUN_URL = "https://us-central1-co-scientist-5af1a.cloudfunctions.net/report_run"
+
+# Posted by the job, not by a session: python3 + stdlib only, no curl, no
+# credentials on disk beyond the one-run token, and every failure swallowed —
+# a job must never die because the dashboard was unreachable.
+_REPORTER = r"""#!/usr/bin/env python3
+import json, sys, time, urllib.request
+CFG = __CFG__
+def _tail():
+    try:
+        with open(CFG["log"], "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - 8000))
+            text = fh.read().decode("utf-8", "replace")
+        return "\n".join(text.splitlines()[-40:]) or None
+    except Exception:
+        return None
+def main():
+    event = sys.argv[1] if len(sys.argv) > 1 else "heartbeat"
+    body = dict(CFG["ids"])
+    body["event"] = "finished" if event == "finish" else "heartbeat"
+    if event == "finish":
+        try:
+            body["exit_code"] = int(sys.argv[2])
+        except (IndexError, ValueError):
+            body["exit_code"] = -1
+    tail = _tail()
+    if tail:
+        body["log_tail"] = tail
+    data = json.dumps(body).encode("utf-8")
+    # The finish report is the one that matters, so it retries: the run row is
+    # written just after the launch returns, and a job that ends in under a
+    # second can otherwise report before the row exists.
+    attempts = 6 if event == "finish" else 2
+    for n in range(attempts):
+        try:
+            req = urllib.request.Request(
+                CFG["url"], data=data,
+                headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                resp.read()
+            return
+        except Exception:
+            time.sleep(3 * (n + 1))
+main()
+"""
+
+
+def _reporter_script(ids: dict, log_filename: str) -> str:
+    """The reporter, with this run's identifiers and token baked in."""
+    cfg = json.dumps({"url": REPORT_RUN_URL, "ids": ids, "log": log_filename})
+    return _REPORTER.replace("__CFG__", cfg)
+
+
 def submit_remote_job(
     state: State,
     paper_slug: str,
@@ -300,9 +360,50 @@ def submit_remote_job(
         activate = ""
     marker = hashlib.sha256(f"{analysis_name}|{command}".encode("utf-8")).hexdigest()[:12]
     pidfile = f".pidfile_{marker}"
+
+    # The job reports for itself: a heartbeat with the tail of its log while it
+    # runs, and the real exit code when it ends. Everything here is written
+    # BEFORE the launch, because the wrapper has to carry the run_key and the
+    # token, and the row is only written afterwards (a duplicate submit must not
+    # create one). `|| true` throughout: reporting is never allowed to change
+    # whether the job runs or what it returns, and `.exitcode` is still written
+    # exactly as before, so the session-driven reap path keeps working unchanged
+    # on a host with no python3 or no outbound network.
+    run_key = _new_run_key()
+    report_token = secrets.token_urlsafe(24)
+    reporter = ".scivo_report.py"
+    rc_rep, _, err_rep = ssh.run(server, (
+        f"cat > {shlex.quote(f'{remote_dir}/{reporter}')} <<'SCIVO_REPORTER_EOF'\n"
+        + _reporter_script({
+            "project_id": state.project_id,
+            "paper_slug": paper_slug,
+            "analysis_name": analysis_name,
+            "run_key": run_key,
+            "token": report_token,
+        }, log_filename)
+        + "\nSCIVO_REPORTER_EOF"
+    ), timeout=20)
+    self_reporting = rc_rep == 0
+    if not self_reporting:
+        polite_warnings.append(
+            "could not install the self-report script on "
+            f"{server_alias} ({(err_rep or '').strip() or f'rc={rc_rep}'}); this run "
+            "will stay open until a session polls it")
+    beat = (
+        f"( while kill -0 $MAIN 2>/dev/null; do sleep 300; "
+        f"python3 {reporter} heartbeat >/dev/null 2>&1 || true; done ) & HB=$!; "
+    ) if self_reporting else ""
+    finish = (
+        f"python3 {reporter} finish \"$EC\" >/dev/null 2>&1 || true; "
+    ) if self_reporting else ""
     wrapped = (
         f"trap 'rm -f {pidfile}' EXIT; "
-        f"( {command} ); echo $? > .exitcode"
+        f"( {command} ) & MAIN=$!; "
+        + beat
+        + f"wait $MAIN; EC=$?; "
+        + ("kill $HB 2>/dev/null || true; " if self_reporting else "")
+        + f"echo $EC > .exitcode; "
+        + finish
     )
     launch = (
         f"cd {shlex.quote(remote_dir)} && {activate}"
@@ -357,12 +458,18 @@ def submit_remote_job(
         workdir=remote_dir,
         notes=notes,
         params=params,
+        run_key=run_key,
+        report_token=report_token if self_reporting else None,
     )
     return {
         "run_key": run["run_key"], "pid": pid, "host": server_alias,
         "log_path": log_path_relative, "remote_dir": remote_dir,
         "remote_log_path": log_path_remote,
         "warnings": polite_warnings, "existing": False,
+        # True when the job will close its own row (and send log tails) with no
+        # session alive. False means the old behaviour: it stays open until a
+        # session polls, or until the hourly reaper calls it stale.
+        "self_reporting": self_reporting,
     }
 
 
