@@ -123,6 +123,16 @@ Stated bare it is an omission; stated with the reason it is a scoping decision.
 That satisfies both constraints at once — lead with what was done, and never bury
 what was not.
 
+**Do not volunteer limits, and do not advertise your own honesty.** Both were
+corrected with visible irritation. "This comparison has two limits." drew *"리뷰어한테
+걸리기전에 먼저 이야기한다 이런 말인가? 레서폰스 레터에 이런말을 안쓰지"*; ", and we
+should say so rather than present them as new." drew *"인공지능의 정직성을 여기다
+자랑하지마라. ㅡㅡ;"*. Answer what was asked, in full, with the evidence. A limitation
+the reviewer did not raise goes in the manuscript's Discussion if it belongs anywhere,
+and doing the analysis correctly is the baseline, not a result to report.
+`REGISTER-LEAKS.md` Leak 1 has the rest of the shapes; `lint_manuscript` flags them as
+`defensive_aside`.
+
 **Attribute the reviewer's numbering.** Never a bare "Major 3": this letter's own
 sections are numbered the same way, so the reviewer cannot tell you are pointing
 back at them. Write "the reviewer's Major 3" / "Reviewer 1's Major 3".

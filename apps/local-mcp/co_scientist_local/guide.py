@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-10-07"
+GUIDE_VERSION = "2026-10-08"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1077,7 +1077,13 @@ Do not over-correct: field-standard terms (GWAS, BLUP, transcript abundance) are
 your readers' shared vocabulary, not jargon to strip. Remove metaphor borrowed
 from ANOTHER field; keep the words native to this one.
 
-`/paper-writing` §2a carries the full list.
+`/paper-writing` §2a carries the full list, and `REGISTER-LEAKS.md` in that
+skill's directory carries the four leaks the author actually corrects, ranked
+by frequency over every comment written on AI-drafted prose in this project
+(818 comments, 653 before/after edits, 59 papers). Read it before editing a
+section in response to a comment: revision re-creates the top two leaks while
+fixing something else, and `lint_manuscript` now reports the regex-able part as
+`defensive_aside` alongside `insider_context` and `colloquial_register`.
 
 ## Prose for non-English audiences (todo 001)
 

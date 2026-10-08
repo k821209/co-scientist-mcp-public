@@ -66,8 +66,17 @@ findings, no procedure. Discussion = meaning, no new data.**
 
 ### 2. Academic register (journal prose, not chat prose)
 
-**For a biology or computational-biology journal, read `REGISTER-BIO-AI.md`
-in this directory first.** It carries the field's register from a worked
+**Read the two files in this directory before you draft, and again before you
+edit in response to a comment.** `REGISTER-BIO-AI.md` carries this field's
+register from a worked exemplar. `REGISTER-LEAKS.md` carries what the author
+actually corrects — the four leaks, ranked by frequency across every comment
+ever written on AI-drafted prose here (818 comments, 653 edits, 59 papers).
+The largest class by a factor of two is deletion of clauses that defend a
+claim instead of reporting it, and the leak specific to revision is answering
+a comment by appending the answer as a clause.
+
+**For a biology or computational-biology journal, `REGISTER-BIO-AI.md`
+comes first.** It carries the field's register from a worked
 exemplar — tense, sentence shape, the terms that mean something else in
 biology, decimal format, figure-title convention, and the display-item
 budget. The rules below are generic; that file is what the field actually

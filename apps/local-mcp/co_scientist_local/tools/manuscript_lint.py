@@ -330,6 +330,20 @@ _COLLOQUIAL = [
     (r"\btells? you\b", "conversational — state the relation"),
     (r"\bdecides this\b", "vague verb standing in for a technical relation"),
     (r"\bsays so\b", "conversational — name what is claimed"),
+    # Each of these was flagged 구어체 by hand on a real draft; see
+    # skills/paper-writing/REGISTER-LEAKS.md Leak 4 for the accepted rewrites.
+    (r"\bmatters too\b", "mid-stream concession — state the second cause as its own clause"),
+    (r"\bthe point is\b", "speech — state the finding"),
+    (r"\bwhich is what makes\b", "code-comment argument — state the property"),
+    (r"\bturns out\b", "speech — 'was found to' or state it plainly"),
+    (r"\bby eye\b", "speech — name the judgement ('visually, from the dendrogram')"),
+    (r"\broom to (?:shuffle|move|work)\b", "idiom — state what the constraint allows"),
+    (r"\bruns? away without bound\b", "idiom — 'did not converge' / 'is unbounded'"),
+    (r"\bknife-edge\b", "idiom — give the band over which the outcome is unchanged"),
+    (r"\bdata-hungry\b", "idiom — state the data requirement"),
+    (r"\bexists to surface\b", "idiom — say what it does"),
+    (r"% of the time\b", "speech — 'in N% of cases' / name the denominator"),
+    (r"\bwould buy\b", "economics metaphor — state what it achieves"),
 ]
 _COLLOQUIAL = [(re.compile(p, re.I), why) for p, why in _COLLOQUIAL]
 
@@ -360,12 +374,73 @@ _INSIDER_CONTEXT = [
      "narrates the authoring process — state the claim and its basis"),
     (r"more than we (?:expected|anticipated)",
      "narrates the authoring process, not the work"),
+    # The workshop floor — paths, specs and implementation trivia. The reader
+    # has no checkout, no server and no JSON (REGISTER-LEAKS.md Leak 3).
+    (r"\b(?:analysis|scripts?|data|bin|src)/[\w.-]+/", "repo path — the reader has no checkout"),
+    (r"\b[\w/]+\.(?:py|sh|ipynb)\b", "script name — name the method, not the file"),
+    (r"\bmanifest table\b", "internal bookkeeping — not a result"),
+    (r"\bbyte[- ]identical\b", "implementation detail — 'the same'"),
+    (r"\bworkstation with\b", "our hardware — report runtime only if it is a claim"),
+    (r"\b\d+\s*(?:CPU\s*)?cores?\b[^.]{0,40}\bRAM\b", "our hardware — not a finding"),
+    (r"\bat the time of writing\b", "authoring moment — date it or drop it"),
+    (r"본 보고서 작성 시점", "작성 시점 기준 서술 — 날짜로 쓰거나 삭제"),
+    (r"전달받지 못(?:하|했)", "받지 못한 것에 대한 서술 — 보고서에는 수행한 것을 쓴다"),
+    (r"아직 수행하지 않았", "하지 않은 일 — 수행한 것만 쓴다"),
     # Reader-management asides — write one document for one reader.
     (r"for readers who\b", "reader-management aside — decide, don't offer options"),
     (r"readers who (?:want|prefer)\b", "reader-management aside — decide"),
     (r"a reader who prefers\b", "reader-management aside — decide"),
 ]
 _INSIDER_CONTEXT = [(re.compile(p, re.I), why) for p, why in _INSIDER_CONTEXT]
+# A claim is made, then a clause is appended that qualifies, disclaims,
+# pre-empts or justifies it. The author deletes the clause and keeps the claim:
+# 119 of 818 comments on AI-drafted prose are deletions, and this is most of
+# them — the largest single defect in the corpus. See
+# skills/paper-writing/REGISTER-LEAKS.md Leak 1 for the five shapes and the
+# test (delete it; if the claim still stands, the deletion WAS the fix).
+_DEFENSIVE_ASIDE = [
+    # Telling the reader how not to read a number.
+    (r"should not be (?:read|taken|interpreted|understood) as",
+     "reading instruction — report the measurement; its scope belongs once, in Methods"),
+    (r"would not mean what it appears to mean", "disclaimer — state what the value does measure"),
+    (r"is not a substitute for", "scope disclaimer — delete, or state the scope once in the Discussion"),
+    (r"\bis not designed to\b", "scope disclaimer — say what it is designed to do"),
+    (r"\bis not intended to\b", "scope disclaimer — say what it does"),
+    (r"\b(?:used or needed|needed or used)\b", "pre-empted objection — nobody asked"),
+    # Volunteering limits no reader has raised.
+    (r"\b(?:has|have|report|reports) (?:two|three) limits?\b",
+     "pre-emptive limit — a limitation goes once in the Discussion, as a statement"),
+    (r"\ba deeper caveat\b", "pre-emptive limit — state it once in the Discussion"),
+    (r"\bcarries a caveat\b", "pre-emptive limit — state the limitation, not that one exists"),
+    (r"\bone caution against\b", "pre-emptive limit — state the fact"),
+    # Our own correctness, advertised. Doing it right is the baseline.
+    (r"\bwe should say so\b", "self-virtue — report the result; honesty is not a finding"),
+    (r"rather than present(?:ing)? (?:them|it) as", "self-virtue — just report what it is"),
+    (r"\bas plainly as\b", "self-virtue — report both numbers and stop"),
+    (r"\bguaranteeing that\b", "self-virtue — describe the design, not its guarantee"),
+    (r"so that no result can", "self-virtue — describe the design"),
+    (r"and the manuscript says so", "self-reference — the manuscript is the text, not its witness"),
+    # Running ourselves down.
+    (r"\bthe wrong choice\b", "self-undermining — nobody writes this of their own method"),
+    (r"\bdeliberately narrow\b", "self-undermining — state the intended scope positively"),
+    (r"occupies a .{0,20}niche", "self-undermining — state what it is for"),
+    # Asserting the negative of something never claimed.
+    (r"\bwas not (?:benchmarked|measured|attempted|tested|added|run|performed)\b",
+     "states what was NOT done — write what was done, with its reason if a request was declined"),
+    # A declined request stated WITH its reason is the form /response-letter
+    # asks for ("we did not run X because it selects markers rather than
+    # building haplotypes"), so the reason clause exempts it; the bare
+    # assertion does not. Measured against the corpus: without this, the rule
+    # fires on the one shape the skills explicitly require.
+    (r"\bwe (?:did not|do not|deliberately do not)\b"
+     r"(?![^.]*\b(?:because|since|so that|as it|instead|rather than)\b)",
+     "states what was NOT done with no reason given — write what was done, or "
+     "name the declined request together with its reason (부정어를 최소화)"),
+    (r"^\s*No [a-z]+ (?:is|was|are|were) ",
+     "opens on a negation — lead with what the work does"),
+]
+_DEFENSIVE_ASIDE = [(re.compile(p, re.I | re.M), why) for p, why in _DEFENSIVE_ASIDE]
+
 # Procedure signals that (in force) do NOT belong in Results.
 _METHOD_CUES = re.compile(
     r"""(\b(?:was|were)\s+(?:performed|conducted|carried\s+out|prepared|
@@ -799,6 +874,12 @@ def lint_manuscript(state, slug: str) -> dict:
 
     # Flatten to (section_key, section_title, sentence, token_set) once.
     sents: list[tuple[str, str, str, set]] = []
+    # The same sentences WITHOUT the duplication token floor. `sents` exists for
+    # near-duplicate matching, which needs a minimum length to mean anything, and
+    # every later rule reused it — so a short sentence passed every check. The
+    # shortest sentences are the dangerous ones for the defensive-aside rule:
+    # "MDSearch was not benchmarked." is four tokens and is the canonical case.
+    all_sents: list[tuple[str, str, str]] = []
     unresolved: list[dict] = []
     # Whether the manuscript uses the real convention ANYWHERE, which decides
     # how a bare `[12]` should be read.
@@ -833,6 +914,7 @@ def lint_manuscript(state, slug: str) -> dict:
         body = _strip_markdown(sec.get("body", ""), drop_quotes=corr_by_key.get(key, False))
         for sent in _sentences(body):
             toks = _tokens(sent)
+            all_sents.append((key, title, sent))
             if len(toks) >= _DUP_MIN_TOKENS:
                 sents.append((key, title, sent, set(toks)))
         # Headings and short standalone lines never reach the sentence loop
@@ -1115,13 +1197,25 @@ def lint_manuscript(state, slug: str) -> dict:
                     "match": m.group(0), "note": why, "sentence": sent[:180],
                 })
 
+    # ── 5. defensive asides — a claim defended instead of reported ───────────
+    defensive: list[dict] = []
+    for _key, title, sent in all_sents:
+        for rx, why in _DEFENSIVE_ASIDE:
+            m = rx.search(sent)
+            if m:
+                defensive.append({
+                    "kind": "defensive_aside", "section": title,
+                    "match": m.group(0).strip(), "note": why, "sentence": sent[:180],
+                })
+
     duplication = duplication[:_MAX_PER_KIND]
+    defensive = defensive[:_MAX_PER_KIND]
     leakage = leakage[:_MAX_PER_KIND]
     style = style[:_MAX_PER_KIND]
     insider = insider[:_MAX_PER_KIND]
     unresolved = unresolved[:_MAX_PER_KIND]
     total = (len(duplication) + len(leakage) + len(style) + len(insider)
-             + len(unresolved))
+             + len(defensive) + len(unresolved))
     return {
         "slug": slug,
         "duplication": duplication,
@@ -1132,6 +1226,12 @@ def lint_manuscript(state, slug: str) -> dict:
         # withdraw the original explanation" is fine — the reviewer read the
         # original). Advisory, never a gate.
         "insider_context": insider,
+        # The largest defect class in the correction corpus, and the one a
+        # revision re-creates while fixing something else: a clause that
+        # defends, disclaims or pre-empts instead of reporting. Same judgement
+        # character as insider_context — the fix is usually deletion, but "a
+        # limitation stated once in the Discussion" is a legitimate hit.
+        "defensive_aside": defensive,
         # Counts toward `total`, unlike insider_context: this is not a judgement
         # call. A token no resolver handles is a reference that will be missing
         # from the finished document, and export is where that becomes permanent.
@@ -1156,6 +1256,7 @@ def lint_manuscript(state, slug: str) -> dict:
                 "section_leakage": len(leakage),
                 "style": len(style),
                 "insider_context": len(insider),
+                "defensive_aside": len(defensive),
                 "unresolved_tokens": len(unresolved),
             },
             "suppressed_by_profile": len(suppressed),

@@ -114,12 +114,19 @@ announces itself.
 
 ## The revised sentence is manuscript prose, not a patch note
 
-**Read `/paper-writing` §2a and §2b before editing.** Revision is where that
-register slips worst, and the reason is structural: addressing a comment is a
-"fix this" task, which is the same shape as patching code, so the replacement
-comes out sounding like a changelog entry rather than a sentence in a paper.
+**Read `/paper-writing` §2a, §2b and `REGISTER-LEAKS.md` before editing.**
+Revision is where register slips worst, and the reason is structural:
+addressing a comment is a "fix this" task, which is the same shape as patching
+code, so the replacement comes out sounding like a changelog entry rather than
+a sentence in a paper. `REGISTER-LEAKS.md` Leak 2 is this skill's own failure
+mode, measured: the author asks what a sentence means, the answer gets
+appended to it as a clause, and the clause is then deleted as an aside or a
+duplicate — three passes on one sentence, repeatedly. **A comment asking what
+a sentence means is a report that the sentence failed, not a request for an
+explanatory clause.** Rewrite that sentence; if the answer is a fact the
+reader needs, it is a sentence of its own, where the reader first needs it.
 
-Four failures specific to this skill:
+Five failures specific to this skill:
 
 1. **The edit reads as a reply.** *"As noted, we now clarify that…"*, *"This has
    been revised to…"*, *"we have added"* — that is the RESPONSE LETTER's voice
@@ -132,7 +139,12 @@ Four failures specific to this skill:
    *buys/pays for*, *surfaces*, *knob* (Korean: 직교한다, 산다/판다, 값싸다).
    Strongest here for the same reason as (1): you are in fix mode. §2a has the
    replacements; the rule is to write the measurement the metaphor stood in for.
-4. **The sentence is right and the paragraph is now wrong.** A patched line can
+4. **The answer arrives as a defending clause.** The comment is addressed by
+   appending a qualification, a disclaimer or a justification — the largest
+   deletion class in the correction corpus (`REGISTER-LEAKS.md` Leak 1). Delete
+   the clause and check whether the claim still stands; if it does, the deletion
+   was the fix. Write what was done, not what was not done.
+5. **The sentence is right and the paragraph is now wrong.** A patched line can
    be locally correct and break the tense, the terminology or the logical order
    around it. **Re-read the whole paragraph after every edit**, not the sentence
    you changed. A revision that answers one comment and leaves a register break

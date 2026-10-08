@@ -71,6 +71,24 @@ response letter's voice. The reader of the published paper never saw the
 comment. Flag every one — they are invisible to the author, who remembers the
 exchange.
 
+### 2b. Clauses that defend a claim instead of reporting it
+
+Reading instructions ("should not be read as"), limits no reader raised ("This
+comparison has two limits"), scope disclaimers ("is not a substitute for"),
+advertised honesty ("we should say so"), and assertions of what was NOT done.
+The largest class of correction in this project's history — see
+`/paper-writing` `REGISTER-LEAKS.md` Leak 1. Delete the clause and ask whether
+the claim still stands.
+
+### 2c. A session incident written up as a fact about the field
+
+"any per-cell tokenization of expression is unstable", "most such
+architectures suffer information leakage" — sentences of this shape are
+literature claims and need a citation. When the only source is something that
+happened while the work was being done, it is a result (report it with its
+evidence) or it is nothing. The gravest leak in the corpus, because it is a
+fabricated claim rather than a style defect.
+
 ### 3. Chat and engineering register
 
 *"The point is…"*, *"which is what makes this safe"*, *"that is the whole
