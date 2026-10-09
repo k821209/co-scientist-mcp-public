@@ -184,7 +184,7 @@ def _build_api_key_state() -> State:
     )
 
     # 5. Image generator — always the Cloud Function. The function gates on
-    #    plan_id (free → 403, Pro+ → quota check → gpt-image-2). Free-tier
+    #    plan_id (free → 403, Pro+ → quota check → gpt-image). Free-tier
     #    users who want image generation wire up their own provider through
     #    Claude Code (other MCPs / built-in tools) — outside our scope.
     gen_image_url = os.environ.get(

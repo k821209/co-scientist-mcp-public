@@ -64,7 +64,7 @@ def generate_image(
     figure_number: int | None = None,
     asset_filename: str | None = None,
     aspect_ratio: str = "1:1",
-    model: str = "gpt-image-2",
+    model: str | None = None,
     caption: str | None = None,
     overwrite: bool = False,
     apply_style: bool = True,

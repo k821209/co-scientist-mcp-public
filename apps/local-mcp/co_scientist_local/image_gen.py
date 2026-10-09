@@ -3,7 +3,7 @@
 Three production backends:
 - **LocalGeminiImageGenerator** — free tier, Google Gemini; uses the user's
   own GEMINI_API_KEY via google-generativeai.
-- **LocalOpenAIImageGenerator** — free tier, OpenAI gpt-image-2; uses the
+- **LocalOpenAIImageGenerator** — free tier, OpenAI gpt-image-2.5; uses the
   user's own OPENAI_API_KEY via the OpenAI REST API (no SDK dep).
 - **CloudFunctionImageGenerator** — subscribed tier; HTTPS POSTs to the
   Firebase Cloud Function at /generate_image, which validates the user's
@@ -46,6 +46,13 @@ def _multipart_body(fields: dict, files: dict) -> tuple[bytes, str]:
     return b"\r\n".join(out), f"multipart/form-data; boundary={boundary}"
 
 
+# The model the DIRECT-key path asks for when the caller names none. The
+# hosted path deliberately sends no model at all, so the Cloud Function's own
+# default decides and a model change is a function redeploy rather than an
+# upgrade every installed MCP has to take.
+DEFAULT_OPENAI_MODEL = "gpt-image-2.5-sunburst"
+
+
 def _openai_images_edit(*, api_key: str, prompt: str, image: bytes,
                         mask: bytes | None, size: str, model: str,
                         quality: str | None = None, timeout: int = 290) -> bytes:
@@ -55,7 +62,7 @@ def _openai_images_edit(*, api_key: str, prompt: str, image: bytes,
     import base64
     import json as _json
     import urllib.request
-    fields: dict = {"model": model or "gpt-image-2", "prompt": prompt,
+    fields: dict = {"model": model or DEFAULT_OPENAI_MODEL, "prompt": prompt,
                     "size": size, "n": "1"}
     if quality:
         fields["quality"] = quality
@@ -82,7 +89,7 @@ class ImageGenerator(Protocol):
         *,
         prompt: str,
         aspect_ratio: str = "1:1",
-        model: str = "gpt-image-2",
+        model: str | None = None,
         quality: str | None = None,
     ) -> bytes:
         """Generate an image. Returns the PNG (or other format) bytes.
@@ -99,7 +106,7 @@ class ImageGenerator(Protocol):
         image: bytes,
         mask: bytes | None = None,
         aspect_ratio: str = "1:1",
-        model: str = "gpt-image-2",
+        model: str | None = None,
         quality: str | None = None,
     ) -> bytes:
         """Edit `image` (PNG bytes) guided by `prompt`, optionally within the
@@ -158,12 +165,13 @@ class LocalGeminiImageGenerator:
 class LocalOpenAIImageGenerator:
     """Free-tier OpenAI: caller-supplied OPENAI_API_KEY, direct REST call.
 
-    Uses the OpenAI Images API (gpt-image-2; same /v1/images/generations
+    Uses the OpenAI Images API (gpt-image-2.5; same /v1/images/generations
     endpoint as gpt-image-1). Returns raw PNG bytes. Implemented with stdlib
     `urllib` to avoid an SDK dependency.
     """
 
-    # gpt-image-2 supported sizes (same as gpt-image-1). Map common aspect ratios.
+    # Supported sizes, unchanged from gpt-image-1 through 2.5 and verified
+    # against the live API. Map common aspect ratios onto them.
     SIZE_MAP = {
         "1:1": "1024x1024",
         "square": "1024x1024",
@@ -177,7 +185,7 @@ class LocalOpenAIImageGenerator:
 
     URL = "https://api.openai.com/v1/images/generations"
 
-    def __init__(self, *, api_key: str, default_model: str = "gpt-image-2") -> None:
+    def __init__(self, *, api_key: str, default_model: str | None = None) -> None:
         if not api_key:
             raise ValueError("api_key is required for LocalOpenAIImageGenerator")
         self._api_key = api_key
@@ -188,7 +196,7 @@ class LocalOpenAIImageGenerator:
         *,
         prompt: str,
         aspect_ratio: str = "1:1",
-        model: str = "gpt-image-2",
+        model: str | None = None,
         quality: str | None = None,
     ) -> bytes:
         import base64
@@ -197,7 +205,7 @@ class LocalOpenAIImageGenerator:
         import urllib.request
 
         size = self.SIZE_MAP.get(aspect_ratio, "1024x1024")
-        # gpt-image-2 always returns b64_json (no response_format param needed).
+        # gpt-image returns b64_json (no response_format param needed).
         payload: dict = {
             "model": model or self._default_model,
             "prompt": prompt,
@@ -232,7 +240,7 @@ class LocalOpenAIImageGenerator:
         raise RuntimeError(f"OpenAI response had no image data: {payload!r}")
 
     def edit(self, *, prompt, image, mask=None, aspect_ratio="1:1",
-             model="gpt-image-2", quality=None) -> bytes:
+             model=None, quality=None) -> bytes:
         import urllib.error
         size = self.SIZE_MAP.get(aspect_ratio, "1024x1024")
         try:
@@ -369,7 +377,7 @@ class FakeImageGenerator:
         *,
         prompt: str,
         aspect_ratio: str = "1:1",
-        model: str = "gpt-image-2",
+        model: str | None = None,
         quality: str | None = None,
     ) -> bytes:
         if self._quota_exceeded:
@@ -381,7 +389,7 @@ class FakeImageGenerator:
         return self._png
 
     def edit(self, *, prompt, image, mask=None, aspect_ratio="1:1",
-             model="gpt-image-2", quality=None) -> bytes:
+             model=None, quality=None) -> bytes:
         if self._quota_exceeded:
             raise QuotaExceeded("test-quota-exceeded")
         self.calls.append({

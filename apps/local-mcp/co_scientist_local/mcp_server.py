@@ -3090,7 +3090,7 @@ def build_mcp(state: State) -> FastMCP:
         figure_number: int | None = None,
         asset_filename: str | None = None,
         aspect_ratio: str = "1:1",
-        model: str = "gpt-image-2",
+        model: str | None = None,
         caption: str | None = None,
         overwrite: bool = False,
         apply_style: bool = True,
@@ -3100,15 +3100,19 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """Generate an image via the configured ImageGenerator (local or cloud-fn).
 
-        Default backend (hosted service) is OpenAI gpt-image-2. Requires a
-        Pro+ subscription — the /generate_image Cloud Function refuses with
-        403 for free-plan users.
+        Default backend (hosted service) is OpenAI's current image model —
+        `gpt-image-2.5-sunburst` as of 2026-10-09. Leave `model` unset to get
+        it: the service decides, so a model change is a function redeploy and
+        does not wait for every installed MCP to be upgraded. Pass a name only
+        to pin one deliberately. Requires a Pro+ subscription — the
+        /generate_image Cloud Function refuses with 403 for free-plan users.
 
         Supported aspect_ratio values: "1:1" (1024x1024), "16:9"/"3:2"/
         "landscape" (1536x1024), "9:16"/"2:3"/"portrait" (1024x1536).
 
-        `quality` (gpt-image: "low"/"medium"/"high"/"auto") is forwarded to the
-        provider when set; leave None for the provider default. Higher quality
+        `quality` (gpt-image: "low"/"medium"/"high"/"auto"; 2.5 also takes
+        "xhigh"/"max") is forwarded to the provider when set; leave None for
+        the provider default. Higher quality
         costs more. The chosen aspect_ratio and quality are stored on the figure
         so a dashboard re-render reuses the same shape.
 

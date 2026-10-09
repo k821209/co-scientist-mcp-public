@@ -152,7 +152,7 @@ def _apply_image_style(prompt: str, deck: dict) -> str:
     region in the deck inherits a consistent visual treatment without
     the agent having to repeat the style hint per slide. No-op when
     image_style is empty / missing. Style goes FIRST so the rest of the
-    prompt anchors the subject — gpt-image-2 weights early tokens.
+    prompt anchors the subject — gpt-image weights early tokens.
     """
     style = (deck.get("image_style") or "").strip()
     if not style:
