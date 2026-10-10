@@ -44,8 +44,21 @@ class InMemoryBackend(Backend):
     def delete_doc(self, path: str) -> bool:
         return self._docs.pop(path, None) is not None
 
-    def query_collection(self, path: str, field: str, value) -> list[tuple[str, dict]]:
-        return [(k, v) for k, v in self.list_collection(path) if v.get(field) == value]
+    def query_collection(self, path: str, field: str, value,
+                         op: str = "==") -> list[tuple[str, dict]]:
+        def keep(have) -> bool:
+            if op == "==":
+                return have == value
+            if have is None:
+                return False      # Firestore skips documents missing the field
+            try:
+                return have > value if op == ">" else have >= value
+            except TypeError:
+                return False
+            
+        if op not in ("==", ">", ">="):
+            raise ValueError(f"unsupported operator: {op!r}")
+        return [(k, v) for k, v in self.list_collection(path) if keep(v.get(field))]
 
     def list_collection(self, path: str) -> list[tuple[str, dict]]:
         parts = _split(path)

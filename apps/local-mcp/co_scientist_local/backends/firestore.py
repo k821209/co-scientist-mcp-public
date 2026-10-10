@@ -251,9 +251,12 @@ class FirestoreBackend(Backend):
         out.sort(key=lambda kv: kv[0])
         return out
 
-    def query_collection(self, path: str, field: str, value) -> list[tuple[str, dict]]:
+    def query_collection(self, path: str, field: str, value,
+                         op: str = "==") -> list[tuple[str, dict]]:
         from google.cloud.firestore_v1.base_query import FieldFilter
-        col = self._db.collection(path).where(filter=FieldFilter(field, "==", value))
+        if op not in ("==", ">", ">="):
+            raise ValueError(f"unsupported operator: {op!r}")
+        col = self._db.collection(path).where(filter=FieldFilter(field, op, value))
         out = [(snap.id, snap.to_dict() or {}) for snap in col.stream(timeout=_FS_TIMEOUT)]
         out.sort(key=lambda kv: kv[0])
         return out

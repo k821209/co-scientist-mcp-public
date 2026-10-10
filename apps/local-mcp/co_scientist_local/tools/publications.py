@@ -307,21 +307,48 @@ def revoke_passcode(state: State, pub_id: str, code_id: str) -> dict:
 # ─────────────────────────── responses ───────────────────────────
 
 
+# The documents a control page keeps in ONE place and rewrites, as opposed to
+# the per-message inbox docs that accumulate. A poller has to re-read these
+# every time (they change in place) and must not re-read the rest.
+FIXED_RESPONSE_DOCS = ("inbox", "approvals", "questions", "control")
+
+
 def list_responses(
     state: State, pub_id: str, *, collection: str = "responses",
+    since_seq: int | None = None,
 ) -> list[dict]:
     """What the published page has written back, oldest first.
 
     Each carries the `reviewer` label of the passcode used, enforced at write
     time by the rules — so two independent reviewers' judgements can be split
-    apart and compared without trusting anything the page said about itself."""
+    apart and compared without trusting anything the page said about itself.
+
+    `since_seq` is for a caller that polls: it returns the fixed documents
+    (which change in place) plus only the per-message documents stamped with a
+    higher `seq`. Without it the control-page poller re-read every message of
+    the session twice a second — 99 documents to discover nothing, 43 million
+    reads a day, 98% of this project's Firestore bill (measured 2026-10-10).
+    The conversation itself is not in these documents; they are a delivery
+    queue, and the session already holds the history it has taken in."""
     _require(state, pub_id)
+    base = state.project_path("publications", pub_id, collection)
     # The document id rides along, as it does on the page side
     # (`window.scivo.list` returns `id`), so the two sides are symmetric and the
     # owner can deduplicate or reply to a specific response without the page
     # having to stamp its own id into the data (feedback 3bf2aace3ba0).
-    rows = [{"id": doc_id, **d} for doc_id, d in state.backend.list_collection(
-        state.project_path("publications", pub_id, collection))]
+    if since_seq is None:
+        rows = [{"id": doc_id, **d} for doc_id, d in state.backend.list_collection(base)]
+    else:
+        rows = []
+        seen: set[str] = set()
+        for doc_id in FIXED_RESPONSE_DOCS:
+            doc = state.backend.get_doc(f"{base}/{doc_id}")
+            if doc is not None:
+                rows.append({"id": doc_id, **doc})
+                seen.add(doc_id)
+        for doc_id, d in state.backend.query_collection(base, "seq", since_seq, op=">"):
+            if doc_id not in seen:
+                rows.append({"id": doc_id, **d})
     rows.sort(key=lambda r: r.get("created_at") or r.get("updated_at") or "")
     return rows
 

@@ -53,13 +53,20 @@ class Backend(Protocol):
         """
         ...
 
-    def query_collection(self, path: str, field: str, value) -> list[tuple[str, dict]]:
-        """[(doc_id, data), ...] for children of `path` where `field` == `value`.
+    def query_collection(self, path: str, field: str, value,
+                         op: str = "==") -> list[tuple[str, dict]]:
+        """[(doc_id, data), ...] for children of `path` where `field op value`.
 
         Distinct from list_collection because the top-level `projects`
         collection is NOT listable: the security rule grants a project only to
         its owner, so an unfiltered stream is denied outright. The filter is
-        what makes the query satisfiable, not merely tidier."""
+        what makes the query satisfiable, not merely tidier.
+
+        `op` is a Firestore comparison — "==" or ">" are the ones in use. ">"
+        exists so a caller can ask for what is NEW rather than reading a
+        collection it has already read: the control-page poller was reading
+        every message of the session again twice a second, which is 98% of this
+        project's Firestore bill (measured 2026-10-10)."""
         ...
 
     # --- blobs ---------------------------------------------------------------
