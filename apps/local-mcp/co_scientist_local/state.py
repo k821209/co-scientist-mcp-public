@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from .backends import Backend
 
@@ -38,6 +38,12 @@ class State:
     rsync: "RsyncExecutor | None" = None
     pandoc: "PandocExecutor | None" = None
     image_gen: "ImageGenerator | None" = None
+    # This account's Firebase ID token, refreshed on demand. Needed to prove
+    # who we are to a Cloud Function — the image generator uses it, and so
+    # does reading a paper someone else shared with this account: a co-author
+    # share is addressed to a uid and /exchange_share_token refuses a bearer
+    # that cannot show it is that person.
+    get_id_token: "Callable[[], str] | None" = None
 
     def project_path(self, *parts: str) -> str:
         """Build a path rooted at the active project.

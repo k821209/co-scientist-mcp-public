@@ -53,6 +53,7 @@ from .tools import assets as _assets
 from .tools import cross_project as _cross
 from .tools import discussion as _discussion
 from .tools import publications as _publications
+from .tools import shared_papers as _shared_papers
 from .tools import studies as _studies
 from .tools import study_preview as _study_preview
 from .tools import grid_lint as _grid_lint
@@ -1392,6 +1393,36 @@ def build_mcp(state: State) -> FastMCP:
         out of the project."""
         return _publications.put_page_data(
             state, pub_id, collection=collection, doc_id=doc_id, data=data)
+
+    @mcp.tool()
+    def list_shared_papers(include_pending: bool = False) -> list[dict[str, Any]]:
+        """Papers OTHER accounts have shared with this one, as linked
+        co-author invitations — the "Shared with me" list on the dashboard.
+
+        Accepted invitations only unless `include_pending`. Each row carries
+        the `pid` and `slug` that `read_shared_paper` takes. These papers are
+        not in this project and are READ-ONLY: the grant covers that one
+        manuscript and nothing else of the owner's."""
+        return _shared_papers.list_shared_papers(state, include_pending=include_pending)
+
+    @mcp.tool()
+    def read_shared_paper(pid: str, slug: str,
+                          include_comments: bool = True) -> dict[str, Any]:
+        """Read a paper another account shared with this one: the paper
+        document, its sections in reading order, figures, tables, references,
+        exports and (unless turned off) its comment thread.
+
+        Use it when a colleague asks you to look at their draft. Take `pid` and
+        `slug` from `list_shared_papers`; the invitation has to be accepted in
+        the dashboard first.
+
+        READ-ONLY, and one paper: the share grant opens exactly those
+        collections, so there is nothing here to edit and nothing else of that
+        project to see. To leave remarks, tell the user to comment in the
+        dashboard — writing on someone else's manuscript is not done quietly
+        from a session."""
+        return _shared_papers.read_shared_paper(
+            state, pid, slug, include_comments=include_comments)
 
     @mcp.tool()
     def list_responses(pub_id: str, collection: str = "responses",

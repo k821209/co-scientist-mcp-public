@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-10-08"
+GUIDE_VERSION = "2026-10-11"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -780,6 +780,20 @@ progress. Routine writes (papers/sections/reviews) post to the timeline
 automatically; use `log_activity(title, detail)` for milestones or decisions
 that wouldn't otherwise appear. Read it back with `list_todos()` /
 `list_activity()`.
+
+## A paper someone else shared with you
+
+A colleague can link you as a co-author on one of their papers; once you accept
+in the dashboard it shows under "Shared with me". `list_shared_papers()` is
+that list from here, and `read_shared_paper(pid, slug)` reads the draft —
+sections in order, figures, tables, references and the comment thread — which
+is what you want when someone asks you to look at their manuscript.
+
+It is READ-ONLY and it is ONE paper. The grant opens that manuscript and
+nothing else of their project: not their servers, memory, materials or other
+papers. There is nothing to edit, so do not try and then report a permission
+error. To leave remarks, tell the user to comment in the dashboard — writing on
+someone else's manuscript is not something to do quietly from a session.
 
 **Materials** are user-uploaded source files shared across the project
 (PDFs to read, datasets, prior drafts, notes) — distinct from `references`

@@ -198,7 +198,7 @@ def _build_api_key_state() -> State:
 
     return State(
         project_id=project_id, owner_uid=owner_uid, backend=backend,
-        image_gen=image_gen,
+        image_gen=image_gen, get_id_token=auth_client.get_id_token,
     )
 
 
