@@ -595,6 +595,20 @@ def _comment_path(state: State, slug: str, deck_id: str, slide_id: str,
     return _comments_path(state, slug, deck_id, slide_id) + "/" + comment_id
 
 
+def _slide_of_comment(state: State, slug: str, deck_id: str, comment_id: str) -> str:
+    """Which slide carries `comment_id`. Comment ids are unique within a deck,
+    so the caller does not have to repeat what list_deck_comments told them."""
+    for slide in list_slides(state, slug, deck_id):
+        sid = slide.get("slide_id") or slide.get("id")
+        if not sid:
+            continue
+        if state.backend.get_doc(_comment_path(state, slug, deck_id, sid, comment_id)):
+            return str(sid)
+    raise NotFound(
+        f"comment not found anywhere in deck {deck_id!r}: {comment_id!r} — "
+        "list_deck_comments(slug, deck_id) shows what is open")
+
+
 def list_deck_comments(
     state: State, slug: str, deck_id: str, *, status: str | None = "open",
 ) -> list[dict]:
@@ -626,15 +640,23 @@ def list_deck_comments(
 
 
 def resolve_deck_comment(
-    state: State, slug: str, deck_id: str, slide_id: str, comment_id: str,
-    *, status: str = "resolved",
+    state: State, slug: str, deck_id: str, comment_id: str,
+    slide_id: str | None = None, *, status: str = "resolved",
 ) -> dict:
     """Mark a slide comment `resolved` (addressed) or `rejected` (declined)
-    — or `open` to reopen it."""
+    — or `open` to reopen it.
+
+    `slide_id` is optional: a comment id is unique within the deck, so it is
+    found by searching the slides when it is not given. It used to be required
+    even though `list_deck_comments` hands both back together, and the
+    validation error arrived after the agent had already decided the comment
+    was handled (feedback 67de38826ad2)."""
     if status not in _VALID_COMMENT_STATUS:
         raise ValueError(
             f"status must be one of {sorted(_VALID_COMMENT_STATUS)}"
         )
+    if slide_id is None:
+        slide_id = _slide_of_comment(state, slug, deck_id, comment_id)
     path = _comment_path(state, slug, deck_id, slide_id, comment_id)
     if state.backend.get_doc(path) is None:
         raise NotFound(f"comment not found: {comment_id!r}")

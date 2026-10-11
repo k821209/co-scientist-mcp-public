@@ -3381,14 +3381,16 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def resolve_deck_comment(
-        slug: str, deck_id: str, slide_id: str, comment_id: str,
-        status: str = "resolved",
+        slug: str, deck_id: str, comment_id: str,
+        slide_id: str | None = None, status: str = "resolved",
     ) -> dict[str, Any]:
         """Close a slide comment once addressed: status 'resolved'
         (done) or 'rejected' (declined), or 'open' to reopen.
+
+        `slide_id` is optional — a comment id is unique within the deck.
         """
         return _decks.resolve_deck_comment(
-            state, slug, deck_id, slide_id, comment_id, status=status,
+            state, slug, deck_id, comment_id, slide_id, status=status,
         )
 
     @mcp.tool()

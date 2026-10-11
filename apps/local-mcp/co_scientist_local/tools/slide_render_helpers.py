@@ -637,6 +637,13 @@ def table(slide, *, headers: list[str], rows: list[list[str]],
     in the editor, headers + body get distinct styling, and the
     structure is grep-able.
 
+    **`height` is a MINIMUM, not a limit.** A native PPTX table grows to fit
+    its content: the moment one cell wraps to a second line the table renders
+    taller than asked and prints over whatever sits below it. Do not place
+    anything directly under a table without leaving room for that — or check
+    `preview_slide`, which now measures the rendered height and reports
+    `table_overflow` when it exceeds the declared one (feedback 5fcb1bbc4df8).
+
     The header row gets a **solid background** (`header_fill`, default
     `palette["accent"]`) with auto-contrasting text — accent-on-white
     headers were nearly invisible on light themes (todo table-fix).

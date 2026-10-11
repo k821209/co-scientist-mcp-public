@@ -264,6 +264,17 @@ _PYPPTX_SNIPPET_SIGNALS = (
     "p.title_two_content", "p.title_and_image_grid",
     "MSO_SHAPE.", "Inches(", "Pt(",
 )
+# What an EXTERNAL image script looks like. The signal list above is an
+# allowlist, so every helper added since it was written (h.callout, h.vstack,
+# …) fell through it and a slide built only from those was inferred
+# "code-shape" — which preview_slide refuses, pointing at render_slide, which
+# cannot help either (feedback 67de38826ad2). An allowlist of helper names
+# cannot stay complete; what distinguishes the two populations is what the
+# script DOES, so code is python-pptx unless it plots.
+_EXTERNAL_SCRIPT_SIGNALS = (
+    "matplotlib", "pyplot", "plt.", "savefig", "seaborn", "sns.",
+    "PIL.Image", "cv2.", "plotly", "graphviz",
+)
 
 
 def _infer_render_mode(slide: dict) -> str:
@@ -275,7 +286,8 @@ def _infer_render_mode(slide: dict) -> str:
       figure_number                → "paper-figure"
       image_blob_path              → "ai-image" (already-rendered image)
       prompt (no blob yet)         → "ai-image" (will be generated)
-      code (no python-pptx signal) → "code-shape" (external PNG script)
+      code that plots (matplotlib …) → "code-shape" (external PNG script)
+      code, anything else          → "code" (python-pptx)
       otherwise                    → "text"
 
     A python-pptx `code` snippet beats `regions[]`: a code slide
@@ -298,7 +310,9 @@ def _infer_render_mode(slide: dict) -> str:
     if (slide.get("prompt") or "").strip():
         return "ai-image"
     if code:
-        return "code-shape"
+        if any(sig in code for sig in _EXTERNAL_SCRIPT_SIGNALS):
+            return "code-shape"
+        return "code"
     return "text"
 
 
@@ -1177,6 +1191,24 @@ _CONTAINER_OVERLAP = 0.7
 _EMU_PER_PT = 12700
 
 
+# Which findings a deck must not ship with, and which are a judgement the
+# author makes. `tiny_image` is right about a figure and wrong about a badge —
+# a country flag enlarged to 1.3" is not a title slide any more — and with no
+# way to say "deliberate" the done-gate could never read zero, which teaches
+# the next agent that some warnings are decoration (feedback 67de38826ad2).
+# Nothing is suppressed: every finding is still returned, and each now says
+# which kind it is, so the gate has something unambiguous to read.
+ADVISORY_LAYOUT_KINDS = frozenset({
+    "tiny_image",                 # a badge, a QR code, an icon row
+    "inner_margin_tight",         # close to the edge, not over it
+    "uneven_card_heights",        # deliberate asymmetry is a design choice
+})
+
+
+def layout_severity(kind: str) -> str:
+    return "advisory" if kind in ADVISORY_LAYOUT_KINDS else "blocking"
+
+
 def _scan_deck_layout(prs, sh: int) -> list[dict]:
     """Flag layout problems the text-overlap detector misses (it only looks at
     text↔text): a picture too small to read, a picture overlapping the title,
@@ -1252,7 +1284,9 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
         pics: list[tuple] = []
         header_texts: list[tuple] = []
         autoshapes: list[tuple] = []          # (z, l, t, w, h) — bands/cards
-        boxes: list[tuple] = []               # (z, l, t, w, h, filled) — shapes+pics for overlap
+        boxes: list[tuple] = []               # (z, l, t, w, h, filled) — shapes+pics+tables for overlap
+        tables: list[tuple] = []              # (z, l, t, w, declared_h, effective_h)
+        table_overflows: list[dict] = []      # filled in the loop, added once `issues` exists
         footer_texts: list[tuple] = []        # (l, t, w, h) — labels in the footer band
         labels: list[tuple] = []              # (z, l, t, w, h, text)
         for z, shape in enumerate(slide.shapes):
@@ -1265,6 +1299,22 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 pics.append((l, t, w, h))
                 boxes.append((z, l, t, w, h, True))
+            if getattr(shape, "has_table", False):
+                # The RENDERED height: a table that outgrew its declared one is
+                # exactly the case this missed.
+                eff_h = max(h, _effective_table_bottom(shape, t, h) - t)
+                tables.append((z, l, t, w, h, eff_h))
+                boxes.append((z, l, t, w, eff_h, True))
+                if eff_h > h * 1.05:
+                    table_overflows.append({
+                        "kind": "table_overflow",
+                        "declared_in": f'{h / _EMU_PER_IN:.2f}"',
+                        "rendered_in": f'{eff_h / _EMU_PER_IN:.2f}"',
+                        "note": ("the table's cells wrap to more lines than its declared "
+                                 "height allows, so it renders taller and covers whatever "
+                                 "is below it — shorten the wrapping cells, widen their "
+                                 "column, or move what follows down"),
+                    })
             if shape.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
                 filled = False
                 try:
@@ -1301,6 +1351,7 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                         footer_texts.append((l, t, w, h))
 
         issues: list[dict] = []
+        issues.extend(table_overflows)
         for pic in pics:
             l, t, w, h = pic
             if w < min_emu and h < min_emu and not _is_corner_logo(l, t, w, h):
@@ -1568,7 +1619,16 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                     })
 
         if issues:
-            out.append({"slide_number": idx, "issues": issues})
+            for issue in issues:
+                issue.setdefault("severity", layout_severity(issue.get("kind", "")))
+            out.append({
+                "slide_number": idx,
+                "issues": issues,
+                # The done-gate reads this: advisory findings are the author's
+                # call, blocking ones are defects.
+                "blocking": sum(1 for i in issues if i["severity"] == "blocking"),
+                "advisory": sum(1 for i in issues if i["severity"] == "advisory"),
+            })
     # Deck-level: cards padded differently from slide to slide. Each slide
     # passes on its own; the inconsistency is only visible flipping through.
     if len(deck_card_gaps) >= 3:
@@ -2015,6 +2075,57 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
         # Whole-slide patterns
         "p": p, "patterns": p,
     }
+
+
+def _effective_table_bottom(shape, top: int, height: int) -> int:
+    """Bottom EMU of a TABLE, accounting for cells whose text wraps.
+
+    `h.table(..., height=...)` is a request, not a constraint: a native PPTX
+    table grows past it the moment a cell wraps to a second line, and the extra
+    rows print over whatever sits below. The lint could not see any of that
+    because a table is a GraphicFrame — neither a picture nor an autoshape nor
+    a text frame — so it was in none of the collections the overlap and bounds
+    checks read. Empty warning lists on a slide whose last row was printed
+    through its caption (feedback 5fcb1bbc4df8, twice in one deck).
+
+    Measured like a textbox: per cell, at that cell's own font size, across
+    that column's width, plus the cell margins; a row is as tall as its tallest
+    cell and never shorter than declared.
+    """
+    from pptx.util import Pt  # type: ignore
+    from .slide_render_helpers import measure_text_height_pt
+    declared = top + height
+    try:
+        table = shape.table
+        columns = [c.width for c in table.columns]
+    except Exception:
+        return declared
+    total = 0
+    for row in table.rows:
+        row_h = row.height or 0
+        for index, cell in enumerate(row.cells):
+            width = columns[index] if index < len(columns) else 0
+            if not width:
+                continue
+            inner = max(1, width - (cell.margin_left or 0) - (cell.margin_right or 0))
+            measured_pt = 0.0
+            for para in cell.text_frame.paragraphs:
+                sizes = [r.font.size.pt for r in para.runs if r.font.size is not None]
+                text = para.text or ""
+                if not text.strip():
+                    measured_pt += (max(sizes) if sizes else 11) * 0.8
+                    continue
+                # A cell with no explicit run size is the common case in a
+                # generated table, so unlike the textbox path this estimates at
+                # the deck's body size rather than giving up: giving up here
+                # would put the check back where it was, silent.
+                font_pt = int(round(max(sizes))) if sizes else 11
+                measured_pt += measure_text_height_pt(
+                    text, max_width_emu=inner, font_pt=font_pt, line_spacing=1.15)
+            cell_emu = int(Pt(measured_pt)) + (cell.margin_top or 0) + (cell.margin_bottom or 0)
+            row_h = max(row_h, cell_emu)
+        total += row_h
+    return max(declared, top + total) if total else declared
 
 
 def _effective_text_bottom(shape, top: int, width: int, height: int) -> int:

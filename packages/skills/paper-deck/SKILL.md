@@ -647,7 +647,10 @@ HELPERS  (h.* — primitives)
                                                           # =None hides it
                                                           # (todo 009 B)
   h.table(slide, *, headers, rows, left, top, width,      # native pptx TABLE
-          height, palette, fonts, type_scale,             # (todo 009 C)
+          height, palette, fonts, type_scale,             # height is a MINIMUM:
+                                                          # a wrapping cell makes
+                                                          # the table taller and it
+                                                          # covers what is below
           first_col_emphasis=False,                       # header: solid bg
           header_fill=None, valign="middle")              # +auto-contrast text
   h.image_path([slide,] path, *, left, top, width,        # embed local PNG
