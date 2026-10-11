@@ -131,6 +131,15 @@ def add_section(
     }
     state.backend.set_doc(path, doc)
     _regenerate_manuscript(state, slug)
+    # The same guardrail update_section has always had. Creating a section is
+    # the NORMAL way a document is built, so a body written here carried
+    # exactly the risk the warning describes and was never told about it — the
+    # author only found out if they happened to rewrite that section later,
+    # and four sections sat with unregistered tables for two hours before an
+    # unrelated edit surfaced it (feedback 306900c4f405).
+    warnings = inline_object_warnings(body)
+    if warnings:
+        return {**doc, "warnings": warnings}
     return doc
 
 

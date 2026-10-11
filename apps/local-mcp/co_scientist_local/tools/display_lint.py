@@ -111,8 +111,10 @@ def inline_object_warnings(body: str) -> list[str]:
     if nt:
         out.append(
             f"{nt} inline markdown table(s) detected — these are NOT registered "
-            f"Table objects: they won't appear in the Tables panel (list_tables) "
-            f"and can be dropped on a later rewrite. Register them with add_table."
+            f"Table objects: they won't appear in the Tables panel (list_tables), "
+            f"and the next agent to rewrite this section's body will not know they "
+            f"were meant to survive. Nothing server-side deletes them. Register "
+            f"them with add_table."
         )
     if ni:
         out.append(
