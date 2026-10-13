@@ -67,7 +67,15 @@ def update_section(
     state.backend.update_doc(path, fields)
 
     # Bump paper's updated_at to feed list_papers ordering and dashboard "last activity"
-    state.backend.update_doc(_paper_path(state, slug), {"updated_at": fields["updated_at"]})
+    paper_fields: dict = {"updated_at": fields["updated_at"]}
+    if key == "abstract" and body is not None:
+        # The missing half of the mirror. update_paper(abstract=…) has always
+        # written this section, but a section edit left `paper.abstract`
+        # stale — so the two drifted, and the next update_paper wrote the old
+        # field text over the newer section and deleted an author's clause
+        # silently (feedback 5862140d9f73). One store, both directions.
+        paper_fields["abstract"] = body
+    state.backend.update_doc(_paper_path(state, slug), paper_fields)
 
     _regenerate_manuscript(state, slug)
     log_event(

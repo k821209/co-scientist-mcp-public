@@ -162,6 +162,41 @@ def list_papers(
     return [{k: v for k, v in p.items() if k in keep} for p in papers]
 
 
+def _sentences_for_drop_check(text: str) -> list[str]:
+    """Sentence-ish pieces of an abstract, for noticing what an overwrite
+    would delete. Deliberately crude: it only has to recognise a clause that
+    vanished, not parse prose."""
+    import re
+    parts = re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    return [" ".join(p.split()) for p in parts if len(" ".join(p.split())) >= 25]
+
+
+def abstract_drop_warnings(current: str, incoming: str) -> list[str]:
+    """Sentences the section has that `incoming` does not.
+
+    `paper.abstract` and the `abstract` section used to drift — the section
+    could be edited without the field following — and then
+    `update_paper(abstract=…)` wrote the stale field over the section and an
+    author's clause from months earlier was gone, with a plausible word count
+    and no warning (feedback 5862140d9f73). Both directions now mirror, so
+    they cannot drift again; this catches the other way to lose text, which is
+    writing from something read before someone else edited it."""
+    if not (current or "").strip():
+        return []
+    incoming_flat = " ".join((incoming or "").split())
+    dropped = [s for s in _sentences_for_drop_check(current) if s not in incoming_flat]
+    if not dropped:
+        return []
+    shown = "; ".join(f'"{s[:90]}…"' if len(s) > 90 else f'"{s}"' for s in dropped[:3])
+    more = f" (+{len(dropped) - 3} more)" if len(dropped) > 3 else ""
+    return [
+        f"{len(dropped)} sentence(s) present in the abstract section are missing from "
+        f"the text just written, and have been replaced: {shown}{more}. If that was "
+        f"not intended, the previous text is above — put it back with "
+        f"update_section(slug, 'abstract', body=…)."
+    ]
+
+
 def get_paper_state(state: State, slug: str) -> dict:
     """Return paper doc + sections + manuscript text in one bundle."""
     paper = state.backend.get_doc(_paper_path(state, slug))
@@ -189,6 +224,23 @@ def get_paper_state(state: State, slug: str) -> dict:
         derived = _derive_sync(state, slug)
         if derived:
             paper["submission_sync"] = derived
+    # A paper that drifted BEFORE both directions mirrored still has two
+    # different abstracts, and `paper.abstract` is the natural place for an
+    # agent to read one from. Say so rather than let it be read as current.
+    section_abstract = next(
+        (sec.get("body") or "" for sec in sections if sec.get("key") == "abstract"), None)
+    if section_abstract is not None:
+        field = " ".join((paper.get("abstract") or "").split())
+        body = " ".join(section_abstract.split())
+        if field and body and field != body:
+            paper["abstract_sync"] = {
+                "state": "diverged",
+                "note": ("paper.abstract and the abstract SECTION hold different text. "
+                         "The section is what the dashboard renders and what export and "
+                         "word counts read, so treat it as the live one. Writing either "
+                         "now mirrors into the other; update_section(slug, 'abstract') "
+                         "settles it."),
+            }
     return {
         "paper": paper,
         "sections": sections,
@@ -212,7 +264,14 @@ def update_paper(
 
     `abstract` updates the paper-doc metadata field AND mirrors into the
     `abstract` section body (the source of truth the dashboard renders and
-    export/word-count read), so the two never drift apart.
+    export/word-count read). `update_section(slug, "abstract")` mirrors back
+    the other way, so the two cannot drift — they did, and then this call
+    wrote the stale field over a months-old author edit (feedback
+    5862140d9f73).
+
+    Returns `warnings` when the incoming abstract drops whole sentences the
+    section had: replacing text is a legitimate edit, writing from a copy that
+    someone else has since edited is not, and the two look identical from here.
     """
     path = _paper_path(state, slug)
     existing = state.backend.get_doc(path)
@@ -231,9 +290,12 @@ def update_paper(
             raise ValueError(f"doc_type must be one of {DOC_TYPES}, got {doc_type!r}")
         fields["doc_type"] = dt
     state.backend.update_doc(path, fields)
+    warnings: list[str] = []
     if abstract is not None:
         sec_path = _section_path(state, slug, "abstract")
-        if state.backend.get_doc(sec_path) is not None:
+        section = state.backend.get_doc(sec_path)
+        if section is not None:
+            warnings = abstract_drop_warnings(section.get("body") or "", abstract)
             state.backend.update_doc(sec_path, {
                 "body": abstract,
                 "word_count": word_count(abstract),
@@ -241,7 +303,10 @@ def update_paper(
             })
     if title is not None or abstract is not None or authors is not None:
         _regenerate_manuscript(state, slug)
-    return state.backend.get_doc(path)
+    out = state.backend.get_doc(path)
+    if warnings:
+        return {**out, "warnings": warnings}
+    return out
 
 
 def set_paper_authors(state: State, slug: str, authors: list) -> dict:

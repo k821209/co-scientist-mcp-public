@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "co-scientist-local"
-version = "0.1.20261011.post2"
+version = "0.1.20261013"
 description = "Local MCP server for co-scientist-cloud (Claude Code <-> Firestore)"
 requires-python = ">=3.11"
 dependencies = [
