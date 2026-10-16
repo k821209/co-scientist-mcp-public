@@ -57,6 +57,17 @@ NODE_SHAPES = {
 }
 DEFAULT_SHAPE = "box"
 
+# Who placed a node. Every coordinate used to read as the user's, so an agent
+# could not tidy a drawing it had just made itself: a 20-node plan whose labels
+# ran three lines deep overlapped, the user asked for it to be spread out, and
+# the only route was `write_graph(supersedes=…)` — which left 11,000 characters
+# of discussion attached to the superseded picture while the one that stands
+# had no argument behind it (feedback 58617e809164). The distinction is cheap:
+# the dashboard stamps "user" on the node a person dragged, and nothing else
+# does.
+POS_BY_AGENT = "agent"
+POS_BY_USER = "user"
+
 # What a drawing IS. One project held a structure diagram, a measurement map
 # whose numbers change with every result, a roadmap, and two revisions of one of
 # them — flat in a single list, five drawings read as five versions of one, and
@@ -139,6 +150,11 @@ def _norm_nodes(raw: list[dict], *, taken: set[str] | None = None) -> list[dict]
         for axis in ("x", "y"):
             if isinstance(n.get(axis), (int, float)):
                 node[axis] = float(n[axis])
+        # WHO put it there. Carried through when the file already says, else
+        # "agent" for a coordinate arriving through this API — the dashboard is
+        # the only thing that writes "user", on the node a person dragged.
+        if "x" in node or "y" in node:
+            node["pos_by"] = POS_BY_USER if n.get("pos_by") == POS_BY_USER else POS_BY_AGENT
         out.append(node)
     return out
 
@@ -256,6 +272,7 @@ def _layout(nodes: list[dict], edges: list[dict]) -> list[dict]:
         per_col[col] = row + 1
         n["x"] = float(_ORIGIN_X + col * _COL_STEP)
         n["y"] = float(base_y + row * _ROW_STEP)
+        n["pos_by"] = POS_BY_AGENT     # placed here, so movable from here
     return nodes
 
 
@@ -364,13 +381,24 @@ def write_graph(
     ai_note: str | None = None,
     graph_kind: str | None = None,
     supersedes: str | None = None,
+    migrate_comments: bool = False,
 ) -> dict:
     """Create a new graph material from nodes and edges.
 
     `supersedes` marks this as the REVISION of an earlier graph. The old one is
     kept and marked, never deleted — same rule as `record_decision`, and for the
     same reason: a record that can quietly lose an entry is one nobody can rely
-    on."""
+    on.
+
+    `migrate_comments=True` moves the old graph's discussion thread onto this
+    revision. A revision is "a new version of the same picture", so the
+    argument about that picture belongs with the version that stands: without
+    this, following a survey from the Discussion tab lands on a graph marked
+    superseded while the current one carries no reasoning, and re-posting by
+    hand leaves the same text in two places to drift (feedback 58617e809164).
+    Reach for `edit_graph(move_nodes=…)` first, though — if the revision exists
+    only to spread a crowded layout, there is no need for a new graph at all.
+    """
     ns = _norm_nodes(nodes)
     if not ns:
         raise ValueError("a graph needs at least one node")
@@ -416,11 +444,14 @@ def write_graph(
         "updated_at": now,
     }
     state.backend.set_doc(_material_path(state, material_id), doc)
+    migrated: list[str] = []
     if prior is not None:
         state.backend.update_doc(_material_path(state, supersedes), {
             "superseded_by": material_id, "superseded_at": now,
         })
-    return {
+        if migrate_comments:
+            migrated = _migrate_comments(state, supersedes, material_id)
+    out = {
         "material_id": material_id,
         "filename": filename,
         "title": title,
@@ -430,6 +461,31 @@ def write_graph(
         "edges": es,
         "dashboard_url": state.dashboard_url("materials"),
     }
+    if migrate_comments:
+        out["migrated_comments"] = len(migrated)
+    return out
+
+
+def _migrate_comments(state: State, old_graph_id: str, new_graph_id: str) -> list[str]:
+    """Move a graph's discussion thread onto its revision.
+
+    The comment keeps `migrated_from_graph_id`, so the thread's own history
+    stays answerable — which version of the drawing was on screen when this was
+    written is part of what a comment means.
+    """
+    from . import discussion as _discussion
+    moved: list[str] = []
+    for row in _discussion.list_discussion(state, graph_id=old_graph_id):
+        cid = row.get("comment_id")
+        if not cid:
+            continue
+        state.backend.update_doc(
+            state.project_path("discussion_comments", cid),
+            {"graph_id": new_graph_id, "migrated_from_graph_id": old_graph_id,
+             "migrated_at": now_iso()},
+        )
+        moved.append(cid)
+    return moved
 
 
 def edit_graph(
@@ -442,15 +498,29 @@ def edit_graph(
     remove_nodes: list[str] | None = None,
     add_edges: list[dict] | None = None,
     remove_edges: list[dict] | None = None,
+    move_nodes: dict | None = None,
+    force_positions: bool = False,
     ai_note: str | None = None,
     graph_kind: str | None = None,
 ) -> dict:
     """Amend an existing graph in place, leaving everything not mentioned alone.
 
+    Called with nothing but `material_id` it reads the graph back, which is
+    what `read_graph` is for; it is here because an edit usually starts with a
+    look and the round trip is free.
+
     `rename_nodes` maps node id (or current label) → new label, or → a dict of
     fields (`label`, `kind`, `shape`). `remove_edges` entries are
     `{"from","to"}` pairs or `{"id"}`. Removing a node also removes every edge
     touching it.
+
+    `move_nodes` maps node id (or label) → `{"x": …, "y": …}`, and is how you
+    tidy a drawing you made: a node the USER dragged is left where they put it
+    and its id comes back in `kept_user_positions`, so you can say "three boxes
+    are where you moved them, so I left those". Spread a crowded graph by
+    moving its nodes rather than by `write_graph(supersedes=…)` — a revision
+    leaves the thread of comments attached to the old picture.
+    `force_positions=True` overrides a user's placement; ask first.
     """
     doc, graph = _load(state, material_id)
     nodes = _norm_nodes(graph["nodes"])
@@ -485,6 +555,26 @@ def edit_graph(
     if add_nodes:
         nodes = nodes + _norm_nodes(add_nodes, taken={n["id"] for n in nodes})
 
+    kept_user_positions: list[str] = []
+    moved: list[str] = []
+    if move_nodes:
+        for ref, pos in move_nodes.items():
+            nid = _resolve(ref, nodes, where="move_nodes")
+            target = next(n for n in nodes if n["id"] == nid)
+            if not isinstance(pos, dict):
+                raise ValueError(
+                    f"move_nodes[{ref!r}] is not an object — expected "
+                    '{"x": …, "y": …}')
+            if any(not isinstance(pos.get(a), (int, float)) for a in ("x", "y")):
+                raise ValueError(
+                    f"move_nodes[{ref!r}] needs numeric x and y, got {pos!r}")
+            if target.get("pos_by") == POS_BY_USER and not force_positions:
+                kept_user_positions.append(nid)
+                continue
+            target["x"], target["y"] = float(pos["x"]), float(pos["y"])
+            target["pos_by"] = POS_BY_AGENT
+            moved.append(nid)
+
     if remove_edges:
         for spec in remove_edges:
             if not isinstance(spec, dict):
@@ -518,7 +608,7 @@ def edit_graph(
         fields["ai_note"] = ai_note
         fields["description"] = ai_note
     state.backend.update_doc(_material_path(state, material_id), fields)
-    return {
+    out = {
         "material_id": material_id,
         "filename": doc.get("filename"),
         "graph_kind": fields.get("graph_kind", doc.get("graph_kind")),
@@ -527,3 +617,16 @@ def edit_graph(
         "edges": edges,
         "dashboard_url": state.dashboard_url("materials"),
     }
+    if move_nodes:
+        out["moved"] = moved
+        # Named, not counted: the point is to be able to tell the user WHICH
+        # boxes they own, rather than to report a number they cannot act on.
+        out["kept_user_positions"] = kept_user_positions
+        if kept_user_positions:
+            out["kept_user_positions_note"] = (
+                f"{len(kept_user_positions)} node(s) are where the user dragged "
+                "them and were left alone: "
+                + ", ".join(kept_user_positions)
+                + ". Say so rather than silently leaving the graph half-tidied; "
+                "force_positions=True overrides, which is the user's call.")
+    return out

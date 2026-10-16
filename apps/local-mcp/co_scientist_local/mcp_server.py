@@ -1547,6 +1547,7 @@ def build_mcp(state: State) -> FastMCP:
         ai_note: str | None = None,
         graph_kind: str | None = None,
         supersedes: str | None = None,
+        migrate_comments: bool = False,
     ) -> dict[str, Any]:
         """Draw a NEW graph for the user, visible and editable in the
         Discussion tab. Good for making an analysis flow, a sample/cross design, or a
@@ -1581,12 +1582,22 @@ def build_mcp(state: State) -> FastMCP:
         new version of the SAME drawing; a different drawing is just a new
         graph.
 
-        Positions are laid out for you; the user rearranges them and that
-        arrangement is then preserved.
+        `migrate_comments=True` (with `supersedes`) moves the old graph's
+        discussion onto this revision, so the argument about the picture stays
+        with the version that stands instead of being left on the superseded
+        one. Without it, a survey followed from the Discussion tab lands on a
+        retired drawing and the current one has nothing behind it.
+
+        Positions are laid out for you, and the user rearranges them. To tidy a
+        layout you made yourself — crowding, overlap, columns too close — use
+        `edit_graph(move_nodes=…)`; it leaves boxes the user dragged alone and
+        tells you which. A revision is for a changed drawing, not a changed
+        arrangement.
         """
         return _graphs.write_graph(
             state, title=title, nodes=nodes, edges=edges, ai_note=ai_note,
             graph_kind=graph_kind, supersedes=supersedes,
+            migrate_comments=migrate_comments,
         )
 
     @mcp.tool()
@@ -1598,23 +1609,34 @@ def build_mcp(state: State) -> FastMCP:
         remove_nodes: list[str] | None = None,
         add_edges: list[dict[str, Any]] | None = None,
         remove_edges: list[dict[str, Any]] | None = None,
+        move_nodes: dict[str, Any] | None = None,
+        force_positions: bool = False,
         ai_note: str | None = None,
         graph_kind: str | None = None,
     ) -> dict[str, Any]:
         """Amend an existing graph. Anything you don't mention is left exactly
-        as it is — including where the user dragged each box, which is why you
-        should edit rather than rewrite a graph the user has touched.
+        as it is, so edit rather than rewrite a graph the user has touched.
+        Called with only `material_id` it reads the graph back.
 
         `rename_nodes`: {"trimming": "Trimming (fastp)"} or
         {"trimming": {"label": "...", "kind": "step", "shape": "diamond"}}.
         `remove_edges`: [{"from": "a", "to": "b"}] or [{"id": "e1234abcd"}].
         Removing a node removes its edges too.
+
+        `move_nodes`: {"toxprot": {"x": 60, "y": 300}, ...} — how you spread a
+        drawing of your own that came out crowded. A box the USER dragged is
+        left where they put it and its id comes back in `kept_user_positions`;
+        tell them which ones rather than leaving the graph half-tidied.
+        `force_positions=True` overrides that, and is the user's call to make.
+        Prefer this over `write_graph(supersedes=…)` for a layout fix: a
+        revision leaves the discussion thread on the old picture.
         """
         return _graphs.edit_graph(
             state, material_id, title=title, add_nodes=add_nodes,
             rename_nodes=rename_nodes, remove_nodes=remove_nodes,
-            add_edges=add_edges, remove_edges=remove_edges, ai_note=ai_note,
-            graph_kind=graph_kind,
+            add_edges=add_edges, remove_edges=remove_edges,
+            move_nodes=move_nodes, force_positions=force_positions,
+            ai_note=ai_note, graph_kind=graph_kind,
         )
 
     # ─── tables ──────────────────────────────────────────────────────────────
