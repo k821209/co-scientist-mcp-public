@@ -534,6 +534,13 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   or a bare local Bash run for a result-producing analysis.
 - **Already ran it ad-hoc?** Back-fill immediately: `create_analysis(...)`
   then `record_analysis_run(..., host=, command=, env_name=, log_path=, pid=)`.
+  **Pass the run's real `started_at` / `finished_at`** (ISO-8601 UTC, from its
+  own log) and `exit_code` if it finished. A row left to stamp itself says the
+  work happened the moment you filed it, so every figure and table made
+  between the real run and the filing is reported stale on every export —
+  following this rule without the times put 13 false warnings in a list of 24.
+  Already filed one that way? `update_analysis_run(..., started_at=,
+  finished_at=)` corrects it.
 - **No paper in the project** (video, tooling)? Use `slug="_project"` for
   `create_analysis` and every run tool — a job without a run record is the
   gap this rule exists to close, whether or not a paper cites it.

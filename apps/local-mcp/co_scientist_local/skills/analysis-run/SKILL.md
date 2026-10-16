@@ -16,8 +16,11 @@ all of it needs a run record (host · command · env · log · pid) or the
 paper's provenance has a silent hole ("which server / which command made
 Fig 3?" must be answerable from `analysis_runs`). Never run a result-producing
 analysis via raw Bash/ssh and move on. If you already did, **back-fill it now**
-with `create_analysis(...)` + `record_analysis_run(host=, command=, …)`, and
-reconcile with `scan_untracked_jobs` / `list_analysis_runs`.
+with `create_analysis(...)` + `record_analysis_run(host=, command=, …)` —
+**with the run's real `started_at` / `finished_at`** off its own log, or the
+row claims the work happened today and every artifact made since the real run
+is reported stale on every export. Reconcile with `scan_untracked_jobs` /
+`list_analysis_runs`.
 
 **Where this actually gets lost: the exploratory stretch.** Nine short
 interactive `ssh … python script.py` runs never feel like "time to use

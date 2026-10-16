@@ -22,12 +22,60 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
 from .analyses import PROJECT_SCOPE, _analysis_path, is_project_scope, iter_analyses
+
+
+# How far ahead of this machine's clock a supplied stamp may be: another
+# machine's clock, not a typo.
+_CLOCK_SKEW = timedelta(minutes=2)
+
+
+def historical_stamp(value: str | None, field: str) -> str | None:
+    """A caller-supplied timestamp, normalised to the one comparable shape.
+
+    Every staleness comparison in the codebase is a string compare on
+    `now_iso()`'s format — ISO-8601 UTC, microseconds, trailing Z — because in
+    that shape lexicographic order IS chronological order. A back-filled stamp
+    in any other shape ("2026-05-30 07:44:39", a local time with no offset)
+    would compare wrong and silently, so this is strict about what it takes
+    and loud about what it refuses.
+
+    Refuses a stamp from the future, beyond a couple of minutes of clock
+    skew: a typo'd year is exactly the poison this parameter exists to remove,
+    and it would be permanent — every artifact older than the typo reads as
+    stale forever (feedback 45eb88b50121). The tolerance is there because a
+    finish time read off a compute node's log is that node's clock, which can
+    legitimately sit a little ahead of this one.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as e:
+        raise ValueError(
+            f"{field}={value!r} is not an ISO-8601 timestamp. Use the shape "
+            "'2026-05-30T07:44:39Z' — a run's own log line, not a reformatting "
+            "of it.") from e
+    if parsed.tzinfo is None:
+        raise ValueError(
+            f"{field}={value!r} has no timezone. A naive local time compares "
+            "hours off against every other stamp here, in whichever direction "
+            "the machine happens to sit — say the zone, or append 'Z' for UTC.")
+    utc = parsed.astimezone(timezone.utc)
+    if utc > datetime.now(timezone.utc) + _CLOCK_SKEW:
+        raise ValueError(
+            f"{field}={value!r} is in the future. A run that has not happened "
+            "cannot have produced the figures linked to it, and this stamp is "
+            "what every staleness check compares against.")
+    return utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _runs_path(state: State, slug: str, analysis: str) -> str:
@@ -91,6 +139,8 @@ def record_analysis_run(
     env_name: str | None = None,
     pid: int | None = None,
     started_at: str | None = None,
+    finished_at: str | None = None,
+    exit_code: int | None = None,
     log_path: str | None = None,
     workdir: str | None = None,
     notes: str | None = None,
@@ -118,9 +168,29 @@ def record_analysis_run(
     itself can beat and close this row with no session alive — the case that
     leaves an eternal spinner. `submit_remote_job` generates it, embeds it in
     the job it launches and passes it here, so the row and the job agree on it.
-    It authorises exactly this one run and the endpoint clears it on finish."""
+    It authorises exactly this one run and the endpoint clears it on finish.
+
+    `started_at` / `finished_at` / `exit_code` are for BACK-FILLING a run that
+    already happened: pass the times from its own log. Without them the row is
+    stamped at insert time, so a May run filed in October claims to have
+    produced output in October and every artifact made in between reads as
+    stale — 13 of 24 export warnings on one paper, all false, all from
+    following the guide's "back-fill immediately" (feedback 45eb88b50121).
+    `last_heartbeat` follows the run's own clock for the same reason: a row
+    later auto-closed with exit_code -2 is measured from its last proof of
+    life, which must not be the moment someone filed it."""
     from .provenance import normalize_params
     _ensure_analysis(state, slug, analysis)
+    started_at = historical_stamp(started_at, "started_at")
+    finished_at = historical_stamp(finished_at, "finished_at")
+    if started_at and finished_at and finished_at < started_at:
+        raise ValueError(
+            f"finished_at ({finished_at}) is before started_at ({started_at})")
+    if exit_code is not None and finished_at is None:
+        raise ValueError(
+            "exit_code without finished_at would leave the run open forever in "
+            "the Running Jobs panel — pass the finish time from its log, or "
+            "close it later with mark_run_finished")
     run_key = run_key or _new_run_key()
     doc = {
         "run_key": run_key,
@@ -136,8 +206,8 @@ def record_analysis_run(
         "env_name": env_name,
         "pid": pid,
         "started_at": started_at or now_iso(),
-        "finished_at": None,
-        "exit_code": None,
+        "finished_at": finished_at,
+        "exit_code": exit_code,
         "log_path": log_path,
         "workdir": workdir,
         "notes": notes,
@@ -149,7 +219,7 @@ def record_analysis_run(
         # (now - last_heartbeat < TTL); a run whose session died goes "stale"
         # instead of spinning forever. Bumped by poll_remote_pids / heartbeat_run;
         # the reap_stale_runs scheduled CF flips `stale` on server-side after TTL.
-        "last_heartbeat": now_iso(),
+        "last_heartbeat": finished_at or started_at or now_iso(),
         "stale": False,
         "created_at": now_iso(),
         # A bearer secret scoped to this ONE run (see cloud-functions/report-run).
@@ -169,17 +239,42 @@ def update_analysis_run(
     *,
     params: dict | None = None,
     notes: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
 ) -> dict:
     """Back-fill `params` (replacing the whole dict) and/or append notes on an
     existing run. The back-fill path exists because the runs that most need
-    comparing are the ones recorded before anyone thought to compare them."""
+    comparing are the ones recorded before anyone thought to compare them.
+
+    `started_at` / `finished_at` correct the TIMES on a row already filed —
+    the repair path for rows stamped at insert time, which claim an old run
+    produced output the day it was recorded and so make every artifact in
+    between read as stale. `last_heartbeat` is moved with them, because the
+    auto-close path measures from it (feedback 45eb88b50121).
+    """
     from .provenance import normalize_params
     _ensure_analysis(state, slug, analysis)
     path = _run_path(state, slug, analysis, run_key)
     existing = state.backend.get_doc(path)
     if existing is None:
         raise NotFound(f"run {run_key!r} not found")
+    started_at = historical_stamp(started_at, "started_at")
+    finished_at = historical_stamp(finished_at, "finished_at")
+    effective_start = started_at or existing.get("started_at")
+    effective_finish = finished_at or existing.get("finished_at")
+    if effective_start and effective_finish and effective_finish < effective_start:
+        raise ValueError(
+            f"finished_at ({effective_finish}) is before started_at "
+            f"({effective_start})")
     fields: dict = {}
+    if started_at is not None:
+        fields["started_at"] = started_at
+    if finished_at is not None:
+        fields["finished_at"] = finished_at
+    if started_at is not None or finished_at is not None:
+        # The row's last proof of life is its own finish (or start) — never the
+        # moment of this correction, which is what poisons the comparison.
+        fields["last_heartbeat"] = effective_finish or effective_start
     if params is not None:
         fields["params"] = normalize_params(params)
     if notes:
@@ -242,8 +337,14 @@ def mark_run_finished(
     finished_at: str | None = None,
     notes: str | None = None,
 ) -> dict:
-    """Stamp finished_at + exit_code on a run; optionally append notes."""
+    """Stamp finished_at + exit_code on a run; optionally append notes.
+
+    `finished_at` takes the run's real finish time — pass it when closing a
+    row for work that ended earlier, so the staleness check compares against
+    when output actually appeared rather than when the bookkeeping happened.
+    """
     _ensure_analysis(state, slug, analysis)
+    finished_at = historical_stamp(finished_at, "finished_at")
     path = _run_path(state, slug, analysis, run_key)
     existing = state.backend.get_doc(path)
     if existing is None:

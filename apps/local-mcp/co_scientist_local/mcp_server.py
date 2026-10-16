@@ -2502,6 +2502,9 @@ def build_mcp(state: State) -> FastMCP:
         notes: str | None = None,
         params: dict[str, Any] | None = None,
         hostname: str | None = None,
+        started_at: str | None = None,
+        finished_at: str | None = None,
+        exit_code: int | None = None,
     ) -> dict[str, Any]:
         """Insert a run record (provenance for a command you ran yourself).
 
@@ -2520,15 +2523,27 @@ def build_mcp(state: State) -> FastMCP:
         `notes` cannot be diffed. Back-fill on an older run with
         `update_analysis_run`.
 
-        The row starts UNFINISHED. If the command has already finished, follow
-        with `mark_run_finished(...)` — a row with no `pid` has no process for
-        `poll_remote_pids` to check, so nothing else closes it until
-        `auto_finish_stale_runs` sweeps it as a provenance row.
+        **Back-filling a run that already happened: pass its real times.**
+        `started_at`/`finished_at` take ISO-8601 UTC ("2026-05-30T07:44:39Z"),
+        read off the run's own log — with `exit_code`, the row is filed
+        complete in one call. Without them the row is stamped NOW, which says
+        a May run produced output in October, and then every figure and table
+        made in between is reported stale on every export. That is not a
+        hypothetical: it put 13 false warnings into a 24-warning list on one
+        paper, from doing exactly what the guide asks ("back-fill
+        immediately"). A stamp in the future, or with no timezone, is refused
+        rather than stored.
+
+        Otherwise the row starts UNFINISHED. If the command has already
+        finished, follow with `mark_run_finished(...)` — a row with no `pid`
+        has no process for `poll_remote_pids` to check, so nothing else closes
+        it until `auto_finish_stale_runs` sweeps it as a provenance row.
         """
         return _runs.record_analysis_run(
             state, slug, analysis, command=command, host=host,
             env_name=env_name, pid=pid, log_path=log_path, notes=notes,
-            params=params, hostname=hostname,
+            params=params, hostname=hostname, started_at=started_at,
+            finished_at=finished_at, exit_code=exit_code,
         )
 
     @mcp.tool()
@@ -2553,12 +2568,20 @@ def build_mcp(state: State) -> FastMCP:
         run_key: str,
         params: dict[str, Any] | None = None,
         notes: str | None = None,
+        started_at: str | None = None,
+        finished_at: str | None = None,
     ) -> dict[str, Any]:
         """Back-fill `params` on a run recorded without them (replaces the whole
         dict), and/or append notes. See record_analysis_run for what `params`
-        is for."""
+        is for.
+
+        `started_at`/`finished_at` CORRECT the times on a row already filed —
+        the repair for a back-filled run stamped at insert time, which reports
+        every artifact older than the filing as stale. Same format and same
+        refusals as record_analysis_run."""
         return _runs.update_analysis_run(
             state, slug, analysis, run_key, params=params, notes=notes,
+            started_at=started_at, finished_at=finished_at,
         )
 
     @mcp.tool()
@@ -2867,9 +2890,14 @@ def build_mcp(state: State) -> FastMCP:
         run_key: str,
         exit_code: int,
         notes: str | None = None,
+        finished_at: str | None = None,
     ) -> dict[str, Any]:
+        """Close a run. `finished_at` (ISO-8601 UTC) for work that ended
+        earlier than this call — the staleness check compares against when
+        output actually appeared, not when the row was tidied."""
         return _runs.mark_run_finished(
             state, slug, analysis, run_key, exit_code=exit_code, notes=notes,
+            finished_at=finished_at,
         )
 
     @mcp.tool()
