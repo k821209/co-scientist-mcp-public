@@ -411,6 +411,7 @@ def build_mcp(state: State) -> FastMCP:
         max_display_items: int | None = None,
         max_references: int | None = None,
         required_sections: list[str] | None = None,
+        alt_text_required: bool | None = None,
         notes: str | None = None,
         source: str | None = None,
     ) -> dict[str, Any]:
@@ -422,6 +423,11 @@ def build_mcp(state: State) -> FastMCP:
         never invent one. Put rules that don't fit a field in `notes`
         (e.g. "Methods at the end", "structured abstract"). `source` is
         the guidelines URL. See the /journal-requirements skill.
+
+        `alt_text_required=True` when the guidelines require figure alt text.
+        Set it rather than only noting it: `check_requirements` then names the
+        figures that lack `alt_text`, and a rule that lives only in `notes` is
+        one nothing can fail an export on.
         """
         return _requirements.set_paper_requirements(
             state, slug, paper_type=paper_type,
@@ -430,7 +436,8 @@ def build_mcp(state: State) -> FastMCP:
             main_text_max_words=main_text_max_words,
             max_figures=max_figures, max_tables=max_tables,
             max_display_items=max_display_items, max_references=max_references,
-            required_sections=required_sections, notes=notes, source=source,
+            required_sections=required_sections,
+            alt_text_required=alt_text_required, notes=notes, source=source,
         )
 
     @mcp.tool()
@@ -720,6 +727,7 @@ def build_mcp(state: State) -> FastMCP:
         title: str,
         caption: str | None = None,
         legend: str | None = None,
+        alt_text: str | None = None,
         local_path: str | None = None,
         source_analysis: str | None = None,
         source_runs: list[str] | None = None,
@@ -748,10 +756,21 @@ def build_mcp(state: State) -> FastMCP:
         The split between the two fields: `caption` is the 'Figure N.'
         sentence plus what is depicted; `legend` is panel-by-panel and
         symbol-level detail. Journals print them as one block.
-        lint_legends flags a caption that has grown into a mini-Results."""
+        lint_legends flags a caption that has grown into a mini-Results.
+
+        `alt_text` is the figure's ACCESSIBILITY text and journals increasingly
+        require it (Plant and Cell Physiology: required for all figures). It is
+        not the legend and the legend does not substitute for it: a legend is
+        read beside the figure by someone who can see it, an alt text replaces
+        the figure for someone who cannot. So describe what is VISIBLE, briefly
+        — "Two-panel figure. Panel A, a histogram with a small cluster of bars
+        at left, a gap, then a tall cluster at right." Both ship, in their own
+        slots: the alt text as `<img alt>` in HTML and Word's own Alt Text
+        field in .docx, the legend as the printed caption."""
         return _figures.add_figure(
             state, slug, figure_number=figure_number, title=title,
-            caption=caption, legend=legend, local_path=local_path,
+            caption=caption, legend=legend, alt_text=alt_text,
+            local_path=local_path,
             source_analysis=source_analysis, source_runs=source_runs, varies=varies,
         )
 
@@ -805,6 +824,7 @@ def build_mcp(state: State) -> FastMCP:
         title: str | None = None,
         caption: str | None = None,
         legend: str | None = None,
+        alt_text: str | None = None,
         local_path: str | None = None,
         status: str | None = None,
         source_analysis: str | None = None,
@@ -830,10 +850,20 @@ def build_mcp(state: State) -> FastMCP:
         duplicates the body, and the two copies drift apart under revision.
         `caption` = the 'Figure N.' sentence plus what is depicted; `legend` =
         panel-by-panel and symbol detail. lint_legends flags a caption that
-        has grown into a mini-Results."""
+        has grown into a mini-Results.
+
+        `alt_text` is the figure's ACCESSIBILITY text and journals increasingly
+        require it (Plant and Cell Physiology: required for all figures). It is
+        not the legend and the legend does not substitute for it: a legend is
+        read beside the figure by someone who can see it, an alt text replaces
+        the figure for someone who cannot. So describe what is VISIBLE, briefly
+        — "Two-panel figure. Panel A, a histogram with a small cluster of bars
+        at left, a gap, then a tall cluster at right." Both ship, in their own
+        slots: the alt text as `<img alt>` in HTML and Word's own Alt Text
+        field in .docx, the legend as the printed caption."""
         return _figures.update_figure(
             state, slug, figure_number, title=title, caption=caption,
-            legend=legend, local_path=local_path, status=status,
+            legend=legend, alt_text=alt_text, local_path=local_path, status=status,
             source_analysis=source_analysis, prompt=prompt,
             source_runs=source_runs, varies=varies,
         )

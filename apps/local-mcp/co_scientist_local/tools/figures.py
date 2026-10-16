@@ -102,6 +102,7 @@ def add_figure(
     title: str,
     caption: str | None = None,
     legend: str | None = None,
+    alt_text: str | None = None,
     local_path: str | None = None,
     status: str = "pending",
     overwrite: bool = False,
@@ -117,6 +118,12 @@ def add_figure(
 
     With `overwrite=True`, an existing figure at the same `figure_number` is
     replaced in place (created_at preserved) instead of raising.
+
+    `alt_text` is the figure's ACCESSIBILITY text — a short description of
+    what is visible, for a reader who cannot see the image, and what a journal
+    means when it requires alt text. It is not the legend: a legend is read
+    beside the figure by someone who can see it. Both ship, in their own slots
+    (`<img alt>` / Word's Alt Text field vs the caption paragraph).
 
     `prompt`/`style_applied`/`aspect_ratio`/`quality` record how a generated
     figure was produced so the dashboard can show (and let the user edit) them
@@ -150,6 +157,10 @@ def add_figure(
         "title": title,
         "caption": caption,
         "legend": legend,
+        # Preserved on overwrite like the other metadata: a re-render that
+        # ships new bytes should not silently drop the author's alt text.
+        "alt_text": alt_text if alt_text is not None
+        else (existing.get("alt_text") if existing else None),
         "blob_path": blob_path,
         "status": status,
         **_prompt_fields(existing, prompt, bool(local_path)),
@@ -193,6 +204,7 @@ def update_figure(
     title: str | None = None,
     caption: str | None = None,
     legend: str | None = None,
+    alt_text: str | None = None,
     local_path: str | None = None,
     status: str | None = None,
     source_analysis: str | None = None,
@@ -219,6 +231,7 @@ def update_figure(
     if title is not None: fields["title"] = title
     if caption is not None: fields["caption"] = caption
     if legend is not None: fields["legend"] = legend
+    if alt_text is not None: fields["alt_text"] = alt_text
     if status is not None: fields["status"] = status
     if source_analysis is not None: fields["source_analysis"] = source_analysis
     if source_runs is not None: fields["source_runs"] = list(source_runs) or None

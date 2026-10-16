@@ -49,6 +49,7 @@ def set_paper_requirements(
     max_display_items: int | None = None,
     max_references: int | None = None,
     required_sections: list[str] | None = None,
+    alt_text_required: bool | None = None,
     notes: str | None = None,
     source: str | None = None,
 ) -> dict:
@@ -90,6 +91,7 @@ def set_paper_requirements(
         "max_display_items": _pos_int(max_display_items, "max_display_items"),
         "max_references": _pos_int(max_references, "max_references"),
         "required_sections": list(required_sections) if required_sections else None,
+        "alt_text_required": alt_text_required,
         "notes": notes,
         "source": source,
         "set_at": now_iso(),
@@ -99,6 +101,13 @@ def set_paper_requirements(
         {"requirements": requirements, "updated_at": now_iso()},
     )
     return requirements
+
+
+def _figure_label(num) -> str:
+    """"SFigure 4" / "Figure 2" — the spelling the manuscript body uses."""
+    if _figures.is_supplementary_number(num):
+        return f"SFigure {num - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
+    return f"Figure {num}"
 
 
 def get_paper_requirements(state: State, slug: str) -> dict | None:
@@ -193,6 +202,22 @@ def check_requirements(state: State, slug: str) -> dict:
             "name": "required_sections", "label": "Required sections",
             "kind": "presence", "required": required, "missing": missing,
             "ok": not missing,
+        })
+
+    if req.get("alt_text_required"):
+        # Named, because "3 figures are missing alt text" cannot be acted on
+        # and "SFigure 4, SFigure 9, SFigure 12" can.
+        missing_alt = [
+            _figure_label(f.get("figure_number"))
+            for f in _figures.list_figures(state, slug, supplementary=None)
+            if not str(f.get("alt_text") or "").strip()
+        ]
+        checks.append({
+            "name": "figure_alt_text", "label": "Figure alt text",
+            "kind": "presence", "missing": missing_alt, "ok": not missing_alt,
+            "note": ("An alt text describes what is VISIBLE, for a reader who "
+                     "cannot see the figure — it is not the legend, and the "
+                     "legend is not a substitute for it."),
         })
 
     checks.append(prov)

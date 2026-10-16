@@ -156,7 +156,8 @@ def _rewrite_inline_figure_refs(
             label = _display_label("Figure", num, supplementary=supp)
             return alt or f"**{label}**"
         placed.add(num)
-        return f"![{alt or _figure_alt(fig, supplementary=supp)}]({pathlib.Path(bp).name})"
+        return (f"![{alt or _figure_alt(fig, supplementary=supp)}]"
+                f"({pathlib.Path(bp).name}){_alt_attr(fig)}")
 
     return _INLINE_FIGURE_RE.sub(repl, text), placed
 
@@ -362,6 +363,34 @@ def _rewrite_inline_citations(
     return _CITE_RUN_RE.sub(repl, text), unmatched
 
 
+def _alt_attr(fig: dict) -> str:
+    """The image's accessibility attribute, or "" when the figure has no
+    alt text.
+
+    A caption and an alt text are written for different readers: the caption
+    is read BESIDE the figure by someone who can see it ("(A) Histogram of all
+    78 within-*C. japonica* IBS values…"), the alt text REPLACES it ("Two-panel
+    figure. Panel A, a histogram with a small cluster of bars at left"). Until
+    `alt_text` existed the alt slot could only hold the legend, so a journal
+    that requires alt text — Plant and Cell Physiology does, for every figure —
+    got a 128-word legend dense with accession numbers in place of a
+    description (feedback 9da8fc1812e7).
+
+    Emitted as pandoc's image-attribute syntax, which lands in the right place
+    in each format: `alt=` on the `<img>` with the caption still in
+    `<figcaption>` for HTML, and `wp:docPr/@descr` — Word's own Alt Text field
+    — with the caption paragraph intact for .docx. Verified in both outputs.
+    The native renderer has no attribute syntax, so docx_export lifts the block
+    out of the source and applies it to the picture itself.
+    """
+    alt = " ".join(str(fig.get("alt_text") or "").split())
+    if not alt:
+        return ""
+    # The value is quoted, and neither reader of this syntax (pandoc, our own
+    # lifter) handles an escaped quote inside it — so a typographic one.
+    return '{alt="' + alt.replace('"', "\u201d") + '"}'
+
+
 def _figure_alt(fig: dict, *, supplementary: bool) -> str:
     """The caption line for a figure, as markdown alt text.
 
@@ -395,9 +424,10 @@ def _figure_block(fig: dict, *, supplementary: bool) -> str | None:
     if not images:
         return None
     alt = _figure_alt(fig, supplementary=supplementary)
+    attr = _alt_attr(fig)
     if len(images) == 1:
-        return f"![{alt}]({pathlib.Path(images[0]['blob_path']).name})"
-    blocks = [f"![{alt}]({pathlib.Path(images[0]['blob_path']).name})"]
+        return f"![{alt}]({pathlib.Path(images[0]['blob_path']).name}){attr}"
+    blocks = [f"![{alt}]({pathlib.Path(images[0]['blob_path']).name}){attr}"]
     for img in images[1:]:
         label = f"**({img['label']})** " if img.get("label") else ""
         cap = img.get("caption") or ""

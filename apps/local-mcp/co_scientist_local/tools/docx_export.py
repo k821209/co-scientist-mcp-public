@@ -244,14 +244,48 @@ def _styled_run(paragraph, text: str, *, bold: bool, italic: bool, code: bool):
     return run
 
 
-def _add_image(paragraph, path: pathlib.Path):
+def _add_image(paragraph, path: pathlib.Path, alt: str | None = None):
     run = paragraph.add_run()
     shape = run.add_picture(str(path))
     if shape.width > _MAX_IMAGE_WIDTH:
         ratio = _MAX_IMAGE_WIDTH / shape.width
         shape.width = _MAX_IMAGE_WIDTH
         shape.height = int(shape.height * ratio)
+    if alt:
+        # Word's "Alt Text" field, which is what a journal's alt-text
+        # requirement means and what a screen reader reads. Distinct from the
+        # caption paragraph below the image: the caption is read BESIDE the
+        # figure by someone who can see it, the alt text REPLACES it.
+        shape._inline.docPr.set("descr", alt)
     return run
+
+
+# An image attribute block, pandoc's `![caption](f.png){alt="…"}` syntax. The
+# markdown-it parser here is commonmark, which has no notion of it: the braces
+# come out as literal text in the document AND the caption vanishes, because
+# the paragraph is no longer a lone image. So the attribute is lifted out of
+# the source before parsing, and applied where it belongs.
+_IMAGE_ALT_ATTR = re.compile(
+    r'(?P<image>!\[[^\]]*\]\((?P<src>[^)\s]+)\))\{\s*alt="(?P<alt>[^"]*)"\s*\}')
+
+
+def _lift_image_alts(markdown_text: str) -> tuple[str, dict[str, str]]:
+    """Strip `{alt="…"}` blocks, returning the text and src → alt text."""
+    alts: dict[str, str] = {}
+
+    def swap(m: re.Match) -> str:
+        alts[m.group("src")] = m.group("alt")
+        return m.group("image")
+
+    return _IMAGE_ALT_ATTR.sub(swap, markdown_text), alts
+
+
+_IMAGE_ALTS: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
+    "docx_image_alts", default=None)
+
+
+def _alt_for(src: str) -> str | None:
+    return (_IMAGE_ALTS.get() or {}).get(src)
 
 
 def _fix_drawing_ids(doc) -> None:
@@ -406,7 +440,8 @@ def _render_block(doc, node: SyntaxTreeNode, asset_dir: pathlib.Path | None,
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             if resolved is not None:
-                _add_image(p, resolved)
+                _add_image(p, resolved,
+                           alt=_alt_for(str(img.attrs.get("src", ""))))
                 caption = img.content or img.attrs.get("alt") or ""
                 if caption:
                     cap = doc.add_paragraph()
@@ -564,11 +599,13 @@ def render_markdown_to_docx(
     out.parent.mkdir(parents=True, exist_ok=True)
     assets = pathlib.Path(asset_dir).expanduser() if asset_dir else None
 
-    tokens = _md().parse(markdown_text)
+    body, image_alts = _lift_image_alts(markdown_text)
+    tokens = _md().parse(body)
     root = SyntaxTreeNode(tokens)
 
     dropped: dict[str, int] = {}
     token = _DROPPED_HTML.set(dropped)
+    alt_token = _IMAGE_ALTS.set(image_alts)
     try:
         doc = Document()
         apply_page_setup(doc, page_size)
@@ -577,6 +614,7 @@ def render_markdown_to_docx(
             _render_block(doc, node, assets)
     finally:
         _DROPPED_HTML.reset(token)
+        _IMAGE_ALTS.reset(alt_token)
     _fix_drawing_ids(doc)  # non-zero visual ids so Hancom renders images (EXP-2)
     doc.save(str(out))
     if diagnostics is not None:

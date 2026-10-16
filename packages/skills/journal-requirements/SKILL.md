@@ -65,6 +65,7 @@ mcp__scivo__set_paper_requirements(
   max_display_items=4,
   max_references=30,
   required_sections=["abstract","introduction","methods","results"],
+  alt_text_required=true,
   notes="Methods may go after Discussion. Cover letter required.",
   source="https://journal.example.org/author-guidelines",
 )
@@ -80,6 +81,10 @@ Rules:
   — section-order rules, cover-letter/ORCID requirements, "no
   subheadings", colour-figure fees, etc. You will re-read `notes` every
   session, so keep them concrete.
+- `alt_text_required=true` when the guidelines ask for figure alt text
+  (increasingly common; OUP journals state "Alt text: Required for all
+  figures"). Put it in the field rather than in `notes` — the field is
+  measured, a note is only re-read.
 - `source` = the guidelines URL, so the spec can be re-verified later.
 
 ### 4. Check the manuscript
