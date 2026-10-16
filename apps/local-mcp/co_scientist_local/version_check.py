@@ -28,6 +28,7 @@ import pathlib
 
 import os
 import re
+import time as _time
 import urllib.request
 
 _PYPROJECT_URL = (
@@ -87,6 +88,12 @@ def installed_version() -> str | None:
 
 _GIT_SHA_CACHE: str | None | bool = False   # False = not computed yet
 
+# When this module was imported, i.e. when this process fixed the code it runs.
+# An editable install resolves to the working tree AT IMPORT TIME and Python
+# does not re-import a changed module, so everything shipped after this instant
+# is inert for this session — invisibly, because the tools keep answering.
+_IMPORTED_AT = _time.time()
+
 
 def git_sha() -> str | None:
     """Short git sha of the checkout this package is installed from (editable
@@ -111,6 +118,103 @@ def git_sha() -> str | None:
         sha = None
     _GIT_SHA_CACHE = sha
     return sha
+
+
+def live_git_sha(pkg_dir: "pathlib.Path | None" = None) -> str | None:
+    """HEAD of the checkout as it is RIGHT NOW — the uncached counterpart to
+    `git_sha()`, which answers "what did this session start on?"."""
+    import pathlib as _pl
+    import subprocess
+    pkg_dir = pkg_dir or _pl.Path(__file__).resolve().parent
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(pkg_dir), "rev-parse", "--short=8", "HEAD"],
+            capture_output=True, text=True, timeout=2,
+        )
+        return (out.stdout.strip() or None) if out.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def stale_process(
+    pkg_dir: "pathlib.Path | None" = None,
+    *,
+    imported_at: float | None = None,
+    baseline_sha: str | None = None,
+    current_sha: str | None = None,
+) -> dict:
+    """Whether this process is still running the code that is on disk.
+
+    The failure this exists for: a session's MCP process started 2026-10-11
+    15:39 and the deck-lint fixes landed at 16:32 and 22:05. An editable
+    install binds the working tree at import, and a Python process does not
+    re-import a changed module, so for three days every lint call returned the
+    pre-fix answer — empty warning lists — while `whoami` reported
+    `installed_version == latest_version`, `update_available: false`. The deck
+    skill treats an empty warning list as a done-gate, so the agent concluded a
+    deck with a data row printed underneath a callout was finished, and the
+    author had to be the overlap detector again (feedback 3a0bfead07c3).
+
+    The version check structurally cannot see this: it compares the version on
+    disk against the published one, and both are the new one. What is stale is
+    the PROCESS. Two signals say so, and either is enough:
+
+      - a module file is newer than the moment this module was imported;
+      - the checkout's HEAD has moved since the sha this session captured.
+
+    Returns `{}` when there is no checkout to compare against (a site-packages
+    install cannot drift this way — its files only change when pip rewrites
+    them, which is also true and worth saying, so this still reports).
+    """
+    import datetime
+    import pathlib as _pl
+    pkg_dir = pkg_dir or _pl.Path(__file__).resolve().parent
+    imported_at = _IMPORTED_AT if imported_at is None else imported_at
+    reasons: list[str] = []
+
+    newest_at, newest_name, changed = 0.0, None, 0
+    try:
+        for path in pkg_dir.rglob("*.py"):
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            # 1s of slack: files written moments before the import that loaded
+            # them are the normal install, not a change.
+            if mtime > imported_at + 1.0:
+                changed += 1
+                if mtime > newest_at:
+                    newest_at, newest_name = mtime, path.name
+    except OSError:
+        pass
+    if changed:
+        when = datetime.datetime.fromtimestamp(
+            newest_at, datetime.timezone.utc).isoformat(timespec="seconds")
+        reasons.append(
+            f"{changed} module file{'s' if changed > 1 else ''} on disk "
+            f"{'are' if changed > 1 else 'is'} newer than this process "
+            f"(newest: {newest_name} at {when})")
+
+    baseline = git_sha() if baseline_sha is None else baseline_sha
+    current = live_git_sha(pkg_dir) if current_sha is None else current_sha
+    if baseline and current and baseline != current:
+        reasons.append(f"the checkout is at {current}; this session imported {baseline}")
+
+    imported_iso = datetime.datetime.fromtimestamp(
+        imported_at, datetime.timezone.utc).isoformat(timespec="seconds")
+    if not reasons:
+        return {"stale_process": False}
+    return {
+        "stale_process": True,
+        "stale_hint": (
+            f"This session imported the tools at {imported_iso} and has been running "
+            f"them ever since: " + "; ".join(reasons) + ". Python cannot re-import a "
+            "changed module, so every fix shipped since then is inert HERE while the "
+            "tools keep answering normally — an empty warning list from a lint may "
+            "mean old code, not a clean result. Tell the user to restart the session; "
+            "nothing else clears it. Until they do, treat lint and check results from "
+            "this session as unreliable rather than as passes."),
+    }
 
 
 def runtime_info() -> dict:
@@ -144,6 +248,11 @@ def runtime_info() -> dict:
         # under any shell whose PATH finds a different interpreter — and the
         # user sees "it worked yesterday".
         out["mcp_json_command"] = sys.executable
+        # An editable install is the one that can drift under a live process,
+        # and the version check cannot see it. Always report the boolean, so
+        # `false` is a statement ("checked, the process matches the disk")
+        # rather than an absence.
+        out.update(stale_process(pkg_dir))
     else:
         checkout = find_checkout()
         out["dedicated_venv"] = dedicated_venv()

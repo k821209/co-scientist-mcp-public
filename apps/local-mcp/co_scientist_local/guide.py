@@ -120,7 +120,18 @@ On every session start:
    editable/source install whose version can't be compared; then trust
    `git_sha` and have the user check the checkout itself
    (`git status -sb && git pull`), because `pip install --upgrade` is a
-   no-op there. Only `false` means "checked, and current".
+   no-op there. Only `false` means "checked, and current" — about the
+   version ON DISK, which is a different question from the one below.
+   **`stale_process: true` → the tools you are calling are not the tools
+   on disk.** An editable install binds the working tree at import, and a
+   Python process cannot re-import a changed module, so a session that was
+   running while a fix landed keeps running the code from before it —
+   `update_available` stays `false` the whole time, because the version on
+   disk IS current. Only a restart clears it; say so, and until then do not
+   read a lint's empty warning list as a pass (that is how a deck shipped
+   with a data row printed under a callout, three days after the check that
+   catches it was fixed). `git_sha` is the sha this session captured, not
+   live HEAD; `stale_hint` names both when they differ.
    **`install_warning` present → say it to the user first**: this project
    last ran an editable install and now runs a snapshot, or a snapshot runs
    in a SHARED environment beside a source checkout (a `pip install` naming

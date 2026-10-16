@@ -48,6 +48,11 @@ from . import slide_render_helpers as _h
 _BODY_TOP = Inches(1.85)
 _SIDE_MARGIN = Inches(0.7)
 _BOTTOM_MARGIN = Inches(0.6)
+# A PowerPoint text frame insets its text 0.1" from each side, and nothing
+# here changes that — so the column text wraps in is 14.4pt narrower than the
+# shape. Dividing by the shape width instead says "one line" for a title that
+# renders as two, which is exactly the marginal case worth getting right.
+_TEXT_INSET_PT = 7.2
 
 
 # ─── shared internals ────────────────────────────────────────────────────
@@ -614,7 +619,13 @@ def title_slide(slide, *, title: str, subtitle: str = "",
     h.title_block before; this pattern is the slide.
 
     Content limits:
-        title:    ≤ ~50 chars at display size (wraps to 2 lines).
+        title:    ~26 Latin chars per line at a 56pt cover (the usual themes),
+                  ~32 at 48pt — bold display type is wider than it reads on
+                  paper, and the measured budget is about half the "≤ 50 chars"
+                  this docstring used to claim. A longer title wraps, and the
+                  block grows with it rather than drawing the rule through
+                  line two, so the limit is a typographic preference now, not
+                  a correctness one. Korean counts double.
         subtitle: ≤ ~80 chars (1 line; e.g. "Author — Venue 2026").
         eyebrow:  ≤ ~30 chars; rendered upper-case in accent color.
     """
@@ -633,15 +644,30 @@ def title_slide(slide, *, title: str, subtitle: str = "",
     a = (align or "auto").lower()
     if a not in ("auto", "left", "center"):
         a = "auto"
+    # How many lines the title really takes. This was computed only to choose
+    # an alignment, and the block below it was laid out as if the answer were
+    # always 1 — so a wrapped title kept a one-line box, the accent rule was
+    # drawn 70pt under the title top (i.e. THROUGH the second line) and the
+    # subtitle landed on its descenders. That shipped on a cover: "A 42 Gb
+    # parasitic plant genome" is 856pt of bold 56pt type in a 786pt column,
+    # and the rule printed through the word "genome" (feedback 038d330372f0).
+    #
+    # The width to divide by is the TEXT column, not the shape: a PowerPoint
+    # text frame insets 0.1" each side, so a title between 786 and 800pt reads
+    # as one line and renders as two — the marginal case, which is the one
+    # that bites.
+    box_w_pt = max(1.0, box_w / 12700) - 2 * _TEXT_INSET_PT
+    title_w_pt = _h.estimate_text_width_pt(title, title_pt)
+    lines = max(1, int(-(-title_w_pt // box_w_pt)))
     if a == "auto":
-        box_w_pt = max(1.0, box_w / 12700)
-        title_w_pt = _h.estimate_text_width_pt(title, title_pt)
-        wraps = int((title_w_pt + box_w_pt - 1) // box_w_pt)
-        a = "left" if wraps >= 2 else "center"
+        a = "left" if lines >= 2 else "center"
     title_align = PP_ALIGN.LEFT if a == "left" else PP_ALIGN.CENTER
     left_aligned = a == "left"
 
-    title_h = Pt(title_pt * 1.25)
+    # One line keeps its historical height exactly (1.25 carries the descender
+    # slack); each further line adds what it actually occupies at the 1.05
+    # line spacing the title is emitted with.
+    title_h = Pt(title_pt * (1.25 + 1.05 * (lines - 1)))
     rule_gap = Pt(_h.SPACING_UNIT_PT * 2)
     rule_h = Pt(6)
     eyebrow_h = Pt(eyebrow_pt * 1.8) if eyebrow else 0

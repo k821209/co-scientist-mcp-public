@@ -1060,12 +1060,25 @@ def prepare_export(
                 f"table with nothing describing it reaches the reviewer as an "
                 f"unexplained attachment"
             )
-    for fig in supp_figs:
-        if not str(fig.get("caption") or "").strip():
-            n = fig.get("figure_number")
-            label = (f"SFigure {n - _figures.SUPPLEMENTARY_NUMBER_OFFSET}"
-                     if isinstance(n, int) else f"figure {n}")
-            warnings.append(f"{label} is registered but has no caption")
+    # The figure counterpart, with the predicate the renderer actually uses.
+    # `_figure_alt` concatenates caption AND legend, so either one describes the
+    # figure — but this demanded `caption`, and only for supplementary figures.
+    # On a near-final manuscript whose 19 figures all carried a legend and no
+    # caption (the intended state, and what the guide documents), that was 15
+    # false lines in a 27-line list, while main Figures 1-4 in the identical
+    # state drew none. A false warning that fires loudly is cheap; one that
+    # crowds out the eight true ones in the single list read line by line
+    # before submission is not (reported 2026-10-15).
+    for fig in figs + supp_figs:
+        if str(fig.get("caption") or "").strip() or str(fig.get("legend") or "").strip():
+            continue
+        n = fig.get("figure_number")
+        label = _display_label("Figure", n,
+                               supplementary=_figures.is_supplementary_number(n))
+        warnings.append(
+            f"{label} is registered but has neither caption nor legend — it reaches "
+            f"the reviewer as an undescribed panel"
+        )
 
     # Legend QA — over-long or Results-duplicating figure/table legends. One
     # summary line per flagged item feeds the pre-flight warnings; the full
