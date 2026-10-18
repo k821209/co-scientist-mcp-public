@@ -27,7 +27,7 @@ import zipfile
 
 from ..backends.base import NotFound
 from ..state import State
-from ..util import now_iso
+from ..util import now_iso, tidy_source_text as _tidy
 from . import csl as _csl
 from . import datasets as _datasets
 from . import display_lint as _display_lint
@@ -245,6 +245,46 @@ def _rewrite_inline_ref_tokens(text: str, *, number_supplementary: bool = True) 
     return _REF_TOKEN_RE.sub(repl, text)
 
 
+_MB = 1024 * 1024
+
+
+def file_size_cap(paper: dict, scope: str) -> tuple[float | None, str]:
+    """The per-file MB cap this scope is held to, and which field named it."""
+    req = (paper or {}).get("requirements") or {}
+    if scope == "supplementary":
+        cap = req.get("max_supplementary_file_mb")
+        if cap:
+            return float(cap), "max_supplementary_file_mb"
+        return None, "max_supplementary_file_mb"
+    cap = req.get("max_main_file_mb")
+    return (float(cap) if cap else None), "max_main_file_mb"
+
+
+def _file_size_warning(paper: dict, scope: str, size_bytes: int) -> str | None:
+    """Warn when the file that gets UPLOADED is over the journal's cap.
+
+    Every per-item check passed on the paper this came from: fifteen
+    supplementary figures each optimised under the per-image cap (one went
+    9.68 → 2.56 MB), `check_requirements` green, `violations: []` — and the
+    assembled supplementary .docx was 11.1 MB against a stated 5 MB limit. The
+    constraint is on the artifact, and the artifact does not exist until the
+    export is already in the author's hands, so this is the one moment it can
+    be measured (feedback f5e789ce54e1).
+    """
+    cap, field = file_size_cap(paper, scope)
+    if not cap or size_bytes <= cap * _MB:
+        return None
+    # Measured here rather than estimated in prepare_export: nothing records a
+    # figure blob's size, so a pre-export estimate would mean downloading every
+    # image a second time to produce a floor — while this is the real number.
+    return (f"this file is {size_bytes / _MB:.1f} MB against the "
+            f"{cap:g} MB cap the journal spec records for "
+            f"scope={scope!r} ({field}) — the submission system will refuse "
+            f"it. Split it, or submit the figures as separate files; "
+            f"re-rendering individual images will not close a {size_bytes / _MB:.1f} MB gap "
+            f"on its own.")
+
+
 def _dangling_artifact_refs(manuscript: str, bundle: dict, *, scope: str,
                             include_main: bool, include_supp: bool) -> list[str]:
     """Body references to a figure/table this export does not actually contain.
@@ -259,39 +299,68 @@ def _dangling_artifact_refs(manuscript: str, bundle: dict, *, scope: str,
     dropped it, and the body's `![](table:107)` rendered as nothing. 94 of 95
     references resolved and no warning said which one didn't — it was found by
     counting tables by hand.
+
+    The two kinds of reference fail differently, and conflating them diluted
+    the list they live in. An EMBED — `![](figure:N)` — dropped by scope leaves
+    a hole, which is the silent loss above. A TEXT token — `{fig:N}` — renders
+    as "Supplementary Figure 5" whether or not this file contains the item, so
+    in a journal paper — whose supplementary travels as a second file, and
+    which is the only doc_type with a supplementary scope at all — pointing at
+    it is the convention `scope` exists to implement. Emitting one warning
+    per text reference put 21 identical benign lines into a 24-line list on one
+    manuscript, where three of the remaining lines were staleness notices
+    (feedback 66025b77dc9d). It also punished the behaviour the guide asks for:
+    prose cross-references warn zero times and link nowhere.
     """
-    referenced: dict[str, set[int]] = {"Figure": set(), "Table": set()}
+    embeds: dict[str, set[int]] = {"Figure": set(), "Table": set()}
+    text_refs: dict[str, set[int]] = {"Figure": set(), "Table": set()}
     for m in _INLINE_FIGURE_RE.finditer(manuscript):
-        referenced["Figure"].add(int(m.group(2)))
+        embeds["Figure"].add(int(m.group(2)))
     for m in _INLINE_TABLE_RE.finditer(manuscript):
-        referenced["Table"].add(int(m.group(2)))
+        embeds["Table"].add(int(m.group(2)))
     for m in _REF_TOKEN_RE.finditer(manuscript):
-        referenced["Figure" if m.group(1) == "fig" else "Table"].add(int(m.group(2)))
+        text_refs["Figure" if m.group(1) == "fig" else "Table"].add(int(m.group(2)))
 
     sources = {
         "Figure": (bundle["figures"], bundle["supplementary_figures"], "figure_number"),
         "Table": (bundle["tables"], bundle["supplementary_tables"], "table_number"),
     }
     out: list[str] = []
+    elsewhere: list[str] = []
     for kind in ("Figure", "Table"):
         main, supp, key = sources[kind]
         main_nums = {d.get(key) for d in main}
         supp_nums = {d.get(key) for d in supp}
-        for n in sorted(referenced[kind]):
+        for n in sorted(embeds[kind] | text_refs[kind]):
             if (n in main_nums and include_main) or (n in supp_nums and include_supp):
                 continue
-            if n in main_nums or n in supp_nums:
-                where = "supplementary" if n in supp_nums else "main"
-                out.append(
-                    f"the body references {kind} {n}, which is registered as {where} "
-                    f"content and excluded by scope={scope!r} — the reference renders "
-                    f"with nothing behind it. Export the matching scope, or renumber."
-                )
-            else:
+            if n not in main_nums and n not in supp_nums:
                 out.append(
                     f"the body references {kind} {n} but no such {kind.lower()} is "
                     f"registered — nothing is rendered at that point"
                 )
+                continue
+            where = "supplementary" if n in supp_nums else "main"
+            if n in embeds[kind]:
+                out.append(
+                    f"the body embeds {kind} {n}, which is registered as {where} "
+                    f"content and excluded by scope={scope!r} — the embed renders "
+                    f"with nothing behind it. Export the matching scope, or renumber."
+                )
+            else:
+                # Collected into one line below, named so it stays checkable.
+                # Not conditioned on doc_type: the +100 split that makes an item
+                # out-of-scope is journal-paper-only (`numbers_supplementary`),
+                # so in a report or proposal nothing reaches here at all.
+                elsewhere.append(f"{kind} {n}")
+    if elsewhere:
+        out.append(
+            f"the body makes {len(elsewhere)} text reference(s) to content outside "
+            f"scope={scope!r} ({', '.join(elsewhere)}). These render as text — "
+            f"\"Supplementary Figure 5\" — and point the reader at the companion "
+            f"file, which is the journal convention; export the other scope too so "
+            f"the file they point at exists."
+        )
     return out
 
 
@@ -566,9 +635,12 @@ def _title_to_bibtex(title: str, taxa: list[str] | None = None) -> str:
       (sentence-casing) does NOT down-case proper nouns / acronyms
       (Cuscuta, DNA, ITS, Galápagos, …).
     """
-    s = title
-    for ent, ch in _HTML_ENTITIES.items():
-        s = s.replace(ent, ch)
+    # One tidy for entities (repeated, so `&amp;lt;` resolves) and for markup
+    # CrossRef left abutting a word — `genus<i>Cuscuta</i>spp.` printed as
+    # "genusCuscutaspp." however correctly the tag itself was converted
+    # (feedback 6842a3897d99). Done here as well as at ingestion, because the
+    # rows already stored carry the raw text.
+    s = _tidy(title) or ""
     flags = re.IGNORECASE | re.DOTALL
     s = re.sub(r"<\s*(?:i|em)\s*>(.*?)<\s*/\s*(?:i|em)\s*>", r"\\textit{\1}", s, flags=flags)
     s = re.sub(r"<\s*(?:b|strong)\s*>(.*?)<\s*/\s*(?:b|strong)\s*>", r"\\textbf{\1}", s, flags=flags)
@@ -584,6 +656,62 @@ def _title_to_bibtex(title: str, taxa: list[str] | None = None) -> str:
 
 
 _PLACEHOLDER_PUBLISHERS = {"Temporary Publisher", "temporary publisher"}
+
+
+# Names that are an organisation however they are punctuated. CSL splits any
+# unbraced author into given + family, so "The pandas development team" printed
+# as "team, T. pandas development" and cited as "(team, 2025)" — in a methods
+# section, where software citations are nearly all of this shape
+# (feedback 37a7c4c05e1b).
+_INSTITUTIONAL_HINT = re.compile(
+    r"\b(team|teams|consortium|consortia|group|project|collaboration|society|"
+    r"institute|institution|university|college|laboratory|labs?|centre|center|"
+    r"committee|council|association|foundation|network|initiative|working\s+group|"
+    r"organization|organisation|administration|department|ministry|agency|"
+    r"survey|bureau|office|authority|commission|board|developers?)\b", re.I)
+
+
+def is_institutional_name(name: str) -> bool:
+    """Whether an author name should be braced as a literal."""
+    text = (name or "").strip()
+    if not text:
+        return False
+    return bool(_INSTITUTIONAL_HINT.search(text))
+
+
+def _bib_author(name, ref: dict) -> str:
+    """One author field value, braced when the name is an organisation.
+
+    Double braces are BibTeX's "this is one literal name" — the only way to
+    stop a corporate author being read as Given Family. The record's own
+    `institutional_authors` wins; the heuristic covers rows written before that
+    field existed and references added by hand.
+    """
+    text = str(name or "").strip()
+    if not text:
+        return text
+    declared = ref.get("institutional_authors") or []
+    if text in declared or is_institutional_name(text):
+        return "{" + text.strip("{}") + "}"
+    return text
+
+
+def _bib_text(value) -> str:
+    """A plain-text .bib field value: entities decoded, markup dropped.
+
+    Journal and publisher are printed as given, so an entity reached the
+    bibliography verbatim and markup would reach it as angle brackets. Titles
+    keep their markup — it becomes \textit{} — but these two fields have no
+    use for it.
+    """
+    s = _tidy(value)
+    if not s:
+        return ""
+    s = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", s)).strip()
+    # `&` is a LaTeX special. Pandoc renders either form as "&" (measured), and
+    # the escaped one also survives a .bib handed to real LaTeX from a .tex
+    # export, so it costs nothing to be correct.
+    return re.sub(r"(?<!\\)&", r"\\&", s)
 
 
 def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
@@ -605,13 +733,16 @@ def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
         fields.append(f"  title = {{{_title_to_bibtex(ref['title'], taxa)}}}")
     authors = ref.get("authors")
     if isinstance(authors, list):
-        author_str = " and ".join(authors)
+        author_str = " and ".join(_bib_author(a, ref) for a in authors)
     else:
-        author_str = authors
+        author_str = _bib_author(authors, ref) if authors else authors
     if author_str:
         fields.append(f"  author = {{{author_str}}}")
-    if ref.get("journal"):
-        fields.append(f"  journal = {{{ref['journal']}}}")
+    journal = _bib_text(ref.get("journal"))
+    if journal:
+        # `Organisms Diversity &amp; Evolution` printed exactly like that: the
+        # earlier entity fix covered titles only.
+        fields.append(f"  journal = {{{journal}}}")
     if ref.get("year"):
         fields.append(f"  year = {{{ref['year']}}}")
     if ref.get("volume"):
@@ -628,8 +759,9 @@ def _ref_to_bibtex(ref: dict, taxa: list[str] | None = None) -> str:
     # its records, not an imprint. Dropped at BUILD time rather than at write
     # time so the stored record still says what the source said — the export
     # just does not print a publisher that does not exist.
-    if ref.get("publisher") and str(ref["publisher"]).strip() not in _PLACEHOLDER_PUBLISHERS:
-        fields.append(f"  publisher = {{{ref['publisher']}}}")
+    publisher = _bib_text(ref.get("publisher"))
+    if publisher and publisher not in _PLACEHOLDER_PUBLISHERS:
+        fields.append(f"  publisher = {{{publisher}}}")
     if ref.get("doi"):
         fields.append(f"  doi = {{{ref['doi']}}}")
     elif ref.get("url"):
@@ -1649,6 +1781,10 @@ def export_to_path(
             state.backend.set_doc(doc_path, meta)
         else:
             state.backend.update_doc(doc_path, meta)
+
+    size_warning = _file_size_warning(bundle["paper"], scope, len(output_bytes))
+    if size_warning:
+        export_warnings.append(size_warning)
 
     return {
         "slug": slug,

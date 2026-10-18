@@ -148,18 +148,26 @@ _TABLE_TEXT_FIELDS = ("title", "content", "caption")
 
 def replace_in_table(
     state: State, slug: str, table_number: int, *, field: str, old: str, new: str,
-    count: int | None = 1,
+    count: int | None = 1, return_body: bool = False,
 ) -> dict:
     """A partial edit of one text field (title / content / caption) — exact
     match or fail, see util.exact_replace. A one-word fix in a 20-row grid
-    used to cost re-sending the grid, the likeliest way to drop a row."""
-    from ..util import exact_replace
+    used to cost re-sending the grid, the likeliest way to drop a row.
+
+    And then it echoed the grid back, which costs the same tokens in the other
+    direction — so the answer carries `replaced` plus a `contexts` snippet
+    around each hit, and `return_body=True` restores the full field.
+    """
+    from ..util import replace_with_contexts
     if field not in _TABLE_TEXT_FIELDS:
         raise ValueError(f"field must be one of {_TABLE_TEXT_FIELDS}")
     doc = get_table(state, slug, table_number)
-    text, n = exact_replace(doc.get(field) or "", old, new, count)
+    text, n, contexts = replace_with_contexts(doc.get(field) or "", old, new, count)
     out = update_table(state, slug, table_number, **{field: text})
-    return {**out, "replaced": n}
+    if return_body:
+        return {**out, "replaced": n, "contexts": contexts}
+    return {**{k: v for k, v in out.items() if k != field},
+            "replaced": n, "contexts": contexts}
 
 
 def search_tables(

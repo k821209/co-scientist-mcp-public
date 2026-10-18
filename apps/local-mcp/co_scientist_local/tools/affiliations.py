@@ -60,12 +60,40 @@ def resolve_texts(state: State, affiliation_ids) -> list[str]:
     return [lib[i] for i in (affiliation_ids or []) if i in lib]
 
 
+def papers_using(state: State, aff_id: str) -> list[dict]:
+    """Papers in THIS project whose author block references `aff_id`.
+
+    The library is account-wide while papers are per project, so this answers
+    for the project the session is bound to — said in the reply rather than
+    implied.
+    """
+    out: list[dict] = []
+    for slug, paper in state.backend.list_collection(state.project_path("papers")):
+        for entry in (paper.get("affiliations") or []):
+            if not isinstance(entry, dict) or entry.get("id") != aff_id:
+                continue
+            out.append({
+                "slug": paper.get("slug") or slug,
+                "cached_text": entry.get("text"),
+            })
+            break
+    out.sort(key=lambda r: r["slug"])
+    return out
+
+
 def update_affiliation(state: State, aff_id: str, text: str) -> dict:
     """Change a library affiliation's text. This updates the LIBRARY entry only.
     Papers deliberately keep the affiliation text captured when it was added (a
     point-in-time record — an author moving institutions must not retroactively
     rewrite a submitted/published paper). To pull a corrected text into an
-    in-progress DRAFT, use the opt-in resync (papers.resync_paper_affiliations)."""
+    in-progress DRAFT, use the opt-in resync (papers.resync_paper_affiliations).
+
+    So the reply says WHO this edit reaches. A library with five near-identical
+    rows for one department invites editing the wrong one, and matching by the
+    text in a rendered manuscript picks whichever variant the paper happens to
+    cache: three edits returned success, the export was unchanged, and the only
+    signal was the diff of a .docx (feedback 3f1ed9ac0012).
+    """
     path = _affiliation_path(state, aff_id)
     doc = state.backend.get_doc(path)
     if doc is None:
@@ -76,7 +104,26 @@ def update_affiliation(state: State, aff_id: str, text: str) -> dict:
     doc["text"] = text
     doc["updated_at"] = now_iso()
     state.backend.set_doc(path, doc)
-    return doc
+    users = papers_using(state, aff_id)
+    stale = [u["slug"] for u in users if u.get("cached_text") != text]
+    out = {**doc,
+           "used_by": [u["slug"] for u in users],
+           "used_by_scope": "papers in this project",
+           "needs_resync": stale}
+    if not users:
+        out["note"] = (
+            "No paper in this project references this record, so nothing "
+            "downstream changed. get_paper_affiliations(slug) lists the ids a "
+            "paper actually uses — match by id, not by the text in the "
+            "rendered header: near-duplicate rows differ only in trailing "
+            "address detail.")
+    elif stale:
+        out["note"] = (
+            f"{len(stale)} paper(s) still carry the old text: "
+            + ", ".join(stale)
+            + ". resync_paper_affiliations(slug) pulls it in — a paper keeps a "
+            "point-in-time snapshot on purpose, so nothing does it for you.")
+    return out
 
 
 def delete_affiliation(state: State, aff_id: str) -> bool:

@@ -66,6 +66,8 @@ mcp__scivo__set_paper_requirements(
   max_references=30,
   required_sections=["abstract","introduction","methods","results"],
   alt_text_required=true,
+  max_main_file_mb=null,
+  max_supplementary_file_mb=5,
   notes="Methods may go after Discussion. Cover letter required.",
   source="https://journal.example.org/author-guidelines",
 )
@@ -81,6 +83,11 @@ Rules:
   — section-order rules, cover-letter/ORCID requirements, "no
   subheadings", colour-figure fees, etc. You will re-read `notes` every
   session, so keep them concrete.
+- **File-size caps go in `max_main_file_mb` / `max_supplementary_file_mb`,
+  not in `notes`.** Guidelines state them per uploaded FILE ("supplementary
+  data must not exceed 5MB"), and `export_to_path` checks the file it just
+  wrote against them. A per-figure cap is a different number and not what the
+  submission system measures.
 - `alt_text_required=true` when the guidelines ask for figure alt text
   (increasingly common; OUP journals state "Alt text: Required for all
   figures"). Put it in the field rather than in `notes` — the field is

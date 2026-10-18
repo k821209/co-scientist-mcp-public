@@ -24,7 +24,7 @@ import urllib.request
 
 from ..backends.base import NotFound
 from ..state import State
-from ..util import now_iso
+from ..util import now_iso, tidy_source_text
 from .papers import _paper_path
 
 _CROSSREF_BASE = "https://api.crossref.org/works/"
@@ -269,8 +269,18 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
     title = title_list[0] if title_list else ""
     container = msg.get("container-title") or []
     journal = container[0] if container else None
-    issued = (msg.get("issued") or {}).get("date-parts") or [[]]
-    year = issued[0][0] if issued and issued[0] else None
+    # `issued` is the EARLIEST of print/online, so an article posted online in
+    # 2019 and printed in volume 37 (January 2020) is stored as 2019 — a year
+    # that contradicts the volume a reader looks up. Scholarly convention cites
+    # the version of record, so prefer the print date and keep the online one
+    # alongside (feedback 37a7c4c05e1b).
+    def _first_year(block) -> int | None:
+        parts = (block or {}).get("date-parts") or [[]]
+        return parts[0][0] if parts and parts[0] else None
+
+    year_print = _first_year(msg.get("published-print"))
+    year_online = _first_year(msg.get("published-online"))
+    year = year_print or _first_year(msg.get("issued")) or year_online
     # Split person authors (given/family) from institutional ones (CrossRef
     # gives orgs as {"name": …} with no family). Mixing orgs into the author
     # list mangles citations — "University of California" → "California". Keep
@@ -287,8 +297,16 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
             if name:
                 orgs.append(_fix_mojibake(name))
     authors = persons if persons else orgs
-    title = _fix_mojibake(title)
-    journal = _fix_mojibake(journal) if journal else journal
+    # Which of those names are organisations, so the .bib writer can brace them
+    # instead of letting CSL split "The pandas development team" into a given
+    # name and a family name — it printed "team, T. pandas development"
+    # (feedback 37a7c4c05e1b).
+    institutional = list(orgs) if not persons else []
+    # Entities and space-less markup, fixed where the record is WRITTEN so the
+    # stored row is the readable one (feedback 6842a3897d99). The .bib writer
+    # repeats the tidy for rows stored before this.
+    title = tidy_source_text(_fix_mojibake(title))
+    journal = tidy_source_text(_fix_mojibake(journal)) if journal else journal
     abstract = msg.get("abstract") or ""
     # CrossRef abstracts arrive as JATS XML — strip tags so the agent sees plain text.
     if abstract:
@@ -301,11 +319,17 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
         "abstract": abstract,
         "subjects": list(msg.get("subject") or []),
         "authors": authors,
+        "institutional_authors": institutional or None,
         "journal": journal,
         # CrossRef's abbreviated journal title (e.g. "Front Pharmacol") — used
         # for compact citations / reference cards; None when CrossRef omits it.
-        "journal_short": _fix_mojibake((msg.get("short-container-title") or [None])[0] or "") or None,
+        "journal_short": tidy_source_text(
+            _fix_mojibake((msg.get("short-container-title") or [None])[0] or "")) or None,
         "year": year,
+        # Both dates when they disagree, so the disagreement is visible rather
+        # than resolved silently in either direction.
+        "year_online": year_online if (year_online and year_online != year) else None,
+        "year_print": year_print,
         # Bibliographic locators — needed for a complete citation
         # (volume:issue:pages). CrossRef gives `page` as "123-130".
         "volume": (msg.get("volume") or None),
@@ -316,7 +340,7 @@ def _normalize_crossref(msg: dict, doi: str) -> dict:
         # `article-number` set, and stayed blank for a year).
         "pages": (msg.get("page") or msg.get("article-number") or None),
         "issn": (issn[0] if issn else None),
-        "publisher": (msg.get("publisher") or None),
+        "publisher": tidy_source_text(msg.get("publisher")) or None,
         "url": msg.get("URL"),
         "type": msg.get("type"),
     }
@@ -826,11 +850,14 @@ def validate_references(state: State, slug: str) -> dict:
     unresolved: list[dict] = []
     missing_doi: list[dict] = []
     errors: list[dict] = []
+    year_disagreements: list[dict] = []
     now = now_iso()
     inline_only = set(contexts.keys())
 
     def _resolve(doi: str, *, registered: bool, key: str | None = None,
-                 stored_title: str | None = None) -> None:
+                 stored_title: str | None = None,
+                 stored_year: int | None = None,
+                 stored_volume: str | None = None) -> None:
         source = "registered_ref" if registered else "inline"
         try:
             meta = _fetch_crossref(doi)
@@ -850,6 +877,32 @@ def validate_references(state: State, slug: str) -> dict:
                 now=now, verification=_verification,
             )
             return
+
+        # A stored year that contradicts the volume. CrossRef's `issued` is
+        # the EARLIEST of print and online, so an article posted in 2019 and
+        # printed in volume 37 (January 2020) was stored as 2019 — and a
+        # reviewer looking up "MBE 37 (2019)" finds a pair that does not
+        # exist. Five of 88 references on one paper were in this state, and
+        # nothing could see it: the DOI resolves, so every check passed
+        # (feedback 37a7c4c05e1b). Reported, never corrected here — a
+        # publication year is a factual claim about the work.
+        year_print = meta.get("year_print")
+        if (registered and stored_year and year_print and stored_year != year_print):
+            year_disagreements.append({
+                "citation_key": key,
+                "doi": doi,
+                "stored_year": stored_year,
+                "year_print": year_print,
+                "year_online": meta.get("year_online"),
+                "volume": stored_volume or meta.get("volume"),
+                "message": (
+                    f"{key}: stored year {stored_year} is CrossRef's online-first "
+                    f"date; the issue it appeared in (volume "
+                    f"{stored_volume or meta.get('volume')}) is dated "
+                    f"{year_print}. Scholarly convention cites the version of "
+                    f"record — update_reference(year={year_print}) if that is "
+                    f"the version you read."),
+            })
 
         crossref_title = meta.get("title") or ""
         shared_title = (
@@ -881,6 +934,9 @@ def validate_references(state: State, slug: str) -> dict:
             "citation_state": _citation_state(key, doi, ctxs, body_text),
             "signals": {
                 "stored_title": stored_title,
+                "stored_year": stored_year,
+                "year_print": meta.get("year_print"),
+                "year_online": meta.get("year_online"),
                 "title_overlap_words": shared_title,
                 "best_context_overlap_words": best_ctx,
                 "context_count": len(ctxs),
@@ -904,7 +960,8 @@ def validate_references(state: State, slug: str) -> dict:
             missing_doi.append({"citation_key": key, "title": r.get("title")})
             continue
         inline_only.discard(doi)
-        _resolve(doi, registered=True, key=key, stored_title=r.get("title"))
+        _resolve(doi, registered=True, key=key, stored_title=r.get("title"),
+                 stored_year=r.get("year"), stored_volume=r.get("volume"))
 
     for doi in inline_only:
         _resolve(doi, registered=False)
@@ -915,6 +972,8 @@ def validate_references(state: State, slug: str) -> dict:
         "unresolved": unresolved,   # CrossRef 404 — fake DOI
         "missing_doi": missing_doi, # ref has no DOI
         "errors": errors,
+        # Stored year vs the issue's own year — see _resolve.
+        "year_disagreements": year_disagreements,
         # facts pack — agent reads this and decides per-DOI:
         "results": results,
     }

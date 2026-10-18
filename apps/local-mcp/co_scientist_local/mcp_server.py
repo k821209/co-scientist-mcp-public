@@ -412,6 +412,8 @@ def build_mcp(state: State) -> FastMCP:
         max_references: int | None = None,
         required_sections: list[str] | None = None,
         alt_text_required: bool | None = None,
+        max_main_file_mb: float | None = None,
+        max_supplementary_file_mb: float | None = None,
         notes: str | None = None,
         source: str | None = None,
     ) -> dict[str, Any]:
@@ -423,6 +425,14 @@ def build_mcp(state: State) -> FastMCP:
         never invent one. Put rules that don't fit a field in `notes`
         (e.g. "Methods at the end", "structured abstract"). `source` is
         the guidelines URL. See the /journal-requirements skill.
+
+        `max_main_file_mb` / `max_supplementary_file_mb` are the per-FILE
+        upload caps. Record them: per-figure compliance does not imply them,
+        and `export_to_path` warns when the file it just produced is over the
+        cap for its scope. Fifteen individually-compliant supplementary
+        figures assembled into an 11.1 MB document against a 5 MB limit with
+        every check green — the constraint is on the file, which does not
+        exist until the export has run.
 
         `alt_text_required=True` when the guidelines require figure alt text.
         Set it rather than only noting it: `check_requirements` then names the
@@ -437,7 +447,10 @@ def build_mcp(state: State) -> FastMCP:
             max_figures=max_figures, max_tables=max_tables,
             max_display_items=max_display_items, max_references=max_references,
             required_sections=required_sections,
-            alt_text_required=alt_text_required, notes=notes, source=source,
+            alt_text_required=alt_text_required,
+            max_main_file_mb=max_main_file_mb,
+            max_supplementary_file_mb=max_supplementary_file_mb,
+            notes=notes, source=source,
         )
 
     @mcp.tool()
@@ -478,6 +491,7 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def replace_in_section(
         slug: str, key: str, old: str, new: str, count: int | None = 1,
+        return_body: bool = False,
     ) -> dict[str, Any]:
         """Replace `old` with `new` in a section body WITHOUT re-sending it —
         the fix for a word, a term, a sentence. Exact match or fail: `old` must
@@ -485,8 +499,16 @@ def build_mcp(state: State) -> FastMCP:
         disambiguate, or count=None to replace every occurrence). A
         terminology sweep is a list of these; each failure names the count
         found. Re-sending an 8,000-word body to change three words is how a
-        row or a digit gets lost."""
-        return _sections.replace_in_section(state, slug, key, old=old, new=new, count=count)
+        row or a digit gets lost.
+
+        The reply carries `replaced`, `word_count` and a `contexts` snippet
+        around each replacement — enough to see it landed where you meant,
+        without the body you just read. `return_body=True` if you need the
+        whole thing; at 3,700 words that is ~11k tokens per one-word fix, and
+        a copy-edit pass is twenty of them."""
+        return _sections.replace_in_section(
+            state, slug, key, old=old, new=new, count=count,
+            return_body=return_body)
 
     @mcp.tool()
     def add_section(
@@ -1738,14 +1760,17 @@ def build_mcp(state: State) -> FastMCP:
     @mcp.tool()
     def replace_in_table(
         slug: str, table_number: int, field: str, old: str, new: str,
-        count: int | None = 1,
+        count: int | None = 1, return_body: bool = False,
     ) -> dict[str, Any]:
         """Replace `old` with `new` in one text field of a table (`field` =
         title | content | caption) without re-sending it. Same contract as
         `replace_in_section`: exact match, exactly `count` occurrences (None =
-        all), or an error naming the count found."""
+        all), or an error naming the count found — and the same reply shape,
+        `replaced` plus a `contexts` snippet rather than the field itself
+        (`return_body=True` for the field)."""
         return _tables.replace_in_table(
-            state, slug, table_number, field=field, old=old, new=new, count=count)
+            state, slug, table_number, field=field, old=old, new=new,
+            count=count, return_body=return_body)
 
     @mcp.tool()
     def search_tables(
@@ -1969,6 +1994,11 @@ def build_mcp(state: State) -> FastMCP:
           - unresolved: CrossRef returned 404 (almost certainly fake DOI)
           - missing_doi: reference has no DOI to check
           - errors: transient lookup failures
+          - year_disagreements: the stored year is CrossRef's online-first
+            date while the issue the paper appeared in is dated later, so the
+            year and the volume contradict each other. Reported, not fixed:
+            a publication year is a factual claim, and the message names the
+            `update_reference(year=…)` that would settle it.
 
         Plus `results[]` — one entry per resolvable DOI, each carrying:
 
@@ -2823,7 +2853,14 @@ def build_mcp(state: State) -> FastMCP:
         """Change a library affiliation's text. Updates the LIBRARY entry only —
         papers keep the affiliation text captured when it was added (a
         point-in-time record; this does NOT rewrite existing papers). To pull a
-        corrected text into an in-progress draft, call resync_paper_affiliations."""
+        corrected text into an in-progress draft, call resync_paper_affiliations.
+
+        The reply says who the edit reaches: `used_by` (papers in this project
+        referencing this record), `needs_resync` (those still carrying the old
+        text), and a `note` when the answer is nobody — editing an unused
+        near-duplicate row otherwise returns a plain success while the export
+        stays exactly as it was. `get_paper_affiliations(slug)` first gives
+        you the id to aim at."""
         return _affiliations.update_affiliation(state, affiliation_id, text)
 
     @mcp.tool()
@@ -2854,6 +2891,22 @@ def build_mcp(state: State) -> FastMCP:
             state, slug, status=status, journal=journal or None,
             submitted_at=submitted_at or None, manuscript_id=manuscript_id or None,
             url=url or None, decision_at=decision_at or None, notes=notes or None)
+
+    @mcp.tool()
+    def get_paper_affiliations(slug: str) -> list[dict[str, Any]]:
+        """Which affiliation records THIS paper references — read-only.
+
+        `list_affiliations` is the whole account's library, where one
+        department can appear five times differing only in trailing address
+        detail; matching by the text in a rendered header picks whichever
+        variant the paper happens to cache. Each entry gives the `id` to edit,
+        the superscript `number` a reader sees, the paper's cached `text`, the
+        library's `library_text`, `needs_resync`, and the authors carrying it.
+
+        Call this BEFORE `update_affiliation` so the edit lands on a record the
+        paper actually uses; editing an unused row returns success and changes
+        nothing in the export."""
+        return _papers.get_paper_affiliations(state, slug)
 
     @mcp.tool()
     def resync_paper_affiliations(slug: str) -> dict[str, Any]:

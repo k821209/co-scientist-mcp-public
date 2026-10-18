@@ -416,6 +416,43 @@ def set_paper_submission(state: State, slug: str, *, status: str,
     return state.backend.get_doc(path)
 
 
+def get_paper_affiliations(state: State, slug: str) -> list[dict]:
+    """The affiliation records THIS paper references — read-only.
+
+    `list_affiliations` is account-wide (29 rows on one account, five of them
+    the same department with different trailing address detail), and the only
+    way to learn which ones a paper used was `resync_paper_affiliations` — a
+    WRITE. So the safe question could only be asked by mutating, and matching
+    by text against the rendered header picks whichever variant the paper
+    happens to cache (feedback 3f1ed9ac0012).
+
+    Each entry carries the paper's cached text, the library's current text, and
+    whether the two agree — a `needs_resync` that is visible before an export
+    rather than after diffing one.
+    """
+    paper = state.backend.get_doc(_paper_path(state, slug))
+    if paper is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    lib = {a["id"]: a.get("text") for a in _affiliations.list_affiliations(state)}
+    authors = paper.get("authors") or []
+    out: list[dict] = []
+    for index, entry in enumerate(normalize_affiliations(paper.get("affiliations")), 1):
+        aff_id = entry.get("id")
+        library_text = lib.get(aff_id)
+        out.append({
+            "id": aff_id,
+            # The superscript a reader sees, so a correction can be aimed by eye.
+            "number": index,
+            "text": entry.get("text"),
+            "library_text": library_text,
+            "in_library": aff_id in lib,
+            "needs_resync": bool(library_text and library_text != entry.get("text")),
+            "authors": [a.get("name") for a in authors
+                        if aff_id in (a.get("affiliation_ids") or [])],
+        })
+    return out
+
+
 def resync_paper_affiliations(state: State, slug: str) -> dict:
     """Opt-in: refresh a paper's cached affiliation TEXT from the account
     library by id. Papers snapshot the text at insert time (a point-in-time

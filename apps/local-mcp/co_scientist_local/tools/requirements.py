@@ -50,6 +50,8 @@ def set_paper_requirements(
     max_references: int | None = None,
     required_sections: list[str] | None = None,
     alt_text_required: bool | None = None,
+    max_main_file_mb: float | None = None,
+    max_supplementary_file_mb: float | None = None,
     notes: str | None = None,
     source: str | None = None,
 ) -> dict:
@@ -73,6 +75,13 @@ def set_paper_requirements(
             raise ValueError(f"{name} must be a positive integer or null")
         return v
 
+    def _pos_num(v, name: str):
+        if v is None:
+            return None
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+            raise ValueError(f"{name} must be a positive number of MB or null")
+        return float(v)
+
     if required_sections is not None:
         unknown = [s for s in required_sections if s not in _CANON_SECTIONS]
         if unknown:
@@ -92,6 +101,9 @@ def set_paper_requirements(
         "max_references": _pos_int(max_references, "max_references"),
         "required_sections": list(required_sections) if required_sections else None,
         "alt_text_required": alt_text_required,
+        "max_main_file_mb": _pos_num(max_main_file_mb, "max_main_file_mb"),
+        "max_supplementary_file_mb": _pos_num(
+            max_supplementary_file_mb, "max_supplementary_file_mb"),
         "notes": notes,
         "source": source,
         "set_at": now_iso(),
