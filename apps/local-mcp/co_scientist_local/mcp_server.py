@@ -1926,8 +1926,18 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def verify_doi(doi: str) -> dict[str, Any]:
-        """Resolve a DOI against CrossRef. Returns title/authors/journal/year
-        if real, raises if CrossRef returns 404 (likely hallucinated DOI).
+        """Resolve a DOI against CrossRef, cross-checked against Europe PMC and
+        OpenAlex. Returns title/authors/journal/year if real, raises if the DOI
+        resolves nowhere (likely hallucinated).
+
+        Read `author_source` and `source_disagreements` in the reply. CrossRef
+        is incomplete often enough to matter and never says so — it returns ONE
+        author for MAFFT (10.1093/nar/gkf436), which has four. When no registry
+        can confirm the record, the reply says that too: report it as
+        unverified rather than completing it from what you believe. An author
+        list you remember is not a source; of seven such corrections checked
+        against these APIs afterwards, two were wrong, and before checking they
+        looked exactly like the five that were right.
 
         Use BEFORE inserting a citation into a manuscript. No Firestore write.
         """
@@ -1940,11 +1950,24 @@ def build_mcp(state: State) -> FastMCP:
         citation_key: str | None = None,
         cited_in: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Fetch CrossRef metadata for `doi` and store as a reference.
+        """Fetch metadata for `doi` and store as a reference, cross-checked.
 
         Auto-derives citation_key like 'smith2024' from first-author surname
-        + year if not provided. Refuses to store DOIs CrossRef returns 404
-        for — that's the primary hallucination guard.
+        + year if not provided. Refuses to store DOIs that resolve nowhere —
+        that is the primary hallucination guard.
+
+        Europe PMC and OpenAlex are asked as well as CrossRef, and the fuller
+        author list wins when they agree about who is first; the record keeps
+        `author_source`, `cross_checked` and `source_disagreements`, and
+        `prepare_export` reports the disagreements. Neither registry is let
+        near the YEAR: OpenAlex returns the online-first date, which is the
+        thing `published-print` exists to correct.
+
+        When the registries disagree about the first author, NOTHING is
+        adopted and the disagreement is reported — a software deposit with a
+        collective author ("The pandas development team") lists thirty
+        individual contributors in OpenAlex, and "longest list wins" would
+        replace the citable name with all thirty.
         """
         return _references.add_reference_by_doi(
             state, slug, doi=doi, citation_key=citation_key, cited_in=cited_in,
@@ -1965,7 +1988,15 @@ def build_mcp(state: State) -> FastMCP:
         title/authors/journal/year if blank). Use this to complete a
         bibliography whose exported citations end at the journal name with no
         volume:pages. Never overwrites non-empty fields. Returns a per-key
-        summary (enriched / already_complete / no_doi / errors)."""
+        summary (enriched / already_complete / no_doi / errors).
+
+        Also the repair pass for records added before cross-checking existed:
+        it asks Europe PMC and OpenAlex too and records where they disagree
+        with the stored record, which `prepare_export` then reports. It does
+        NOT rewrite an author list — a hand-corrected one has to survive — so
+        a fuller list arrives as a message that names every author, for you to
+        apply with `update_reference`. Those names come from a registry; the
+        ones you remember do not."""
         return _references.backfill_references(state, slug)
 
     @mcp.tool()

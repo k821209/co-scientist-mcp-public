@@ -111,8 +111,17 @@ def normalize_doi(raw: str | None) -> str | None:
     return s or None
 
 
-def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
-    """Fetch CrossRef metadata for a DOI. Raises DoiNotFound on 404."""
+def _fetch_crossref(doi: str, *, timeout: int = 15, cross_check: bool = True) -> dict:
+    """Fetch CrossRef metadata for a DOI. Raises DoiNotFound on 404.
+
+    `cross_check` asks Europe PMC and OpenAlex for their author lists as well
+    (see `cross_check_authors`). On by default because CrossRef's own record is
+    incomplete often enough to matter — three of the 85 DOIs on one manuscript,
+    one of them MAFFT with one author of four. Off for the per-reference loop
+    in `validate_references`, which would otherwise triple its network calls on
+    every run; that function reads the disagreements recorded at ingestion
+    instead.
+    """
     doi = (doi or "").strip().lstrip("/")
     # Strip a leading https://doi.org/ if the agent passes a URL.
     for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
@@ -150,7 +159,8 @@ def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
         raise RuntimeError(f"CrossRef timeout ({timeout}s) for {doi!r}") from e
     msg = payload.get("message", {})
     meta = _normalize_crossref(msg, doi)
-    if not (meta.get("volume") and meta.get("pages")):
+    pmc: dict = {}
+    if cross_check or not (meta.get("volume") and meta.get("pages")):
         # CrossRef's own record can be incomplete (a book chapter with no
         # volume, an NAR database issue with neither); Europe PMC indexes
         # the same DOI with the publisher's locators. Fill only the blanks.
@@ -158,6 +168,25 @@ def _fetch_crossref(doi: str, *, timeout: int = 15) -> dict:
         for fld in ("volume", "issue", "pages"):
             if not meta.get(fld) and pmc.get(fld):
                 meta[fld] = pmc[fld]
+    if cross_check:
+        candidates = {}
+        if pmc.get("authors"):
+            candidates["europepmc"] = pmc["authors"]
+        oa = _fetch_openalex(doi, timeout=timeout)
+        if oa.get("authors"):
+            candidates["openalex"] = oa["authors"]
+        info = cross_check_authors(meta, candidates)
+        meta.update(info)
+        if not candidates:
+            # Said out loud, so a session reports "unverified" rather than
+            # quietly filling the gap from what it believes.
+            meta["source_disagreements"] = (meta.get("disagreements") or []) + [
+                "neither Europe PMC nor OpenAlex has a record for this DOI, so "
+                "CrossRef's metadata could not be cross-checked — report it as "
+                "unverified rather than completing it from memory"]
+        else:
+            meta["source_disagreements"] = info.get("disagreements") or None
+        meta.pop("disagreements", None)
     return meta
 
 
@@ -168,7 +197,10 @@ def _fetch_europepmc(doi: str, *, timeout: int = 15) -> dict:
     """volume / issue / pages for a DOI from Europe PMC, or {} — a fallback,
     so every failure is an empty answer, never an error."""
     try:
-        q = urllib.parse.urlencode({"query": f"DOI:{doi}", "format": "json", "pageSize": "1"})
+        # resultType=core is what carries the author list; the default (lite)
+        # does not, which is why this call only ever yielded locators.
+        q = urllib.parse.urlencode({"query": f'DOI:"{doi}"', "format": "json",
+                                    "pageSize": "1", "resultType": "core"})
         req = urllib.request.Request(f"{_EUROPEPMC_SEARCH}?{q}", headers={"User-Agent": _CROSSREF_UA})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = _json.loads(resp.read())
@@ -177,13 +209,131 @@ def _fetch_europepmc(doi: str, *, timeout: int = 15) -> dict:
             return {}
         r = hits[0]
         jinfo = r.get("journalInfo") or {}
+        # `authorList` is here too, which is the point of asking a second
+        # registry at all — see cross_check_authors.
+        authors = [a.get("fullName") for a in
+                   ((r.get("authorList") or {}).get("author") or [])
+                   if a.get("fullName")]
         return {
             "volume": r.get("journalVolume") or jinfo.get("volume") or None,
             "issue": r.get("issue") or jinfo.get("issue") or None,
             "pages": r.get("pageInfo") or None,
+            "authors": authors,
+            "year": _as_year(r.get("pubYear") or jinfo.get("yearOfPublication")),
         }
     except Exception:  # noqa: BLE001 — a fallback that fails is just absent
         return {}
+
+
+_OPENALEX_BASE = "https://api.openalex.org/works/doi:"
+
+
+def _as_year(value) -> int | None:
+    try:
+        return int(str(value)[:4])
+    except (TypeError, ValueError):
+        return None
+
+
+def _fetch_openalex(doi: str, *, timeout: int = 15) -> dict:
+    """Author list for a DOI from OpenAlex, or {} — same contract as
+    `_fetch_europepmc`: a fallback that fails is simply absent.
+
+    Measured over the 85 DOIs of one plant-systematics manuscript: Europe PMC
+    had no record for 19 of them — the taxonomy and botany literature this
+    field runs on — while OpenAlex had all 85. Neither is a superset of the
+    other, so both are asked.
+
+    The YEAR is deliberately not taken from here. OpenAlex reports the online
+    posting date (msz189: 2019, where the issue is volume 37, January 2020),
+    which is the exact confusion `_normalize_crossref` resolves by preferring
+    `published-print`. Measured on three DOIs before writing this.
+    """
+    try:
+        req = urllib.request.Request(_OPENALEX_BASE + urllib.parse.quote(doi, safe="/"),
+                                     headers={"User-Agent": _CROSSREF_UA})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = _json.loads(resp.read())
+        authors = [((a.get("author") or {}).get("display_name") or "")
+                   for a in (payload.get("authorships") or [])]
+        return {"authors": [a for a in authors if a], "found": True}
+    except Exception:  # noqa: BLE001 — a fallback that fails is just absent
+        return {}
+
+
+_INITIALS = re.compile(r"^[A-Z]{1,3}$")
+
+
+def _surname(name: str) -> str:
+    """The family name, whichever spelling a registry uses.
+
+    Three forms reach this for one person: "K. Katoh" (CrossRef),
+    "Kazutaka Katoh" (OpenAlex) and "Katoh K" (Europe PMC). The surname is the
+    LAST token, except in the Europe-PMC form where the last token is a block
+    of initials and the surname leads. Guessing wrong only ever costs a
+    reported disagreement rather than a wrong adoption, which is the direction
+    to fail in.
+    """
+    parts = [p.strip(".,") for p in str(name or "").split() if p.strip(".,")]
+    if not parts:
+        return ""
+    if len(parts) > 1 and _INITIALS.match(parts[-1]):
+        return parts[0].lower()
+    return parts[-1].lower()
+
+
+def cross_check_authors(meta: dict, candidates: dict[str, list[str]]) -> dict:
+    """Adopt a fuller author list from a second registry, or report that the
+    registries disagree. Returns {author_source, cross_checked, disagreements}.
+
+    CrossRef is incomplete often enough to matter and says nothing when it is:
+    `verify_doi("10.1093/nar/gkf436")` returns ONE author for a paper with four
+    (MAFFT, Katoh et al. 2002), the DOI resolves, every check passes, and the
+    bibliography prints a one-author citation. The agent that notices has, so
+    far, had one way to fix it — its own memory — which is how a fabricated
+    name reaches a manuscript. Of seven memory-sourced corrections checked
+    against these APIs afterwards, five held and two did not, and before
+    checking they were indistinguishable (feedback fcfc2d6187e3).
+
+    A longer list is only adopted when both lists agree about who is FIRST.
+    Measured reason: the pandas record has no CrossRef entry and a collective
+    author ("The pandas development team"), while OpenAlex lists 30 individual
+    contributors — "longest list wins" would have replaced a correct
+    institutional author with thirty names. Disagreement about the first author
+    means the two registries may not be describing the same author list, so
+    that case is reported instead of resolved.
+    """
+    current = list(meta.get("authors") or [])
+    info: dict = {"cross_checked": sorted(candidates), "disagreements": []}
+    if meta.get("institutional_authors"):
+        # A collective author is not a short list that needs filling out.
+        info["author_source"] = meta.get("author_source") or "crossref"
+        return info
+    best_name, best = None, current
+    for source, names in candidates.items():
+        names = [n for n in (names or []) if n]
+        if len(names) > len(best):
+            best_name, best = source, names
+    if best_name is None:
+        info["author_source"] = meta.get("author_source") or "crossref"
+        return info
+    same_first = (current and best
+                  and _surname(current[0]) == _surname(best[0]))
+    if same_first or not current:
+        meta["authors"] = best
+        info["author_source"] = best_name
+        info["disagreements"].append(
+            f"author list taken from {best_name} ({len(best)} authors); "
+            f"crossref had {len(current)}")
+    else:
+        info["author_source"] = meta.get("author_source") or "crossref"
+        info["disagreements"].append(
+            f"{best_name} lists {len(best)} authors starting with "
+            f"{best[0]!r} while crossref lists {len(current)} starting with "
+            f"{(current[0] if current else None)!r} — the two registries may "
+            f"not be describing the same author list, so neither was adopted. "
+            f"Check the published paper and set it with update_reference.")
+    return info
 
 
 _DATACITE_BASE = "https://api.datacite.org/dois/"
@@ -390,6 +540,10 @@ def add_reference(
     issn: str | None = None,
     publisher: str | None = None,
     url: str | None = None,
+    institutional_authors: list[str] | None = None,
+    author_source: str | None = None,
+    cross_checked: list[str] | None = None,
+    source_disagreements: list[str] | None = None,
 ) -> dict:
     _ensure_paper(state, slug)
     if not citation_key or not citation_key.strip():
@@ -414,6 +568,14 @@ def add_reference(
         "issn": issn,
         "publisher": publisher,
         "url": url,
+        # Which names are an organisation (braced as a BibTeX literal), which
+        # registry the author list came from, which registries were asked, and
+        # where they disagreed. A value that was ASSERTED and one that was
+        # SOURCED look identical in a stored record otherwise.
+        "institutional_authors": list(institutional_authors or []) or None,
+        "author_source": author_source,
+        "cross_checked": list(cross_checked or []) or None,
+        "source_disagreements": list(source_disagreements or []) or None,
         "cited_in": list(cited_in or []),
         "created_at": now,
         "updated_at": now,
@@ -587,6 +749,10 @@ def add_reference_by_doi(
         pages=meta.get("pages"),
         issn=meta.get("issn"),
         publisher=meta.get("publisher"),
+        institutional_authors=meta.get("institutional_authors"),
+        author_source=meta.get("author_source"),
+        cross_checked=meta.get("cross_checked"),
+        source_disagreements=meta.get("source_disagreements"),
         cited_in=cited_in,
     )
 
@@ -694,6 +860,25 @@ def enrich_reference_from_doi(state: State, slug: str, citation_key: str) -> dic
     for fld in ("volume", "issue", "pages", "issn", "publisher"):
         if not cur.get(fld) and meta.get(fld):
             fields[fld] = meta[fld]
+    # Which registries were asked, and where they disagree with what is stored.
+    # This is the repair path for references added before the cross-check
+    # existed: it does not overwrite an author list (a hand-corrected one must
+    # survive), it NAMES the fuller list so the fix is sourced rather than
+    # remembered (feedback fcfc2d6187e3).
+    fields["cross_checked"] = meta.get("cross_checked") or None
+    fields["author_source"] = cur.get("author_source") or meta.get("author_source")
+    stored_authors = list(cur.get("authors") or [])
+    found = list(meta.get("authors") or [])
+    notes = list(meta.get("source_disagreements") or [])
+    if (stored_authors and found and len(found) > len(stored_authors)
+            and _surname(stored_authors[0]) == _surname(found[0])):
+        notes.append(
+            f"{meta.get('author_source') or 'another registry'} lists "
+            f"{len(found)} authors where this record has {len(stored_authors)}: "
+            + "; ".join(found)
+            + ". Set them with update_reference(authors=[…]) — they come from "
+            "the registry, not from memory.")
+    fields["source_disagreements"] = notes or None
     if len(fields) == 1:
         return cur  # nothing to add
     state.backend.update_doc(path, fields)
@@ -860,7 +1045,10 @@ def validate_references(state: State, slug: str) -> dict:
                  stored_volume: str | None = None) -> None:
         source = "registered_ref" if registered else "inline"
         try:
-            meta = _fetch_crossref(doi)
+            # No cross-check here: this loop runs once per reference (88 on one
+            # paper), and the disagreements it would find were already recorded
+            # at ingestion, where they are read from below.
+            meta = _fetch_crossref(doi, cross_check=False)
         except DoiNotFound:
             unresolved.append({"citation_key": key, "doi": doi, "stored_title": stored_title})
             _write_finding(

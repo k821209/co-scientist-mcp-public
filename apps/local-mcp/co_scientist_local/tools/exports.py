@@ -1194,6 +1194,14 @@ def prepare_export(
             f"Fill them by clicking the slot in the dashboard's manuscript view, "
             f"or with update_figure(slug, N, local_path=…).")
 
+    # Registries that disagreed about a reference, recorded at ingestion (or by
+    # backfill_references) so this needs no network. A truncated author list is
+    # indistinguishable from a correct short one in the finished bibliography,
+    # which is why it has to be said here (feedback fcfc2d6187e3).
+    for ref in _references.list_references(state, slug):
+        for note in (ref.get("source_disagreements") or []):
+            warnings.append(f"reference {ref.get('citation_key')}: {note}")
+
     warnings.extend(_stale_artifact_warnings(state, slug, figs + supp_figs,
                                              tbls + supp_tbls))
     # ...and the counterpart: artifacts with no link at all, which the staleness
