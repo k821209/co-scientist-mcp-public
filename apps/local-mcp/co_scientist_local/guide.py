@@ -727,6 +727,12 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   generate → critique) around `generate_image` for schematics
   (pathway, network, workflow, comparison, architecture, tree).
   Real data plots go through `/analysis-run` instead.
+- `/show-image [path]` — put an image you produced in front of the
+  user on the surface they are actually watching. A local path works
+  in a terminal and reaches nobody on a web page, which is what a
+  broken image in a chat panel almost always is; the skill picks
+  between inlining it, `add_material`, `add_figure` and `publish_page`,
+  and says which it did.
 {video_block}- `/paper-deck [slug] [audience] [duration_min] [--theme slug]` —
   full presentation pipeline: deck concept + slides + render
   (`render_deck`) + PPTX export (`export_deck_to_pptx`).
