@@ -3031,7 +3031,13 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def server_status(alias: str) -> dict[str, Any]:
-        """Live SSH check: load avg, memory, our running PIDs, warnings."""
+        """Live SSH check: load avg, memory, our running PIDs, warnings.
+
+        `online` is True, False, or **None when the probe timed out** — which
+        is not the same as down. A host whose login runs update-motd scripts
+        takes 20-30 s to answer its FIRST connection and nothing at all after
+        that, because the connection is multiplexed; `None` means ask again
+        rather than conclude. Do not report a host as down on a `None`."""
         return _ssh_ops.server_status(state, alias)
 
     @mcp.tool()

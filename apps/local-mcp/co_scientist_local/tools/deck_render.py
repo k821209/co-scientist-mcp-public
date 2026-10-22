@@ -2077,6 +2077,21 @@ def _build_code_namespace(slide, row, state, slug, tmpd, *,
     }
 
 
+def _para_font(para) -> str | None:
+    """The font family a paragraph renders in, as the .pptx names it.
+
+    Only the name is available — the lint runs where the font file may not be —
+    and that is enough to tell a CJK line box (1.45 em) from a Latin one
+    (1.17 em), which is the difference that made a Korean card pass while its
+    last line sat on the border.
+    """
+    for run in para.runs:
+        name = getattr(run.font, "name", None)
+        if name:
+            return name
+    return None
+
+
 def _effective_table_bottom(shape, top: int, height: int) -> int:
     """Bottom EMU of a TABLE, accounting for cells whose text wraps.
 
@@ -2121,7 +2136,8 @@ def _effective_table_bottom(shape, top: int, height: int) -> int:
                 # would put the check back where it was, silent.
                 font_pt = int(round(max(sizes))) if sizes else 11
                 measured_pt += measure_text_height_pt(
-                    text, max_width_emu=inner, font_pt=font_pt, line_spacing=1.15)
+                    text, max_width_emu=inner, font_pt=font_pt, line_spacing=1.15,
+                    font_name=_para_font(para))
             cell_emu = int(Pt(measured_pt)) + (cell.margin_top or 0) + (cell.margin_bottom or 0)
             row_h = max(row_h, cell_emu)
         total += row_h
@@ -2163,7 +2179,8 @@ def _effective_text_bottom(shape, top: int, width: int, height: int) -> int:
             continue
         ls = para.line_spacing if isinstance(para.line_spacing, (int, float)) and para.line_spacing else 1.15
         measured_pt += measure_text_height_pt(
-            text, max_width_emu=width, font_pt=int(round(max(sizes))), line_spacing=float(ls))
+            text, max_width_emu=width, font_pt=int(round(max(sizes))),
+            line_spacing=float(ls), font_name=_para_font(para))
         if para.space_before is not None:
             measured_pt += para.space_before.pt
     measured_emu = int(Pt(measured_pt))

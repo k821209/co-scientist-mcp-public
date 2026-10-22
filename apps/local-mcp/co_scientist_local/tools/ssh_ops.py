@@ -130,10 +130,23 @@ def server_status(
     )
     rc, out, err = ssh.run(server, cmd)
     if rc != 0:
+        message = (err or "").strip() or f"ssh exit={rc}"
+        # "unreachable" is a claim about the host, and it was wrong on the host
+        # that produced this report: up, idle, accepting work, and 24 s into a
+        # login that runs update-motd scripts. Say which of the two happened
+        # (feedback 92515583fea8).
+        timed_out = "no answer within" in message
         return {
-            "alias": alias, "host": server["host"], "online": False,
-            "error": (err or "").strip() or f"ssh exit={rc}",
-            "warnings": ["server unreachable"],
+            "alias": alias, "host": server["host"],
+            # Not a claim either way when the probe simply ran out of time.
+            "online": None if timed_out else False,
+            "error": message,
+            "warnings": [
+                "the probe timed out — this says nothing about whether the host "
+                "is up; a slow login looks exactly like this, and the next call "
+                "reuses the multiplexed connection"
+                if timed_out else "server unreachable"
+            ],
         }
 
     sections = _split_sections(out)

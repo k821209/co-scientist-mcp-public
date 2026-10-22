@@ -32,6 +32,7 @@ Usage shape inside a slide's `code` field:
 """
 from __future__ import annotations
 
+import re
 from typing import NamedTuple
 
 from pptx.util import Inches, Pt  # type: ignore
@@ -223,8 +224,48 @@ def estimate_text_width_pt(text: str, font_pt: int) -> float:
     return sum(_char_width_factor(ord(c)) * font_pt for c in text)
 
 
+# How tall ONE line is, as a multiple of the font size, before the paragraph's
+# own line_spacing is applied. A proportional line spacing multiplies the
+# FONT'S line box — ascent + descent — and the font decides how big that is.
+# Measured from the installed faces (PIL getmetrics at 1000 pt):
+#
+#   Noto Sans CJK KR, regular and bold   1.448 em
+#   Noto Serif CJK KR                    1.437 em
+#   DejaVu Sans / Noto Sans              1.165 em
+#   Liberation Sans                      1.118 em
+#   Liberation Serif (Times)             1.109 em
+#
+# The model here had no factor at all, i.e. 1.0 em, which underestimates every
+# font and a Korean one by nearly half: a two-line 11.5 pt CJK paragraph at
+# 1.20 spacing was measured as 27.6 pt against a real ~40 pt, so a card whose
+# inner box was 29.5 pt passed the lint while the second line sat on the card's
+# border (feedback b27d15dad4a1).
+_CJK_LINE_BOX = 1.45
+_LATIN_LINE_BOX = 1.17
+_CJK_FONT_HINT = re.compile(
+    r"\bCJK\b|Gothic|Myeongjo|Batang|Gulim|Dotum|Nanum|Malgun|맑은|고딕|명조|"
+    r"Hiragino|Yu (?:Gothic|Mincho)|Meiryo|MS (?:P?Gothic|P?Mincho)|"
+    r"Source Han|Noto Sans KR|Noto Sans JP|Noto Sans SC|Noto Sans TC|"
+    r"PingFang|Heiti|SimSun|SimHei|Microsoft YaHei|Apple SD", re.I)
+
+
+def line_box_factor(font_name: str | None) -> float:
+    """The font's line box in em — what a proportional line spacing multiplies.
+
+    A name is all the lint has to go on (the .pptx names a family, the font
+    file may not even be on this machine), so this is a family test rather than
+    a metric read. Unknown names get the Latin figure, which is the smaller of
+    the two: a missed warning is recoverable, an invented one on every slide
+    teaches the author to ignore the list.
+    """
+    if font_name and _CJK_FONT_HINT.search(font_name):
+        return _CJK_LINE_BOX
+    return _LATIN_LINE_BOX
+
+
 def measure_text_height_pt(text: str, *, max_width_emu, font_pt: int,
-                            line_spacing: float = 1.22) -> float:
+                            line_spacing: float = 1.22,
+                            font_name: str | None = None) -> float:
     """Estimated rendered height (in pt) of `text` wrapped to
     `max_width_emu` at `font_pt`. Used by content-driven sizing so a
     card or box can shrink to its content instead of stretching to fill
@@ -242,7 +283,7 @@ def measure_text_height_pt(text: str, *, max_width_emu, font_pt: int,
         w = estimate_text_width_pt(ln, font_pt)
         wraps = max(1, int((w + width_pt - 1) // width_pt))
         total_lines += wraps
-    return total_lines * font_pt * line_spacing
+    return total_lines * font_pt * line_spacing * line_box_factor(font_name)
 
 
 def autofit_pt(text: str, *, max_width_emu, max_height_emu, start_pt: int,

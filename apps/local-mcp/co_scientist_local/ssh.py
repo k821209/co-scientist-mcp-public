@@ -37,6 +37,49 @@ def is_connection_error(rc: int, stderr: str) -> bool:
     return any(p in s for p in _CONN_ERROR_PATTERNS)
 
 
+# ── session setup cost, and how it is paid once ───────────────────────────────
+#
+# A registered host returned "server unreachable: timeout after 12s" on four
+# consecutive calls while it was up, idle and accepting work: direct ssh from
+# the same machine took a consistent 24 s, at load 5 and at load 25 alike. The
+# time goes after authentication — Ubuntu's default `pam_motd.so` runs 13
+# scripts from /etc/update-motd.d/, several wanting outbound network the host's
+# network constrains. Key exchange and public-key acceptance complete
+# immediately. That is an ordinary Ubuntu default, so any host like it was
+# unusable through these tools, and the message said the host was down
+# (feedback 92515583fea8).
+#
+# Two things follow. The cost is PER CONNECTION, so multiplexing pays it once —
+# the reporter measured 24 s then 0–1 s with ControlMaster in their own
+# ~/.ssh/config, which is the fix, and it also speeds up the many short calls
+# these tools already make (tail_remote_log, poll_remote_pids, server_status).
+# And the first contact with a host needs a budget that a login can fit inside;
+# 12 s is below the cost of a default Ubuntu login on a busy box.
+_FIRST_CONTACT_TIMEOUT = 45
+# Keep the master alive across the short calls of one session, not forever.
+_CONTROL_PERSIST = "30m"
+# Sockets live under a short path: the control path goes into a sockaddr_un,
+# which caps at ~100 characters, and %C is a hash of (host, port, user).
+_CONTROL_DIR = Path.home() / ".cache" / "co-scientist" / "ssh"
+# Hosts this PROCESS has reached. The first call to one pays the login cost;
+# the rest ride the master socket.
+_REACHED: set[str] = set()
+
+
+def _control_args() -> list[str]:
+    """Multiplexing options, or nothing if the socket directory is unusable."""
+    try:
+        _CONTROL_DIR.mkdir(parents=True, exist_ok=True)
+        _CONTROL_DIR.chmod(0o700)
+    except OSError:
+        return []
+    return [
+        "-o", "ControlMaster=auto",
+        "-o", f"ControlPath={_CONTROL_DIR}/%C",
+        "-o", f"ControlPersist={_CONTROL_PERSIST}",
+    ]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # SSH executor
 # ──────────────────────────────────────────────────────────────────────────────
@@ -75,23 +118,44 @@ class RealSSHExecutor:
             return -1, "", "no ssh target (alias or user@host) configured"
 
         def _try(target: str) -> tuple[int, str, str]:
+            first = target not in _REACHED
+            # ConnectTimeout covers reaching the host, which is a different
+            # question from how long its login takes; the budget below is what
+            # the slow part needs.
+            budget = max(timeout + 5, _FIRST_CONTACT_TIMEOUT) if first else timeout + 5
             args = [
                 "ssh",
+                "-T",                      # no tty: skips tty-conditional motd
                 "-o", "BatchMode=yes",
                 "-o", f"ConnectTimeout={max(5, timeout)}",
                 "-o", "StrictHostKeyChecking=accept-new",
                 "-o", "ServerAliveInterval=15",
+                *_control_args(),
             ]
             if server.get("ssh_key"):
                 args += ["-i", server["ssh_key"]]
             args += [target, command]
             try:
                 proc = subprocess.run(
-                    args, capture_output=True, text=True, timeout=timeout + 5,
+                    args, capture_output=True, text=True, timeout=budget,
                 )
+                if proc.returncode == 0:
+                    _REACHED.add(target)
                 return proc.returncode, proc.stdout, proc.stderr
             except subprocess.TimeoutExpired:
-                return -1, "", f"timeout after {timeout}s"
+                # Named, and separated from "cannot connect": the host that
+                # produced this one was up the whole time, and "unreachable"
+                # sent the author to raw `ssh … nohup`, which the guardrails
+                # block and which costs the run record.
+                return -1, "", (
+                    f"no answer within {budget}s"
+                    + (" on the first connection to this host — ssh itself "
+                       "connects, but the login can take that long when the "
+                       "server runs update-motd scripts; the connection is "
+                       "multiplexed, so if the host is simply slow a retry now "
+                       "reuses it and returns at once"
+                       if first else
+                       f" (ssh was given {budget}s for this command)"))
             except FileNotFoundError:
                 return -1, "", "ssh binary not found"
 
