@@ -53,6 +53,12 @@ _VALID_ROLES = {
     "discussion", "conclusion", "qa", "custom",
     # extended vocabulary common in real decks (todo 007 #1)
     "hook", "thesis", "section", "figure", "image", "content",
+    # `question` was in the skill's documented menu and not here, so a journal
+    # club deck's "the question this paper asks" slide was rejected after the
+    # whole slide had been composed — a few hundred lines of python-pptx sent
+    # and refused — and the author settled for `thesis`, which is a different
+    # thing (feedback ce1a38ed1787). The pair is now checked by a test.
+    "question",
 }
 _VALID_RENDER_MODES = {
     "code-shape", "paper-figure", "ai-image", "hybrid", "text", "code",

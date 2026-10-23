@@ -86,9 +86,13 @@ def _run_path(state: State, slug: str, analysis: str, run_key: str) -> str:
     return f"{_analysis_path(state, slug, analysis)}/runs/{run_key}"
 
 
-def _ensure_analysis(state: State, slug: str, analysis: str) -> None:
-    if state.backend.get_doc(_analysis_path(state, slug, analysis)) is None:
-        raise NotFound(f"analysis {analysis!r} not found for {slug!r}")
+def _ensure_analysis(state: State, slug: str, analysis: str) -> str:
+    """The id this analysis is stored under — RETURNED, because every caller
+    then builds a run path from it. `create_analysis` slugifies, so a run filed
+    under the author's own spelling would land beside the analysis rather than
+    inside it (feedback bdd2d6dc8798)."""
+    from .analyses import resolve_analysis
+    return resolve_analysis(state, slug, analysis)
 
 
 def local_hostname() -> str:
@@ -180,7 +184,7 @@ def record_analysis_run(
     later auto-closed with exit_code -2 is measured from its last proof of
     life, which must not be the moment someone filed it."""
     from .provenance import normalize_params
-    _ensure_analysis(state, slug, analysis)
+    analysis = _ensure_analysis(state, slug, analysis)
     started_at = historical_stamp(started_at, "started_at")
     finished_at = historical_stamp(finished_at, "finished_at")
     if started_at and finished_at and finished_at < started_at:
@@ -253,7 +257,7 @@ def update_analysis_run(
     auto-close path measures from it (feedback 45eb88b50121).
     """
     from .provenance import normalize_params
-    _ensure_analysis(state, slug, analysis)
+    analysis = _ensure_analysis(state, slug, analysis)
     path = _run_path(state, slug, analysis, run_key)
     existing = state.backend.get_doc(path)
     if existing is None:
@@ -308,7 +312,7 @@ def list_analysis_runs(
     unfinished_only: bool = False,
     host: str | None = None,
 ) -> list[dict]:
-    _ensure_analysis(state, slug, analysis)
+    analysis = _ensure_analysis(state, slug, analysis)
     pairs = state.backend.list_collection(_runs_path(state, slug, analysis))
     runs = [data for _, data in pairs]
     if unfinished_only:
@@ -320,7 +324,7 @@ def list_analysis_runs(
 
 
 def get_analysis_run(state: State, slug: str, analysis: str, run_key: str) -> dict:
-    _ensure_analysis(state, slug, analysis)
+    analysis = _ensure_analysis(state, slug, analysis)
     doc = state.backend.get_doc(_run_path(state, slug, analysis, run_key))
     if doc is None:
         raise NotFound(f"run {run_key!r} not found")
@@ -343,7 +347,7 @@ def mark_run_finished(
     row for work that ended earlier, so the staleness check compares against
     when output actually appeared rather than when the bookkeeping happened.
     """
-    _ensure_analysis(state, slug, analysis)
+    analysis = _ensure_analysis(state, slug, analysis)
     finished_at = historical_stamp(finished_at, "finished_at")
     path = _run_path(state, slug, analysis, run_key)
     existing = state.backend.get_doc(path)
@@ -382,7 +386,7 @@ def launch_local_job(
     writes the exit code to `.exitcode_<run_key>` so `reap_local_run` can
     recover it once the PID is gone.
     """
-    _ensure_analysis(state, slug, analysis)
+    analysis = _ensure_analysis(state, slug, analysis)
     wd = pathlib.Path(workdir).expanduser().resolve()
     if not wd.is_dir():
         raise FileNotFoundError(f"workdir not found: {wd}")

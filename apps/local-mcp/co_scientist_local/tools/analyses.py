@@ -92,6 +92,28 @@ def create_analysis(
     return doc
 
 
+def resolve_analysis(state: State, slug: str, name: str) -> str:
+    """The id an analysis is STORED under, from whatever the caller calls it.
+
+    `create_analysis` slugifies the name it is given — "civitai 분석" is stored
+    as "civitai-분석" — and every other entry point looked the name up
+    verbatim, so the author's own string failed with "analysis not found" on
+    the very next call. The session that hit it worked out that it had to
+    slugify by hand and retried; nothing in the error said so
+    (feedback bdd2d6dc8798).
+
+    Verbatim first, then slugified: a name stored before the slugifying
+    existed still resolves. Raises NotFound naming both forms tried.
+    """
+    for candidate in (name, slugify(name or "")):
+        if candidate and state.backend.get_doc(
+                _analysis_path(state, slug, candidate)) is not None:
+            return candidate
+    slugged = slugify(name or "")
+    extra = f" (also tried {slugged!r})" if slugged and slugged != name else ""
+    raise NotFound(f"analysis {name!r} not found for {slug!r}{extra}")
+
+
 def update_analysis(
     state: State,
     slug: str,
@@ -101,9 +123,7 @@ def update_analysis(
     status: str | None = None,
 ) -> dict:
     _ensure_paper(state, slug)
-    path = _analysis_path(state, slug, name)
-    if state.backend.get_doc(path) is None:
-        raise NotFound(f"analysis {name!r} not found for {slug!r}")
+    path = _analysis_path(state, slug, resolve_analysis(state, slug, name))
     fields: dict = {"updated_at": now_iso()}
     if description is not None: fields["description"] = description
     if status is not None: fields["status"] = status
@@ -113,10 +133,8 @@ def update_analysis(
 
 def get_analysis(state: State, slug: str, name: str) -> dict:
     _ensure_paper(state, slug)
-    doc = state.backend.get_doc(_analysis_path(state, slug, name))
-    if doc is None:
-        raise NotFound(f"analysis {name!r} not found for {slug!r}")
-    return doc
+    return state.backend.get_doc(
+        _analysis_path(state, slug, resolve_analysis(state, slug, name)))
 
 
 def list_analyses(state: State, slug: str, *, status: str | None = None) -> list[dict]:
@@ -132,8 +150,9 @@ def list_analyses(state: State, slug: str, *, status: str | None = None) -> list
 
 def delete_analysis(state: State, slug: str, name: str) -> bool:
     _ensure_paper(state, slug)
-    path = _analysis_path(state, slug, name)
-    if state.backend.get_doc(path) is None:
-        return False
-    state.backend.delete_doc(path)
+    try:
+        stored = resolve_analysis(state, slug, name)
+    except NotFound:
+        return False          # deleting what is not there stays a quiet False
+    state.backend.delete_doc(_analysis_path(state, slug, stored))
     return True
