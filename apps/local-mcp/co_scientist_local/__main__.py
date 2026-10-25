@@ -233,6 +233,9 @@ def main() -> None:
     if argv and argv[0] == "install-hooks":
         from .hooks_install import cli as _install_hooks_cli
         sys.exit(_install_hooks_cli(argv[1:]))
+    if argv and argv[0] == "wire":
+        from .wire import cli as _wire_cli
+        sys.exit(_wire_cli(argv[1:]))
     if argv and argv[0] == "hosts":
         from .hosts import cli as _hosts_cli
         sys.exit(_hosts_cli(argv[1:]))
