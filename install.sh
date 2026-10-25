@@ -13,6 +13,11 @@
 # which the first three exist only because "which python3?" has no good answer
 # on a machine with several. This script answers it once by making one.
 #
+# Run it again to UPDATE: the pip install is an --upgrade and the wiring is
+# idempotent (an existing config is kept unless --force). That is also the
+# answer for an install from before `co_scientist_local update` existed, which
+# by definition cannot run it.
+#
 # What it deliberately does NOT do:
 #   · install Claude Code (or Codex, or Pi). Signing in belongs to that vendor
 #     and Anthropic's terms require it to happen through their own flow, so the
@@ -156,7 +161,10 @@ from co_scientist_local.hosts import host
 spec = host(sys.argv[1])
 print(f"  sign in:  {spec.sign_in}")
 print(f"  start:    {spec.start}")
-for caveat in spec.caveats:
-    print(f"  . {caveat}")
+# Only for the harness: `wire` already prints the host's caveats for every
+# other one, and printing them here too showed each twice.
+if spec.id == "harness":
+    for caveat in spec.caveats:
+        print(f"  . {caveat}")
 PYEOF
 printf '\n'

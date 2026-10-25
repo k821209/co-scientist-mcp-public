@@ -105,6 +105,36 @@ network_access = true
 """
 
 
+def existing_key(path: pathlib.Path) -> str | None:
+    """The API key already in a host config we wrote, or None.
+
+    What it answers is "is this the same project's config as the one being
+    asked for?", which decides between an idempotent rewrite and a refusal.
+    None covers both "no file" and "a file this did not write", and both get
+    the refusal: a config with content we do not recognise is the one case
+    where overwriting could destroy something a person wrote by hand.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if path.suffix == ".json":
+        try:
+            servers = (json.loads(text) or {}).get("mcpServers") or {}
+        except ValueError:
+            return None
+        # Hand-edited configs are the reason this is defensive: a `scivo`
+        # entry that is a string, not an object, raised AttributeError here
+        # instead of returning "not ours" — turning a refusal into a crash.
+        server = servers.get(SERVER_NAME)
+        env = server.get("env") if isinstance(server, dict) else None
+        key = env.get("CO_SCIENTIST_API_KEY") if isinstance(env, dict) else None
+        return str(key) if key else None
+    import re
+    m = re.search(r'CO_SCIENTIST_API_KEY\s*=\s*"([^"]+)"', text)
+    return m.group(1) if m else None
+
+
 def _ignore(root: pathlib.Path, *entries: str) -> None:
     """Add entries to .gitignore once. A config holding an API key that is also
     tracked is the loudest way to leak one."""
@@ -130,11 +160,23 @@ def wire(host_id: str, *, api_key: str, project: str | None, root: pathlib.Path,
             f"  scivo setup --project {project or '<pid>'} --key <key>")
 
     target = root / spec.config_path
+    # Re-running the installer is how an install is UPDATED — the pip install
+    # is an --upgrade — and for anyone whose install predates `co_scientist_local
+    # update` it is the only way. So a config that is already this project's is
+    # rewritten rather than refused: the first version died here with "pass
+    # --force", after the upgrade had already succeeded, which reads as a
+    # failed update. A config holding a DIFFERENT key, or one this did not
+    # write, is still refused — that is the case where overwriting loses
+    # something.
+    rewriting = False
     if target.exists() and not force:
-        raise SystemExit(
-            f"{target} already exists — pass --force to replace it, or edit it "
-            "by hand. Refusing to overwrite a config that may hold another "
-            "project's key.")
+        if existing_key(target) == api_key:
+            rewriting = True
+        else:
+            raise SystemExit(
+                f"{target} already exists and is not this project's config — "
+                "pass --force to replace it, or edit it by hand. Refusing to "
+                "overwrite a config that may hold another project's key.")
     target.parent.mkdir(parents=True, exist_ok=True)
     body = (codex_toml(api_key, interpreter) if spec.config_format == "toml"
             else mcp_json(api_key, interpreter))
@@ -157,7 +199,8 @@ def wire(host_id: str, *, api_key: str, project: str | None, root: pathlib.Path,
             capture_output=True, text=True)
         linked.append({"command": " ".join(step), "ok": done.returncode == 0,
                        "detail": (done.stdout or done.stderr).strip()[-200:]})
-    return {"host": host_id, "config": str(target), "skills": linked,
+    return {"host": host_id, "config": str(target), "rewritten": rewriting,
+            "skills": linked,
             "next": [spec.sign_in, spec.start], "caveats": list(spec.caveats)}
 
 
@@ -182,7 +225,7 @@ def cli(argv: list[str]) -> int:
     out = wire(args.host, api_key=api_key, project=args.project,
                root=pathlib.Path(args.dir).expanduser().resolve(),
                interpreter=args.python, force=args.force)
-    print(f"wrote {out['config']}")
+    print(f"{'rewrote' if out['rewritten'] else 'wrote'} {out['config']}")
     for row in out["skills"]:
         if row["ok"]:
             print(f"{row['command']}: ok")
