@@ -239,6 +239,9 @@ def main() -> None:
     if argv and argv[0] == "hosts":
         from .hosts import cli as _hosts_cli
         sys.exit(_hosts_cli(argv[1:]))
+    if argv and argv[0] == "update":
+        from .update import cli as _update_cli
+        sys.exit(_update_cli(argv[1:]))
     if argv and argv[0] == "doctor":
         from .doctor import cli as _doctor_cli
         sys.exit(_doctor_cli(argv[1:]))

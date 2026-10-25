@@ -371,7 +371,21 @@ def _version_key(v: str | None) -> tuple[int, int] | None:
     return (int(m.group(1)), int(m.group(2) or 0))
 
 
-def _compare(installed: str | None, latest: str | None) -> dict:
+def update_command(python: str | None = None) -> str:
+    """The one command that updates this install, whatever kind it is.
+
+    Named here so the hint, the guide and the docs cannot drift from what the
+    CLI actually accepts. It takes the interpreter explicitly because the hint
+    is read inside a session whose MCP may run under a different one than the
+    user's shell — naming the wrong python is how an update lands in an
+    environment nothing is wired to.
+    """
+    import sys
+    return f"{python or sys.executable} -m co_scientist_local update"
+
+
+def _compare(installed: str | None, latest: str | None,
+             install_mode: str | None = None, python: str | None = None) -> dict:
     """Pure staleness decision — no network, no env. Always returns a dict.
 
     `update_available` is True when both sides parse as published builds and
@@ -390,15 +404,19 @@ def _compare(installed: str | None, latest: str | None) -> dict:
             "update_available": None,
         }
         if latest:
+            # Only an editable install has a checkout to pull; for any other
+            # install this reads as a promise about a directory that is not
+            # there.
+            pull = (" — it pulls the checkout this runs from, since pip "
+                    "cannot" if install_mode == "editable" else "")
             out["update_hint"] = (
                 f"can't tell whether this install is current: it reports "
                 f"{installed!r}, not a published 0.1.YYYYMMDD[.postN] build "
-                f"(typical of "
-                f"an editable/source install, where `pip install --upgrade` is a "
-                f"no-op). Latest published is {latest}. Check the checkout "
-                f"itself: `cd ~/co-scientist-mcp-public && git status -sb && "
-                f"git pull`, then restart this session. `git_sha` in whoami is "
-                f"the reliable identifier for a source install."
+                f"(typical of an editable/source install, where `pip install "
+                f"--upgrade` is a no-op). Latest published is {latest}. Update "
+                f"with `{update_command(python)}`{pull} — then restart this "
+                f"session. `git_sha` in whoami is the reliable identifier for "
+                f"a source install."
             )
         return out
     update = late_d is not None and inst_d < late_d
@@ -408,12 +426,17 @@ def _compare(installed: str | None, latest: str | None) -> dict:
         "update_available": bool(update),
     }
     if update:
+        # The hint used to be `cd ~/co-scientist-mcp-public && git pull && pip
+        # install -e apps/local-mcp`, which is the recipe for a SOURCE install.
+        # A user installed from the one-liner has no such clone, so the only
+        # instruction the session ever gave them named a chore that did not
+        # apply — and cloning the repo to satisfy it leaves a second copy that
+        # then shadows the install (install_warning's whole subject).
         out["update_hint"] = (
             f"co-scientist-local is out of date (installed {installed}, "
             f"latest {latest}). Recently-reported bugs may already be fixed "
-            "upstream. Update before working: "
-            "`cd ~/co-scientist-mcp-public && git pull && "
-            "pip install -e apps/local-mcp`, then restart this session."
+            f"upstream. Update before working: `{update_command(python)}`, "
+            f"then restart this session."
         )
     return out
 
@@ -421,6 +444,10 @@ def _compare(installed: str | None, latest: str | None) -> dict:
 def check_version(timeout: float = 2.0) -> dict:
     """Best-effort staleness check. Never raises; degrades to
     update_available=False on any failure or when the skip env var is set."""
+    import sys
+    mode = "editable" if (pathlib.Path(__file__).resolve().parent.parent
+                          / "pyproject.toml").exists() else "site-packages"
     if os.environ.get("CO_SCIENTIST_SKIP_VERSION_CHECK"):
-        return _compare(installed_version(), None)
-    return _compare(installed_version(), fetch_latest_version(timeout=timeout))
+        return _compare(installed_version(), None, mode, sys.executable)
+    return _compare(installed_version(), fetch_latest_version(timeout=timeout),
+                    mode, sys.executable)

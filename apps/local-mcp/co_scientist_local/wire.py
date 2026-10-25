@@ -141,17 +141,15 @@ def wire(host_id: str, *, api_key: str, project: str | None, root: pathlib.Path,
     target.write_text(body)
     _ignore(root, spec.config_path)
 
-    # Skills, where this host looks for them. `install-skills --host` knows the
-    # layouts (SKILL_DEST): .claude/skills for Claude Code and Pi, .agents/skills
-    # for Codex. Codex also wants the hooks, which carry the session-start
-    # banner and the ssh provenance guard — the dashboard's setup script runs
-    # both, and the first version of this ran `install-agents` instead, which
-    # installs Claude Code SUBAGENTS into .claude/agents and left a Codex
-    # project with an empty skills directory and a `.claude/` it never reads.
-    skill_host = "codex" if host_id == "codex" else "claude"
-    steps = [["install-skills", "--host", skill_host]]
-    if host_id == "codex":
-        steps.append(["install-hooks", "--host", "codex"])
+    # Skills, where this host looks for them — from the table, not from a
+    # default here. Two bugs came out of deciding it in this function: the
+    # first version ran `install-agents`, which installs Claude Code SUBAGENTS
+    # into .claude/agents and left a Codex project with an empty skills
+    # directory; the second ran `install-skills --host claude` for Pi, which
+    # creates a `.claude/skills` Pi does not read, in a project the table's own
+    # caveat says keeps no `.claude/` at all. An empty tuple is now a host
+    # saying "nothing to link", which is Pi's actual answer.
+    steps = [list(step) for step in spec.skill_steps]
     linked = []
     for step in steps:
         done = subprocess.run(

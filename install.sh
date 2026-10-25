@@ -117,8 +117,15 @@ fi
 # ── the wiring, which the package owns ───────────────────────────────────────
 mkdir -p "$DIR"
 if [ "$HOST" = harness ]; then
+  # --no-checkout: `scivo setup` prefers a co-scientist-mcp-public clone on the
+  # machine over its own install, which is right for a developer and wrong
+  # here. The first real run of this script wired a two-month-old clone
+  # (0.1.20260824) instead of the build it had just installed, and said so in a
+  # line that reads like good news: "the MCP runs from your checkout … git pull
+  # there updates it". The whole point of the one-liner is that there is one
+  # interpreter and nothing to pull.
   ( cd "$DIR" && CO_SCIENTIST_API_KEY="$KEY" "$VENV/bin/scivo" setup \
-      ${PROJECT:+--project "$PROJECT"} --key "$KEY" ) \
+      ${PROJECT:+--project "$PROJECT"} --key "$KEY" --no-checkout ) \
     || die "scivo setup failed — scroll up for why"
 else
   ( cd "$DIR" && "$VENV/bin/python" -m co_scientist_local wire \
@@ -129,6 +136,19 @@ fi
 
 printf '\n'
 say "Scivo is installed for: $HOST"
+# Said at install time because this is where the expectation is set: the
+# package ships by continuously republishing a git repo, so every install goes
+# stale, and the only instruction a Claude Code or Codex user used to get was
+# to clone the repo and `git pull` it — a chore, and one that leaves a second
+# copy which then shadows the install.
+#
+# Printed by the shell rather than asked of the package on purpose. This script
+# is served from Hosting and the package comes from git, so a deploy and a
+# publish are not atomic: the version that imported `update_command` from the
+# package ended a real install in an ImportError, because the published build
+# did not have it yet. Nothing below may depend on code newer than the oldest
+# published build this script might install.
+say "update:   $VENV/bin/python -m co_scientist_local update"
 # What to run next comes from the host table, not from this script.
 "$VENV/bin/python" - "$HOST" <<'PYEOF'
 import sys
@@ -136,5 +156,7 @@ from co_scientist_local.hosts import host
 spec = host(sys.argv[1])
 print(f"  sign in:  {spec.sign_in}")
 print(f"  start:    {spec.start}")
+for caveat in spec.caveats:
+    print(f"  . {caveat}")
 PYEOF
 printf '\n'

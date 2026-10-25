@@ -50,6 +50,14 @@ class Host:
     sign_in: str
     # Where this host looks for skills, when it reads them at all.
     skills_path: str | None = None
+    # The package subcommands that put the skills where this host reads them,
+    # run as `python -m co_scientist_local <step> --dir <project>`. EMPTY means
+    # the wiring step installs nothing — not an oversight: Pi loads skills from
+    # the package it was pointed at, and linking Claude Code's `.claude/skills`
+    # into a Pi project leaves a directory nothing reads. `wire` ran exactly
+    # that for Pi, contradicting this table's own caveat, because the step was
+    # a default in the code instead of a fact here.
+    skill_steps: tuple[tuple[str, ...], ...] = field(default_factory=tuple)
     # Things true of this host and no other, stated once.
     caveats: tuple[str, ...] = field(default_factory=tuple)
 
@@ -64,6 +72,8 @@ HOSTS: tuple[Host, ...] = (
         context_file="CLAUDE.md",
         reads_skills=True,
         sign_in="claude auth login",
+        skills_path=".claude/skills/",
+        skill_steps=(("install-skills", "--host", "claude"),),
         caveats=(
             "`command` must name the interpreter that HAS the package: a bare "
             "`python3` resolves through PATH and picks a different one under "
@@ -83,6 +93,10 @@ HOSTS: tuple[Host, ...] = (
         # (install-agents is a different thing: Claude Code subagents).
         reads_skills=True,
         skills_path=".agents/skills/",
+        # The hooks carry the session-start banner and the ssh provenance
+        # guard; Codex speaks the same hook protocol as Claude Code.
+        skill_steps=(("install-skills", "--host", "codex"),
+                     ("install-hooks", "--host", "codex")),
         sign_in="codex login",
         caveats=(
             "Codex does NOT inherit the shell environment, so the key has to be "
@@ -106,8 +120,13 @@ HOSTS: tuple[Host, ...] = (
         context_file="CLAUDE.md",
         reads_skills=True,
         skills_path="~/.pi/agent/skills | .pi/skills",
+        # Nothing to run: see skill_steps on the dataclass.
+        skill_steps=(),
         sign_in="(the provider Pi is configured with)",
         caveats=(
+            "Skills arrive with `pi install <checkout>`, not by linking a "
+            "directory — so that step is yours, and a Pi install wants a "
+            "checkout even though the MCP does not.",
             "Do not add an AGENTS.md beside CLAUDE.md: Pi reads the first match "
             "and would stop seeing the generated one.",
             "Its skills live apart from Claude Code's, so a Pi-only project "
@@ -122,6 +141,8 @@ HOSTS: tuple[Host, ...] = (
         config_format="json",
         context_file="CLAUDE.md",
         reads_skills=True,
+        skills_path=".claude/skills/",
+        skill_steps=(("install-skills", "--host", "claude"),),
         sign_in="claude auth login",
         caveats=(
             "`scivo setup` writes the config, links the skills and verifies the "

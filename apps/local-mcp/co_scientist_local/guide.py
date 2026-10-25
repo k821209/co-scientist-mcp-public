@@ -113,13 +113,14 @@ On every session start:
    banner on startup when this mismatch is detected.)
    whoami also returns `update_available` / `update_hint`: if
    `update_available` is true this install is behind the latest published
-   build — tell the user to run the `update_hint` command (`git pull` +
-   `pip install -e` in the public checkout) and restart before you rely on
-   tool behavior, since a bug you're about to hit (or report) may already
+   build — one command updates it whatever kind of install it is,
+   `<python_executable> -m co_scientist_local update` (it pip-upgrades a
+   site-packages install from git, `git pull`s an editable checkout, and
+   re-links the skills), and the session must be RESTARTED before you rely
+   on tool behavior, since a bug you're about to hit (or report) may already
    be fixed upstream. **`null` means UNKNOWN, not current** — an
-   editable/source install whose version can't be compared; then trust
-   `git_sha` and have the user check the checkout itself
-   (`git status -sb && git pull`), because `pip install --upgrade` is a
+   editable/source install whose version can't be compared; run the same
+   command and trust `git_sha`, because `pip install --upgrade` alone is a
    no-op there. Only `false` means "checked, and current" — about the
    version ON DISK, which is a different question from the one below.
    **`stale_process: true` → the tools you are calling are not the tools
