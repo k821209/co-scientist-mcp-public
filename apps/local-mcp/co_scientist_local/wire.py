@@ -141,14 +141,23 @@ def wire(host_id: str, *, api_key: str, project: str | None, root: pathlib.Path,
     target.write_text(body)
     _ignore(root, spec.config_path)
 
-    # Skills, where this host looks for them. Both installers are the package's
-    # own and already know their layouts.
+    # Skills, where this host looks for them. `install-skills --host` knows the
+    # layouts (SKILL_DEST): .claude/skills for Claude Code and Pi, .agents/skills
+    # for Codex. Codex also wants the hooks, which carry the session-start
+    # banner and the ssh provenance guard — the dashboard's setup script runs
+    # both, and the first version of this ran `install-agents` instead, which
+    # installs Claude Code SUBAGENTS into .claude/agents and left a Codex
+    # project with an empty skills directory and a `.claude/` it never reads.
+    skill_host = "codex" if host_id == "codex" else "claude"
+    steps = [["install-skills", "--host", skill_host]]
+    if host_id == "codex":
+        steps.append(["install-hooks", "--host", "codex"])
     linked = []
-    for command in (["install-agents"] if host_id == "codex" else ["install-skills"]):
+    for step in steps:
         done = subprocess.run(
-            [interpreter, "-m", "co_scientist_local", command, "--dir", str(root)],
+            [interpreter, "-m", "co_scientist_local", *step, "--dir", str(root)],
             capture_output=True, text=True)
-        linked.append({"command": command, "ok": done.returncode == 0,
+        linked.append({"command": " ".join(step), "ok": done.returncode == 0,
                        "detail": (done.stdout or done.stderr).strip()[-200:]})
     return {"host": host_id, "config": str(target), "skills": linked,
             "next": [spec.sign_in, spec.start], "caveats": list(spec.caveats)}

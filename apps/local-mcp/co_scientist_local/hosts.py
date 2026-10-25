@@ -79,7 +79,8 @@ HOSTS: tuple[Host, ...] = (
         config_path=".codex/config.toml",
         config_format="toml",
         context_file="AGENTS.md",
-        # Its own `.agents/skills/` symlinks, written by install-agents.
+        # Its own `.agents/skills/` symlinks, from `install-skills --host codex`
+        # (install-agents is a different thing: Claude Code subagents).
         reads_skills=True,
         skills_path=".agents/skills/",
         sign_in="codex login",
