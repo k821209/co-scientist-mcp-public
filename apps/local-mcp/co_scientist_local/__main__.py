@@ -222,6 +222,49 @@ def _build_service_account_state() -> State:
     return State(project_id=pid, owner_uid=owner_uid, backend=backend)
 
 
+KEY_SHAPE = "csk_ followed by 48 hex characters"
+
+
+def startup_failure_message(exc: BaseException, api_key: str = "") -> str:
+    """One actionable line for a failure that kills the server at startup.
+
+    Everything here is a configuration mistake a person can fix, and every one
+    of them used to arrive as a traceback. Worse, under a host the traceback is
+    not even what the person sees: the server dies before answering
+    `initialize`, so the client reports "Connection closed" and the only line
+    that said why is inside stderr nobody prints. One real install ended in a
+    60-line ExceptionGroup whose actual cause was a key typed blind into a
+    prompt (the harness, 2026-10-26).
+
+    The message names the shape of a key on purpose: a key pasted short is the
+    most common cause and looks identical to a wrong one.
+    """
+    from .auth import ExchangeKeyError
+
+    detail = str(exc).strip()
+    if isinstance(exc, ExchangeKeyError):
+        low = detail.lower()
+        if "invalid api key" in low:
+            shape = ""
+            if api_key and not re.fullmatch(r"csk_[0-9a-f]{48}", api_key):
+                shape = (f" The key given is {len(api_key)} characters and does not "
+                         f"match the expected shape ({KEY_SHAPE}), so it is probably "
+                         f"truncated or has something extra around it.")
+            return ("the project API key was refused by the server (invalid api "
+                    f"key).{shape} Copy it again from the dashboard's Setup tab, "
+                    "or rotate it there. The key and the project id must come "
+                    "from the SAME project.")
+        if "project disabled" in low:
+            return ("this project is disabled, so its key is refused. Re-enable it "
+                    "in the dashboard, or use another project's key.")
+        return f"the key exchange failed: {detail}"
+    if isinstance(exc, KeyError):
+        return f"a required environment variable is missing: {detail}"
+    # Anything else: say what it was. A failure nobody anticipated still has to
+    # arrive as a line, not as a stack.
+    return f"{type(exc).__name__}: {detail}"
+
+
 def main() -> None:
     argv = sys.argv[1:]
     if argv and argv[0] == "install-skills":
@@ -252,8 +295,15 @@ def main() -> None:
     elif os.environ.get("CO_SCIENTIST_API_KEY"):
         try:
             state = _build_api_key_state()
-        except (KeyError, RuntimeError) as e:
-            print(f"co-scientist-local: {e}", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            # Broad on purpose: this is a process boundary, the process is
+            # going to die either way, and the alternative to a message is a
+            # traceback the person cannot act on. ExchangeKeyError was not in
+            # the old (KeyError, RuntimeError) tuple, which is exactly how a
+            # refused key became an unhandled traceback.
+            print(f"co-scientist-local: "
+                  f"{startup_failure_message(e, os.environ['CO_SCIENTIST_API_KEY'])}",
+                  file=sys.stderr)
             sys.exit(2)
         print(
             f"co-scientist-local: token-auth, "

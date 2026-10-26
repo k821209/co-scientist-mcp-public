@@ -110,6 +110,25 @@ if [ "$HOST" = harness ]; then
 fi
 
 # ── the key, asked for rather than left in history ───────────────────────────
+# A project key is `csk_` + 48 hex characters. Checked BEFORE anything is
+# written, because with echo off a key is pasted blind: one real run typed a
+# wrong one, and the first thing that noticed was the MCP server dying inside
+# the harness, which reported it as "Connection closed" under a 60-line
+# traceback. A shape check costs nothing and catches the common half of it (a
+# truncated paste, a copied space, the project id pasted by mistake).
+key_looks_right() {
+  case $1 in
+    csk_*) ;;
+    *) return 1 ;;
+  esac
+  [ ${#1} -eq 52 ] || return 1
+  rest=${1#csk_}
+  case $rest in
+    *[!0-9a-f]*) return 1 ;;
+  esac
+  return 0
+}
+
 if [ -z "$KEY" ]; then
   if [ -r /dev/tty ]; then
     # /dev/tty, not stdin: stdin is this script when the command was piped.
@@ -125,6 +144,12 @@ if [ -z "$KEY" ]; then
       stty -echo </dev/tty 2>/dev/null || saved=
     fi
     KEY=$(head -n 1 </dev/tty)
+    tries=1
+    while [ -n "$KEY" ] && ! key_looks_right "$KEY" && [ $tries -lt 3 ]; do
+      printf '\n  that is %s characters and a key is 52 (csk_ + 48 hex) — try again: ' "${#KEY}"
+      KEY=$(head -n 1 </dev/tty)
+      tries=$((tries + 1))
+    done
     if [ -n "$saved" ]; then
       stty "$saved" </dev/tty 2>/dev/null
       trap - INT TERM HUP
@@ -133,6 +158,13 @@ if [ -z "$KEY" ]; then
   fi
 fi
 [ -n "$KEY" ] || die "no key. Pass --key, export CO_SCIENTIST_API_KEY, or run without piping so it can be asked for."
+if ! key_looks_right "$KEY"; then
+  # Not fatal: the shape is ours, not the server's, and a future key format
+  # must not be refused by an installer that predates it. The server has the
+  # last word — this only stops the person from waiting for it in silence.
+  say "note: that key is ${#KEY} characters and does not look like csk_ + 48 hex."
+  say "      Continuing — the server decides — but if setup fails, re-copy it from the Setup tab."
+fi
 
 # ── the wiring, which the package owns ───────────────────────────────────────
 mkdir -p "$DIR"
