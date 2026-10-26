@@ -114,7 +114,22 @@ if [ -z "$KEY" ]; then
   if [ -r /dev/tty ]; then
     # /dev/tty, not stdin: stdin is this script when the command was piped.
     printf '  Project API key (Setup tab): '
+    # Echo OFF while it is typed. This key is account-wide — it reads every
+    # project, the secrets store and the servers registry — and with echo on it
+    # sits in scrollback, which is how a live key ended up pasted into a chat
+    # and had to be rotated. A password prompt, because that is what it is.
+    # stty is restored on interrupt too, or the terminal is left blind.
+    saved=$(stty -g </dev/tty 2>/dev/null) || saved=
+    if [ -n "$saved" ]; then
+      trap 'stty "$saved" </dev/tty 2>/dev/null; exit 130' INT TERM HUP
+      stty -echo </dev/tty 2>/dev/null || saved=
+    fi
     KEY=$(head -n 1 </dev/tty)
+    if [ -n "$saved" ]; then
+      stty "$saved" </dev/tty 2>/dev/null
+      trap - INT TERM HUP
+    fi
+    printf '\n'
   fi
 fi
 [ -n "$KEY" ] || die "no key. Pass --key, export CO_SCIENTIST_API_KEY, or run without piping so it can be asked for."
@@ -129,8 +144,12 @@ if [ "$HOST" = harness ]; then
   # line that reads like good news: "the MCP runs from your checkout … git pull
   # there updates it". The whole point of the one-liner is that there is one
   # interpreter and nothing to pull.
+  # $FORCE belongs on BOTH branches. It was on the wire one only, so
+  # `--force` for the harness was accepted here and then dropped, and the run
+  # ended on `scivo setup`'s own "pass --force to replace it" — advice the user
+  # had already taken.
   ( cd "$DIR" && CO_SCIENTIST_API_KEY="$KEY" "$VENV/bin/scivo" setup \
-      ${PROJECT:+--project "$PROJECT"} --key "$KEY" --no-checkout ) \
+      ${PROJECT:+--project "$PROJECT"} --key "$KEY" --no-checkout $FORCE ) \
     || die "scivo setup failed — scroll up for why"
 else
   ( cd "$DIR" && "$VENV/bin/python" -m co_scientist_local wire \
