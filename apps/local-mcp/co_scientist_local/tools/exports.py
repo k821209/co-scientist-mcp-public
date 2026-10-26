@@ -1145,6 +1145,29 @@ def prepare_export(
             + " but no such registered figure exists (register with add_figure, "
             "or fix the reference)"
         )
+    # Legends were never scanned, and they are where the pointers rot: a
+    # renumbering left seven of this paper's figure legends naming
+    # pre-renumbering supplementary tables, and they were found by hand, late
+    # (feedback 26b56b0fd63b). This cannot see that a legend names the WRONG
+    # item — nothing regex-shaped can — but a legend naming an item that does
+    # not exist at all is the same dangling reference as in the body.
+    legend_text = "\n".join(
+        " ".join(str(it.get(f) or "") for f in ("caption", "legend", "title"))
+        for it in tbls + supp_tbls + figs + supp_figs)
+    legend_orphans = _display_lint.orphan_references(
+        legend_text,
+        [t["table_number"] for t in tbls + supp_tbls],
+        [f["figure_number"] for f in figs + supp_figs],
+        number_supplementary=split_supp,
+    )
+    for kind, labels in (("Table", legend_orphans["tables"]),
+                         ("Figure", legend_orphans["figures"])):
+        if labels:
+            warnings.append(
+                f"a figure/table legend references {kind} " + ", ".join(labels)
+                + f" but no such registered {kind.lower()} exists — a legend "
+                f"pointer left behind by a renumbering"
+            )
 
     # Provenance staleness — an artifact left behind by a rerun analysis.
     #

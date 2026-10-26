@@ -832,6 +832,55 @@ def _defined_after_abstract(sections: list[dict]) -> list[dict]:
     return out
 
 
+_MAX_DECISIONS = 10
+_MAX_PER_DECISION = 5
+
+
+def _decision_pairs(state, sections: list[dict]) -> dict:
+    """Active decisions and the sections written before each one.
+
+    Bounded and best-effort: a lint must not fail because the decision store
+    is unreachable, and a project with a hundred decisions must not turn this
+    reply into the longest thing in it.
+    """
+    try:
+        from . import discussion as _discussion
+        decisions = [d for d in _discussion.list_decisions(state)
+                     if not d.get("superseded_by")]
+    except Exception:
+        return {"active": 0, "items": []}
+    if not decisions:
+        return {"active": 0, "items": []}
+    items = []
+    for d in decisions[:_MAX_DECISIONS]:
+        decided_at = d.get("decided_at") or ""
+        terms = _discussion.decision_terms(d.get("text"), d.get("rationale"))
+        before = []
+        for sec in sections:
+            if not (sec.get("word_count") or 0):
+                continue
+            updated = sec.get("updated_at") or ""
+            if decided_at and updated and updated >= decided_at:
+                continue      # already revised since this was decided
+            hits = _discussion._section_hits(sec.get("body") or "", terms)
+            if hits:
+                before.append({"section": sec.get("key"), "mentions": hits[:5]})
+        if before:
+            items.append({
+                "decision_id": d.get("decision_id"),
+                "text": (d.get("text") or "")[:200],
+                "decided_at": decided_at or None,
+                "sections_not_revised_since": before[:_MAX_PER_DECISION],
+            })
+    return {
+        "active": len(decisions),
+        "items": items,
+        "note": ("each listed section discusses what the decision is about and "
+                 "has not been edited since it was recorded — read the pair; "
+                 "nothing here checks whether the prose complies"),
+    }
+
+
 def lint_manuscript(state, slug: str) -> dict:
     """Return QA warnings for a paper's sections:
 
@@ -1249,6 +1298,14 @@ def lint_manuscript(state, slug: str) -> dict:
         # is the quiet failure this codebase keeps meeting. Summary only; the
         # per-sentence detail stays in lint_legends(slug).
         "display_items": display_items,
+        # Recorded decisions, against the sections that predate them. The lint
+        # does not judge whether the prose complies — no regex sees "this is a
+        # performance claim from transformer training" — it names the pairs,
+        # because the agent can read a named paragraph and could not remember a
+        # decision from nine turns ago (feedback 0408a9a45b3b). `stale` catches
+        # "what I quoted changed"; this is the other half, "what was decided
+        # next reverses how to read this".
+        "decisions": _decision_pairs(state, sections),
         "summary": {
             "total": total,
             "by_kind": {

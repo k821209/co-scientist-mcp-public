@@ -21,11 +21,123 @@ decisions is not a wrong one — it is one everybody still believes.
 """
 from __future__ import annotations
 
+import re
+
 from ..backends.base import NotFound
 from ..state import State
 from ..util import new_id, now_iso
 
 AGENT_NAME = "Claude Code"
+
+# Words that appear in every decision and tell you nothing about which prose it
+# governs. Deliberately short: a stopword list that grows starts deciding which
+# decisions are important.
+_STOP = {
+    "that", "this", "with", "from", "have", "will", "shall", "should", "would",
+    "about", "there", "their", "which", "where", "while", "than", "then",
+    "paper", "section", "sections", "make", "makes", "made", "keep", "keeps",
+    "only", "also", "into", "onto", "over", "under", "between", "because",
+    "does", "doing", "done", "been", "being", "must", "could", "같은", "대한",
+    "그리고", "하지만", "때문에", "한다", "하는", "있는", "없는",
+}
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{3,}|[\uac00-\ud7a3]{2,}")
+
+
+def decision_terms(*parts: str | None) -> set[str]:
+    """The distinctive words of a decision — what to look for in the prose.
+
+    Latin words of four characters or more and Hangul runs of two or more; the
+    rest of a sentence is grammar. Lowercased, so the match is case-blind.
+    """
+    out: set[str] = set()
+    for part in parts:
+        for word in _WORD_RE.findall(part or ""):
+            low = word.lower()
+            if low not in _STOP:
+                out.add(low)
+    return out
+
+
+def _section_hits(body: str, terms: set[str]) -> list[str]:
+    low = (body or "").lower()
+    return sorted(t for t in terms if t in low)
+
+
+# A decision is about the paper you are writing, so the scan starts at the most
+# recently touched papers rather than every paper in the project — the cost of
+# this reply has to stay flat as a project accumulates papers.
+_SCAN_PAPERS = 3
+_SCAN_SECTIONS = 200
+
+
+def sections_to_review(
+    state: State,
+    *,
+    text: str,
+    rationale: str | None = None,
+    decided_at: str | None = None,
+    limit: int = 5,
+) -> list[dict]:
+    """Sections that talk about what was just decided and predate the decision.
+
+    `record_decision` already returns `studies_to_review`, and `list_studies`
+    computes `decisions_since`, because a decision is not self-enforcing — the
+    system has to re-surface it against the artifacts it might now contradict.
+    The manuscript, the artifact decisions are overwhelmingly ABOUT, got none
+    of that: no sections_to_review, no decisions_since on a section, no check
+    in any lint. So a decision could be recorded and prose contradicting it
+    written twenty minutes later, in the same session, and every tool returned
+    success (feedback 0408a9a45b3b).
+
+    What this can and cannot do: no regex sees that a sentence is "a
+    performance claim from transformer training". Naming the paragraphs that
+    discuss the decision's own subject is enough — the agent can then read
+    them, which is the step that was never prompted.
+    """
+    terms = decision_terms(text, rationale)
+    if not terms:
+        return []
+    rows: list[dict] = []
+    try:
+        from . import papers as _papers
+        from . import sections as _sections
+        paper_list = _papers.list_papers(state)[:_SCAN_PAPERS]
+        seen = 0
+        for paper in paper_list:
+            slug = paper.get("slug")
+            if not slug:
+                continue
+            for sec in _sections.list_sections(state, slug):
+                seen += 1
+                if seen > _SCAN_SECTIONS:
+                    break
+                if not (sec.get("word_count") or 0):
+                    continue
+                body = sec.get("body")
+                if body is None:
+                    full = _sections.get_section(state, slug, sec.get("key", ""))
+                    body = (full or {}).get("body") or ""
+                hits = _section_hits(body, terms)
+                if not hits:
+                    continue
+                updated = sec.get("updated_at") or ""
+                rows.append({
+                    "paper": slug,
+                    "section": sec.get("key"),
+                    "title": sec.get("title"),
+                    "word_count": sec.get("word_count"),
+                    "updated_at": updated or None,
+                    # False only when the section was edited AFTER the decision
+                    # — then somebody has already had the chance to apply it.
+                    "written_before_this_decision": bool(
+                        decided_at and updated and updated < decided_at),
+                    "mentions": hits[:6],
+                })
+    except Exception:
+        return []
+    rows.sort(key=lambda r: (-len(r["mentions"]), r.get("updated_at") or ""))
+    return rows[:limit]
+
 
 
 def _comments_col(state: State) -> str:
@@ -164,7 +276,21 @@ def record_decision(
                 })
     except Exception:
         affected = []
+    # The same idea as studies_to_review, for the surface that had nothing: the
+    # paragraphs this decision governs, named at the one moment the person is
+    # thinking about it.
+    try:
+        sections = sections_to_review(state, text=body, rationale=rationale,
+                                      decided_at=now)
+    except Exception:
+        sections = []
     return {**doc, "studies_to_review": affected,
+            "sections_to_review": sections,
+            "sections_to_review_note": (
+                "sections that discuss what this decision is about and were "
+                "written before it — read them against the decision now; "
+                "nothing checks the prose for you"
+            ) if sections else None,
             "dashboard_url": state.dashboard_url("discussion")}
 
 

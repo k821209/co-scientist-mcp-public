@@ -1549,7 +1549,14 @@ def build_mcp(state: State) -> FastMCP:
         something that moved, or that were written before decisions you have
         since recorded. **Read it.** A study's tables can stay perfectly correct
         while the way to read them reverses, and that is the failure this
-        surfaces at the one moment someone can act on it."""
+        surfaces at the one moment someone can act on it.
+
+        And `sections_to_review`: the manuscript paragraphs that discuss what
+        this decision is about and predate it. Read them against the decision
+        NOW — nothing checks the prose for you, and the briefing you read at
+        session start is behind you by the time you write the contradiction
+        (feedback 0408a9a45b3b). `lint_manuscript` carries the same pairing in
+        its `decisions` block for a later session."""
         return _discussion.record_decision(
             state, text=text, rationale=rationale, from_graph=from_graph,
             supersedes=supersedes)

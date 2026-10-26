@@ -363,7 +363,9 @@ interpretation inverts. So `list_studies()` also counts decisions recorded after
 each document was written that it does not cite. Often irrelevant; never a
 verdict; the only thing that would have caught a retraction nobody thought to
 link. `record_decision` returns `studies_to_review` for the same reason, at the
-one moment someone can act on it.
+one moment someone can act on it — and `sections_to_review`, the manuscript
+paragraphs that discuss the decision and were written before it; the same
+pairing is in `lint_manuscript`'s `decisions` block for the session after.
 
 `status` is `confirmed` or `provisional`. There is no `stale` status: it is
 computed, because a flag someone has to remember to set is the same memory that

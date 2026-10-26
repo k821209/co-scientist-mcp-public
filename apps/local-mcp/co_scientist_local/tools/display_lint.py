@@ -41,6 +41,67 @@ _PROSE_FIG_RE = re.compile(r"\b(?:Figure|Fig)\.?\s+(S?)(\d+)(?!\d)", re.IGNORECA
 _PROSE_STABLE_RE = re.compile(r"\bSTable\s+(\d+)(?!\d)")
 _PROSE_SFIG_RE = re.compile(r"\bS(?:Figure|Fig)\.?\s+(\d+)(?!\d)")
 
+# The spelled-out supplementary forms — "Supplementary Table 3",
+# "Supplementary Fig. 2" — which is what Nature's house style requires. The
+# patterns above are not anchored, so `\bTable\s+\d` matched the TAIL of these
+# and reported a reference to main Table 3 that nobody wrote: one false warning
+# per supplementary number, and they appeared the moment a paper was formatted
+# correctly (feedback 26b56b0fd63b). A paper with eleven supplementary tables
+# and no main-text tables got eleven, and the remedy they suggested — "register
+# with add_table" — would have created eleven empty tables to silence it.
+#
+# A number RUN, not one number: "Supplementary Tables 7 and 8" and
+# "Supplementary Figs. 3–5" are ordinary in the same house style, and reading
+# only the first number left the rest unchecked.
+_SUPP = r"Supp(?:lementary|l?\.)"
+_NUM_RUN = r"(\d+(?:\s*(?:,|&|and|to|–|—|-)\s*\d+)*)(?!\d)"
+_SUPP_TABLE_RE = re.compile(rf"\b{_SUPP}\s+Tables?\s+{_NUM_RUN}", re.IGNORECASE)
+_SUPP_FIG_RE = re.compile(rf"\b{_SUPP}\s+(?:Figures?|Figs?\.?)\s+{_NUM_RUN}",
+                          re.IGNORECASE)
+# A range wider than this is a typo or a page range, not a list of display
+# items; keep the endpoints rather than inventing thirty labels.
+_MAX_RANGE = 30
+
+
+def _numbers_in_run(run: str) -> list[str]:
+    """The numbers a prose run names: "7 and 8" -> [7, 8], "3–5" -> [3, 4, 5]."""
+    parts = re.split(r"\s*(,|&|and|to|–|—|-)\s*", run, flags=re.IGNORECASE)
+    nums: list[int] = []
+    i = 0
+    while i < len(parts):
+        if not parts[i].isdigit():
+            i += 1
+            continue
+        n = int(parts[i])
+        sep = parts[i + 1].lower() if i + 1 < len(parts) else ""
+        nxt = parts[i + 2] if i + 2 < len(parts) else ""
+        if sep in ("to", "–", "—", "-") and nxt.isdigit():
+            m = int(nxt)
+            nums.extend(range(n, m + 1) if 0 < m - n <= _MAX_RANGE else [n, m])
+            i += 3
+            continue
+        nums.append(n)
+        i += 1
+    return [str(n) for n in dict.fromkeys(nums)]
+
+
+def _split_supplementary(text: str) -> tuple[str, set[str], set[str]]:
+    """(text with the supplementary references blanked, table labels, figure labels).
+
+    Blanked rather than deleted, so nothing on either side of a removed span
+    runs together into a new false match.
+    """
+    tables: set[str] = set()
+    figures: set[str] = set()
+
+    def take(match: re.Match, into: set[str]) -> str:
+        into.update("S" + n for n in _numbers_in_run(match.group(1)))
+        return " " * len(match.group(0))
+
+    text = _SUPP_TABLE_RE.sub(lambda m: take(m, tables), text)
+    text = _SUPP_FIG_RE.sub(lambda m: take(m, figures), text)
+    return text, tables, figures
+
 
 def count_inline_tables(text: str) -> int:
     """Count GFM pipe-table blocks (one separator row = one table)."""
@@ -93,14 +154,32 @@ def orphan_references(text: str, table_numbers, figure_numbers,
                   for n in table_numbers}
     reg_figs = {label_for(n, number_supplementary=number_supplementary)
                 for n in figure_numbers}
+    # Read the spelled-out supplementary references first and take them out of
+    # the way, so the unanchored main-text patterns cannot see their tails.
+    text, supp_tables, supp_figs = _split_supplementary(text)
+    if not number_supplementary:
+        # With the +100 convention off there is no S-label to resolve against —
+        # a report's "Table 107" IS table 107. Those references are removed
+        # from the scan rather than checked against a label that cannot exist.
+        supp_tables, supp_figs = set(), set()
     return {
         "tables": sorted(
-            _prose_labels(text, _PROSE_TABLE_RE, _PROSE_STABLE_RE) - reg_tables,
-            key=lambda x: (x.startswith("S"), x)),
+            (_prose_labels(text, _PROSE_TABLE_RE, _PROSE_STABLE_RE) | supp_tables)
+            - reg_tables,
+            key=_label_sort),
         "figures": sorted(
-            _prose_labels(text, _PROSE_FIG_RE, _PROSE_SFIG_RE) - reg_figs,
-            key=lambda x: (x.startswith("S"), x)),
+            (_prose_labels(text, _PROSE_FIG_RE, _PROSE_SFIG_RE) | supp_figs)
+            - reg_figs,
+            key=_label_sort),
     }
+
+
+def _label_sort(label: str) -> tuple:
+    """Main items before supplementary, and numerically inside each — "S10"
+    sorted as a string landed between "S1" and "S2"."""
+    supp = label.startswith("S")
+    digits = label[1:] if supp else label
+    return (supp, int(digits) if digits.isdigit() else 0, label)
 
 
 def inline_object_warnings(body: str) -> list[str]:
