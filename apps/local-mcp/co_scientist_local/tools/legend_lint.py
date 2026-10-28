@@ -693,7 +693,9 @@ def lint_legends(state: State, slug: str) -> dict:
               "carries. It is typeset with the table, so the reader meets it twice. "
               "Keep footnotes and column definitions there; move claims to Results.")
 
+    n_figures = n_tables = 0
     for fig in list_figures(state, slug, supplementary=None):
+        n_figures += 1
         num = fig["figure_number"]
         supp = is_supplementary_number(num)
         label = (f"SFig S{num - SUPPLEMENTARY_NUMBER_OFFSET}" if supp
@@ -701,6 +703,7 @@ def lint_legends(state: State, slug: str) -> dict:
         _score(label, "figure", num, _legend_text_figure(fig), _FIG_INFO, _FIG_WARN)
 
     for tbl in list_tables(state, slug, supplementary=None):
+        n_tables += 1
         num = tbl["table_number"]
         supp = is_supplementary_number(num)
         label = (f"STable S{num - SUPPLEMENTARY_NUMBER_OFFSET}" if supp
@@ -714,9 +717,23 @@ def lint_legends(state: State, slug: str) -> dict:
     by_level = {"warn": 0, "info": 0}
     for f in findings:
         by_level[f["level"]] += 1
+    # "Nothing to look at" and "looked, found nothing" produced the same
+    # answer — `clean: true` — and skills re-run this until it goes true. A
+    # paper with no registered figures or tables therefore passed a legend
+    # gate it had never been subject to. `clean` is None (null over the wire)
+    # when nothing was examined: unknown outranks the pass value and does not
+    # outrank a failure, which is the ranking that keeps a real finding from
+    # being buried behind an access problem.
+    examined = n_figures + n_tables
+    not_assessed = ([] if examined else
+                    ["no figures or tables are registered — no legend exists "
+                     "to check, so this is not a clean result"])
     return {
         "slug": slug,
         "findings": findings,
+        "not_assessed": not_assessed,
         "summary": {"total": len(findings), "warn": by_level["warn"],
-                    "info": by_level["info"], "clean": not findings},
+                    "info": by_level["info"],
+                    "examined": {"figures": n_figures, "tables": n_tables},
+                    "clean": (not findings) if examined else None},
     }

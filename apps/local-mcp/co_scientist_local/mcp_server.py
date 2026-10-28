@@ -2795,6 +2795,13 @@ def build_mcp(state: State) -> FastMCP:
         before marking sections complete and resolve every warning (hard
         done-gate).
 
+        `clean` is tri-state: True, False, or **None when there was nothing to
+        read** — every section empty and no figures or tables registered. None
+        is not a pass, and `not_assessed` names each dimension that had no
+        input; `summary.examined` says how much prose the answer covers. An
+        unwritten manuscript used to return `clean: True` and satisfy the
+        re-run-until-clean gate in /paper-writing.
+
         Groups: DUPLICATION (same sentence restated across sections),
         SECTION_LEAKAGE (results/measurements in Methods, procedure in Results,
         a number in Methods+display item but never Results), STYLE (LLM tells,

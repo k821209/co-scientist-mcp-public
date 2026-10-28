@@ -396,7 +396,8 @@ twice in two places that have to be kept in sync by hand.
 
 `lint_manuscript`'s `summary.clean` now covers captions and legends too, so a
 manuscript whose figure legends restate the synthesis can no longer report clean;
-`summary.body_clean` is the section-text-only answer.
+`summary.body_clean` is the section-text-only answer. Both are `null` when that
+dimension had nothing in it — see the gate below.
 
 #### 2d-sexies. Describe the panel; don't argue from it
 
@@ -513,6 +514,14 @@ layout lint: **a section isn't done until its warnings are resolved.** Fix
 the offending sentences (each warning quotes the sentence + its section),
 re-run until `summary.clean == true`, then report the clean result to the
 user. If you leave any warning intentionally, say which and why.
+
+`clean` is `true`, `false` **or `null`** — null means the lint had nothing to
+read (every section empty, no figures or tables), and `not_assessed` says
+which. Null is not a pass: an unwritten manuscript used to satisfy this gate
+because "I looked and found nothing" and "there was nothing to look at"
+returned the same `true`. Treat null as not done, and read `summary.examined`
+when you report the result — "clean" over 7 words is a different claim than
+"clean" over 4,000.
 
 **Then, for the abstract: `/cold-read`.** `lint_manuscript` is clean on an
 abstract that uses "condition" three times and defines it nowhere, because

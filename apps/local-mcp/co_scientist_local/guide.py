@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-10-11"
+GUIDE_VERSION = "2026-10-28"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1149,6 +1149,42 @@ Use `$...$` (inline) or `$$...$$` (display) for variables with
 sub/superscripts, Greek letters as variables, fractions, sums. Leave
 `n = 69` / `q < 0.005` / `α-helix` as plain text. `prepare_export` returns
 `math_warnings` flagging violations.
+
+## A check that cannot say it did not run is not a check
+
+Every gate in this project has met the same failure at least once: a step that
+could not run produced output indistinguishable from a step that ran and found
+nothing, and the permissive reading is the one that gets believed, because it
+is the one that lets work proceed. `update_available: false` meant "checked and
+current" AND "could not compare" until it was split; `lint_manuscript`'s
+`clean` covered section text only while figure legends went unread; `clean:
+true` came back for a manuscript whose every section was empty, and
+`/paper-writing` re-runs that until it goes true. (The five obligations below
+are the generalisation, taken from the CCGS framework's skill-authoring rule —
+github.com/Donchitos/Claude-Code-Game-Studios.)
+
+Hold to these whenever you write or read a check:
+
+1. **A verdict something depends on needs a "could not assess" value.** `None`
+   over the wire, or the local equivalent, and the reply must say WHICH input
+   was missing. Rank it deliberately: above the pass value (a run that could
+   not see part of its scope has not established that the scope is good) and
+   below the failure values (a known problem is more actionable than an
+   unknown). It is not a gentler failure — "I looked and found nothing" and "I
+   could not look" need different fixes.
+2. **An absent value may not default to the permissive one.** Check who writes
+   the key before you default: a key with a reader and no writer takes its
+   default branch on every project that ever runs, so that branch is the
+   behaviour, not an edge case.
+3. **A skipped step announces itself in the OUTPUT, not just in the code.** A
+   rule enforced in the body and never surfaced is, to the reader, the same as
+   no rule. `lint_manuscript.not_assessed` and `render_deck`'s
+   `pdf_skipped_reason` are the shape.
+4. **Never assert what you cannot source, and wire the gap to the verdict.**
+   Writing "this cannot see X" in a comment is not enough — a named gap that
+   does not reach the reply is just a comment.
+5. **Derive the covered set; do not enumerate it.** An enumerated list silently
+   stops covering whatever is added next, and reports a pass over it.
 
 ## Remote job rule
 

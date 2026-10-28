@@ -897,8 +897,12 @@ def lint_manuscript(state, slug: str) -> dict:
     # so this tool's `clean` cannot mean "clean, except where I did not look".
     from . import legend_lint as _legend_lint
     _legends = _legend_lint.lint_legends(state, slug)
+    _examined = _legends["summary"].get("examined") or {}
     display_items = {
         "total": _legends["summary"]["total"],
+        # Zero means the legend checks had nothing to read — which is not the
+        # same as "the legends are fine", and `clean` used to say the latter.
+        "examined_count": (_examined.get("figures", 0) + _examined.get("tables", 0)),
         "warn": _legends["summary"]["warn"],
         "info": _legends["summary"]["info"],
         "items": [
@@ -1265,6 +1269,23 @@ def lint_manuscript(state, slug: str) -> dict:
     unresolved = unresolved[:_MAX_PER_KIND]
     total = (len(duplication) + len(leakage) + len(style) + len(insider)
              + len(defensive) + len(unresolved))
+    # Derived from the text the checks actually read, not from the stored
+    # `word_count`: that is a proxy, it can be absent or stale, and counting it
+    # reported "nothing was read" for sections the lint had just scanned. A
+    # covered set has to come from the input, not from a field beside it.
+    bodies = [(sec.get("body") or "").strip() for sec in sections]
+    sections_with_text = sum(1 for b in bodies if b)
+    words_examined = sum(len(b.split()) for b in bodies)
+    not_assessed: list[str] = []
+    if not sections_with_text:
+        not_assessed.append(
+            f"no section has any text ({len(sections)} section(s) registered, "
+            f"all empty) — the prose checks had nothing to read, so this is "
+            f"not a clean manuscript")
+    if not display_items["examined_count"]:
+        not_assessed.append(
+            "no figures or tables are registered — the caption/legend checks "
+            "had nothing to read")
     return {
         "slug": slug,
         "duplication": duplication,
@@ -1306,6 +1327,13 @@ def lint_manuscript(state, slug: str) -> dict:
         # "what I quoted changed"; this is the other half, "what was decided
         # next reverses how to read this".
         "decisions": _decision_pairs(state, sections),
+        # What was actually looked at, and what could not be. `/paper-writing`
+        # re-runs this "until summary.clean == true", so an UNWRITTEN
+        # manuscript passed that gate: every section empty produced the same
+        # `clean: true` as a manuscript that had been written and checked.
+        # A dimension with nothing in it is `None` (null over the wire), not
+        # true — unknown outranks the pass value, and never a failure.
+        "not_assessed": not_assessed,
         "summary": {
             "total": total,
             "by_kind": {
@@ -1318,8 +1346,13 @@ def lint_manuscript(state, slug: str) -> dict:
             },
             "suppressed_by_profile": len(suppressed),
             "display_items": display_items["total"],
+            "examined": {"sections_with_text": sections_with_text,
+                         "words": words_examined,
+                         "display_items": display_items["examined_count"]},
             # Body only — kept so "is the prose clean?" is still answerable.
-            "body_clean": total == 0,
-            "clean": total == 0 and display_items["total"] == 0,
+            "body_clean": (total == 0) if sections_with_text else None,
+            "clean": ((total == 0 and display_items["total"] == 0)
+                      if (sections_with_text or display_items["examined_count"])
+                      else None),
         },
     }

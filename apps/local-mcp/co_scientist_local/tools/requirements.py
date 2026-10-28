@@ -156,6 +156,18 @@ def check_requirements(state: State, slug: str) -> dict:
                        "Run /journal-requirements to set them.",
             "checks": base_checks,
             "violations": [c for c in base_checks if not c["ok"]],
+            # `ok` is about the checks that RAN — provenance and recency, which
+            # apply with or without a journal. It said nothing about the ones
+            # that did not, so a paper with no journal set reported `ok: true`
+            # and a reader could take that for "meets the journal's
+            # requirements". The gap is named rather than folded into the
+            # boolean, because a known-unchecked dimension and a passing one
+            # have different fixes.
+            "not_assessed": [
+                "journal requirements (word limits, section set, abstract "
+                "length, reference style) — none are set for this paper, so "
+                "`ok` covers only the provenance and recency checks"
+            ],
             "ok": all(c["ok"] for c in base_checks),
         }
 
@@ -236,11 +248,15 @@ def check_requirements(state: State, slug: str) -> dict:
     checks.append(recency)
 
     violations = [c for c in checks if not c["ok"]]
+    # Always present, so an empty list is a statement ("every dimension was
+    # checked") rather than a missing key the reader has to interpret.
+    not_assessed: list[str] = []
     return {
         "configured": True,
         "requirements": req,
         "metrics": metrics,
         "checks": checks,
         "violations": violations,
+        "not_assessed": not_assessed,
         "ok": not violations,
     }
