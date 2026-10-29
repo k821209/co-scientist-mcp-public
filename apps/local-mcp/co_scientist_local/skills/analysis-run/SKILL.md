@@ -257,6 +257,20 @@ the next agent) reads it to understand what each group does.
 - **NEVER bypass the MCP for run tracking**. `nohup ssh "…"` skips
   the database; the run won't appear in the Runs tab and there's no
   log tail. Use `submit_remote_job` even for one-shot remote work.
+- **The script is the parameter set, and it is pinned for you.**
+  `submit_remote_job` hashes the script your command names plus every sibling
+  `*.sh`/`*.py`/`*.R` in the working directory before it launches, and stores
+  `script_sha256` / `scripts` on the run. Two runs with identical `params` and
+  an edited `run.sh` are NOT comparable, and `compare_run_params` now says so.
+  If it could not hash them it says that too — read the warning instead of
+  assuming the code is pinned.
+- **Name the inputs: `datasets=["muju-hifi-reads"]`** on `submit_remote_job` /
+  `record_analysis_run`. The run then carries the registered path, size and
+  mtime, so "which bytes did this read" is answerable from the run alone;
+  `link_dataset` binds to the analysis, which cannot tell two runs apart.
+- **Back-filling a stray job**: `record_analysis_run` takes `workdir=` and
+  `log_path=`, and `update_analysis_run` corrects either — a wrong log
+  filename does not belong in `notes`.
 - **Output dir per run is fine** but DON'T create a separate
   `analysis/<group>/scripts/` directory. Scripts + outputs in the
   same group folder.

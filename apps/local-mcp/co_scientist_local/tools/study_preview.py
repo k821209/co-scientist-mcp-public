@@ -151,14 +151,21 @@ def preview_study(
     # makes (a CDATA wrapper, an unclosed <style>) are findable without one,
     # and on a machine with no browser they were the only thing that would
     # have caught a stylesheet printed as page text (feedback 160481377be0).
-    from .studies import static_checks
+    from .studies import STATIC_CHECKS, static_checks
     out["static_problems"] = static_checks(html)
+    # WHAT was looked for, beside what was found. An empty `static_problems`
+    # read as "nothing found" while the checks were blind to the whole class of
+    # defect that makes a page fail to render — and nothing in the reply let
+    # the two be told apart (feedback de487cc198d4).
+    out["static_checks_run"] = list(STATIC_CHECKS)
     for p in out["static_problems"]:
         out["warnings"].append(f"static check: {p}")
     if not browser:
         out["warnings"].append(
             "no headless browser found (google-chrome / chromium on PATH) — no screenshot. "
-            "The static checks above ran; the wrapped HTML is exactly what the tab renders — "
+            f"The {len(STATIC_CHECKS)} static checks in `static_checks_run` ran and are all "
+            "that ran: they find a parser-level breakage and two kinds of inert CSS, NOT "
+            "whether the layout reads. The wrapped HTML is exactly what the tab renders — "
             "open it, or ask the user to look at the tab. Do not report the page as checked.")
     out["next"] = ("Read the PNG(s) and look for: a wall of unstyled text, a table without rules, "
                    "a page that scrolls sideways, an image that did not load, dark-theme colours "

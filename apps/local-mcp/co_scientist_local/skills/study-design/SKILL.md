@@ -58,7 +58,21 @@ structure, on top of the base:
   that needs the full width breaks out with `margin-inline: calc(50% - 50vw)`
   rather than widening the page.
 - **Wide content scrolls inside itself.** A table or a code block in its own
-  `overflow-x: auto` container; the page must never scroll sideways.
+  `overflow-x: auto` container; the page must never scroll sideways. The base
+  gets this by setting `display: block` on `table`, which has one consequence
+  worth knowing when you combine it with the line above: a table is then a
+  block box, so inside a full-bleed wrapper it fills the frame and its rows sit
+  at the far left. The base now also sets `width: fit-content`, which is what
+  makes `figure.wide table { margin-inline: auto }` centre anything at all — if
+  you override `width` on a table, you take that back.
+- **Preformatted text needs `white-space: pre`.** A monospace box with a
+  background looks like a code block and collapses every newline and every run
+  of spaces without it — a ten-row histogram rendered as one line, and the
+  AUTHOR was the detector (feedback de487cc198d4). `preview_study` checks for
+  this now; do not rely on it noticing.
+- **An inline element ignores `width` and `height`.** A `<span>` with
+  `width: 25%` and no `display` renders at zero size, which is how a bar chart
+  came out with no bars. `display: inline-block` first.
 - **Fonts are handled.** The base stack covers Korean and Latin without a
   request; font CDNs do not load here, so do not reference one.
 - **One accent colour** (`--scivo-accent`), used for the thing the reader

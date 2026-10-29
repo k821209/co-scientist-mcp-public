@@ -121,9 +121,113 @@ def _unwrap_cdata(html: str) -> str:
     return html
 
 
+# What static_checks looks for, named so an empty `static_problems` can be told
+# apart from "nothing of this kind is looked for". The reporter's words: on a
+# machine with no headless browser these checks are the only automated signal,
+# and `[]` read as "nothing found" while being blind to the whole class of
+# defect that makes a page fail to render (feedback de487cc198d4).
+STATIC_CHECKS = (
+    "cdata-marker",
+    "escaped-tags",
+    "style-tag-balance",
+    "script-tag-balance",
+    "unclosed-comment",
+    "collapsed-preformatted-text",
+    "size-on-an-inline-element",
+)
+
+# An element that LOOKS preformatted: its text carries newlines or runs of
+# spaces that only survive under white-space: pre*.
+_PRE_SAFE = re.compile(r"white-space\s*:\s*(pre|pre-wrap|pre-line|break-spaces)", re.I)
+_MONO = re.compile(r"font-family\s*:[^;}]*(mono|courier|menlo|consolas)", re.I)
+# Elements that are inline unless something says otherwise. `width`/`height` on
+# one of these does nothing at all — the bar chart whose every bar was
+# zero-sized was a <span> with width: 25%.
+_INLINE_TAGS = ("span", "a", "em", "strong", "b", "i", "small", "label", "code")
+
+
+def _class_names(attrs: str) -> list[str]:
+    m = re.search(r'class\s*=\s*"([^"]*)"', attrs, re.I)
+    return (m.group(1).split() if m else [])
+
+
+def _rules_for(css: str, names: list[str], tag: str) -> str:
+    """The CSS text of every rule whose selector mentions this tag or one of
+    these class names. Deliberately loose: a false "this is styled" only costs
+    a missed warning, while a false alarm on a styled element is noise in the
+    one signal that works without a browser."""
+    out = []
+    for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        if any(f".{n}" in sel for n in names) or re.search(rf"(^|[\s,>+~]){tag}\b", sel):
+            out.append(body)
+    return " ".join(out)
+
+
+def _collapsed_preformatted(html: str, css: str) -> list[str]:
+    """Text laid out with newlines inside a box that collapses them.
+
+    The real case: a ten-row monospace histogram in a <div> with a surface
+    background and overflow-x — everything a code block has except the one
+    property that makes it work — rendered as a single unreadable line, and the
+    AUTHOR was the detector."""
+    out = []
+    for tag, attrs, inner in re.findall(
+            r"<(div|p|figure|section|td|li)([^>]*)>(.*?)</\1>", html, re.S | re.I):
+        text = re.sub(r"<[^>]+>", "", inner)
+        looks_pre = ("\n" in text.strip() and len(text.strip().splitlines()) >= 3) \
+            or re.search(r"[^\s]  +[^\s]", text)
+        if not looks_pre:
+            continue
+        names = _class_names(attrs)
+        reaching = attrs + " " + _rules_for(css, names, tag)
+        if _PRE_SAFE.search(reaching):
+            continue
+        # Only when it reads as preformatted ON PURPOSE: a monospace font, or
+        # a <pre>-shaped box. Prose with a line break in the source is not a
+        # defect, and warning on it would bury the real one.
+        if not _MONO.search(reaching):
+            continue
+        label = ("." + names[0]) if names else f"<{tag}>"
+        out.append(
+            f"{label} holds text laid out over {len(text.strip().splitlines())} "
+            f"lines in a monospace box, but nothing gives it `white-space: pre` "
+            f"— the browser collapses every newline and every run of spaces, so "
+            f"it renders as one line")
+    return out
+
+
+def _size_on_inline(html: str, css: str) -> list[str]:
+    """`width`/`height` on an element that is inline, where both do nothing."""
+    out = []
+    for tag, attrs in re.findall(r"<(" + "|".join(_INLINE_TAGS) + r")\b([^>]*)>",
+                                 html, re.I):
+        style = re.search(r'style\s*=\s*"([^"]*)"', attrs, re.I)
+        names = _class_names(attrs)
+        rules = _rules_for(css, names, tag.lower())
+        reaching = (style.group(1) if style else "") + " " + rules
+        if not re.search(r"\b(width|height)\s*:", reaching):
+            continue
+        if re.search(r"\bdisplay\s*:\s*(block|inline-block|flex|inline-flex|grid|"
+                     r"inline-grid|table|table-cell)", reaching):
+            continue
+        if re.search(r"\bposition\s*:\s*(absolute|fixed)", reaching):
+            continue      # out of flow, so width applies
+        label = ("." + names[0]) if names else f"<{tag}>"
+        out.append(
+            f"{label} is a <{tag.lower()}> with a width/height and no `display` "
+            f"— an inline element ignores both, so it renders at zero size. Give "
+            f"it `display: inline-block` (or block)")
+    return out
+
+
 def static_checks(html: str) -> list[str]:
     """What a browser would show wrong, found without one: the checks that
-    stand in for the screenshot when no headless browser is installed."""
+    stand in for the screenshot when no headless browser is installed.
+
+    `STATIC_CHECKS` names what is looked for. Both classes added in
+    0.1.20261029 share one shape — valid HTML and valid CSS that cannot
+    possibly do what the author wrote it to do — which is the class that makes
+    a page fail to render while nothing errors."""
     problems: list[str] = []
     s = html.strip()
     if _CDATA_OPEN in s or _CDATA_CLOSE in s:
@@ -139,6 +243,9 @@ def static_checks(html: str) -> list[str]:
         problems.append(f"<script> open/close mismatch ({opens} open, {closes} close)")
     if re.search(r"<!--(?:(?!-->).)*$", s, re.S):
         problems.append("an HTML comment is opened and never closed — everything after it is hidden")
+    css = " ".join(re.findall(r"<style\b[^>]*>(.*?)</style>", s, re.S | re.I))
+    problems.extend(_collapsed_preformatted(s, css))
+    problems.extend(_size_on_inline(s, css))
     return problems
 
 
@@ -555,10 +662,18 @@ def list_study_questions(
             if study_id:
                 raise NotFound(f"study {sid!r} not found")
             continue
-        for _, q in state.backend.list_collection(_questions_col(state, sid)):
+        for qid, q in state.backend.list_collection(_questions_col(state, sid)):
             if status and (q.get("status") or "open") != status:
                 continue
-            out.append({**q, "study_title": study.get("title")})
+            # The DOCUMENT ID is the identifier, not a field in the document.
+            # A question asked from the dashboard is created with addDoc, which
+            # mints its own id and writes no `question_id`, so every row a
+            # reader asked came back with no way to address it — and
+            # `answer_study_question` needs exactly that, so the loop had no
+            # closing half (feedback fc70ccbe5947). Derived from the path, so
+            # both writers agree by construction.
+            out.append({**q, "question_id": qid,
+                        "study_title": study.get("title")})
     out.sort(key=lambda q: q.get("created_at") or "", reverse=True)
     return out
 

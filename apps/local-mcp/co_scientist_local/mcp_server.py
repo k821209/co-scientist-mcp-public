@@ -1358,6 +1358,19 @@ def build_mcp(state: State) -> FastMCP:
             state, study_id or None, status=status or None)
 
     @mcp.tool()
+    def count_open_study_questions() -> dict[str, Any]:
+        """Open questions on study documents, project-wide, split by who asked.
+
+        `from_reader` is waiting on YOU — read them with list_study_questions
+        and answer with answer_study_question. `from_agent` is what a past
+        session asked the reader; surface those, do not answer your own.
+
+        Part of the session-start protocol. It was implemented and never
+        registered here, so the call the guide and the SessionStart banner both
+        instruct raised "No such tool available" (feedback 5f1e1ba4403a)."""
+        return _studies.count_open_study_questions(state)
+
+    @mcp.tool()
     def answer_study_question(study_id: str, question_id: str, answer: str,
                               changed_study: bool = False) -> dict[str, Any]:
         """Answer a reader's question about a study.
@@ -2616,12 +2629,22 @@ def build_mcp(state: State) -> FastMCP:
         env_name: str | None = None,
         pid: int | None = None,
         log_path: str | None = None,
+        # The remote/local directory the command ran in. The python function
+        # always took it and this wrapper did not, so the field submit_remote_job
+        # fills was unreachable from the back-fill path — and the back-fill path
+        # is the one a job that escaped tracking has to use (feedback
+        # 22147cb7e721).
+        workdir: str | None = None,
         notes: str | None = None,
         params: dict[str, Any] | None = None,
         hostname: str | None = None,
         started_at: str | None = None,
         finished_at: str | None = None,
         exit_code: int | None = None,
+        # Registered datasets this run READ. `link_dataset` binds a dataset to
+        # an ANALYSIS, so two runs of one analysis against different input
+        # files were indistinguishable (feedback 22147cb7e721).
+        datasets: list[str] | None = None,
     ) -> dict[str, Any]:
         """Insert a run record (provenance for a command you ran yourself).
 
@@ -2658,9 +2681,9 @@ def build_mcp(state: State) -> FastMCP:
         """
         return _runs.record_analysis_run(
             state, slug, analysis, command=command, host=host,
-            env_name=env_name, pid=pid, log_path=log_path, notes=notes,
-            params=params, hostname=hostname, started_at=started_at,
-            finished_at=finished_at, exit_code=exit_code,
+            env_name=env_name, pid=pid, log_path=log_path, workdir=workdir,
+            notes=notes, params=params, hostname=hostname, started_at=started_at,
+            finished_at=finished_at, exit_code=exit_code, datasets=datasets,
         )
 
     @mcp.tool()
@@ -2687,6 +2710,8 @@ def build_mcp(state: State) -> FastMCP:
         notes: str | None = None,
         started_at: str | None = None,
         finished_at: str | None = None,
+        log_path: str | None = None,
+        workdir: str | None = None,
     ) -> dict[str, Any]:
         """Back-fill `params` on a run recorded without them (replaces the whole
         dict), and/or append notes. See record_analysis_run for what `params`
@@ -2699,6 +2724,7 @@ def build_mcp(state: State) -> FastMCP:
         return _runs.update_analysis_run(
             state, slug, analysis, run_key, params=params, notes=notes,
             started_at=started_at, finished_at=finished_at,
+            log_path=log_path, workdir=workdir,
         )
 
     @mcp.tool()
@@ -3115,6 +3141,7 @@ def build_mcp(state: State) -> FastMCP:
         sync_files: bool = True,
         force: bool = False,
         params: dict[str, Any] | None = None,
+        datasets: list[str] | None = None,
     ) -> dict[str, Any]:
         """Politeness-checked SSH job submission (rsync + nohup, pidfile-idempotent).
         `slug` may be `"_project"` for a project with no paper (create the
@@ -3126,6 +3153,7 @@ def build_mcp(state: State) -> FastMCP:
             state, slug, analysis, command=command, server_alias=server_alias,
             env_name=env_name, workers=workers, local_dir=local_dir,
             sync_files=sync_files, force=force, params=params,
+            datasets=datasets,
         )
 
     @mcp.tool()

@@ -111,6 +111,48 @@ def table_has_numbers(content: str) -> bool:
 
 # ── the diff ────────────────────────────────────────────────────────────
 
+def code_diff(runs: list[dict]) -> dict:
+    """Whether these runs ran the same CODE, and whether that is knowable.
+
+    For a script-driven analysis the script is the parameter set, so two runs
+    with identical `params` and a different `run.sh` are not comparable — and
+    this function's caller called them comparable, which is the exact failure
+    `params` exists to prevent, with the entire program as the undeclared thing
+    (feedback 22147cb7e721).
+
+    Three outcomes, kept apart on purpose: same code, different code, and
+    **not knowable** — a run recorded before the hashes existed, or one whose
+    scripts could not be read. The third must not read as the first.
+    """
+    hashed = [r for r in runs if r.get("script_sha256") or r.get("scripts")]
+    unhashed = [r.get("run_key") for r in runs
+                if not (r.get("script_sha256") or r.get("scripts"))]
+
+    def fingerprint(r: dict) -> str:
+        parts = [str(r.get("script_sha256") or "")]
+        for sc in (r.get("scripts") or []):
+            parts.append(f"{sc.get('name')}:{sc.get('sha256')}")
+        return "|".join(parts)
+
+    prints = {r.get("run_key"): fingerprint(r) for r in hashed}
+    differing: list[dict] = []
+    if len(set(prints.values())) > 1:
+        for r in hashed:
+            differing.append({
+                "run_key": r.get("run_key"),
+                "script_path": r.get("script_path"),
+                "script_sha256": (r.get("script_sha256") or "")[:12] or None,
+                "scripts": [f"{sc['name']}:{sc['sha256'][:8]}"
+                            for sc in (r.get("scripts") or [])][:8],
+            })
+    return {
+        "code_runs": [r.get("run_key") for r in hashed],
+        "code_differs": bool(differing),
+        "code_detail": differing,
+        "runs_without_code": unhashed,
+    }
+
+
 def params_diff(runs: list[dict], declared: list[str] | None = None) -> dict:
     """Every key whose value is not identical across `runs`.
 
@@ -165,6 +207,18 @@ def format_report(label: str, declared: list[str] | None, diff: dict) -> str:
     if diff["runs_without_params"]:
         lines.append(f"  runs with no params recorded (cannot compare): "
                      f"{', '.join(diff['runs_without_params'])}  ⚠")
+    # The code, at the same prominence: a hash that is recorded and never read
+    # changes nothing.
+    if diff.get("code_differs"):
+        lines.append("  the runs ran DIFFERENT CODE  ← NOT declared  ⚠")
+        for row in diff.get("code_detail", []):
+            lines.append(f"    {row['run_key']:<22} {row.get('script_path') or '(script)'} "
+                         f"{row.get('script_sha256') or ''} {' '.join(row.get('scripts') or [])}")
+    elif diff.get("code_runs"):
+        lines.append("  the runs ran identical code (by script hash)")
+    if diff.get("runs_without_code"):
+        lines.append(f"  runs with no code hash (cannot tell whether the program "
+                     f"changed): {', '.join(k for k in diff['runs_without_code'] if k)}  ⚠")
     return "\n".join(lines)
 
 
@@ -220,7 +274,7 @@ def compare_run_params(
     else:
         runs = sorted(all_runs, key=lambda r: r.get("started_at") or "")
         selection = "all runs of the analysis"
-    diff = params_diff(runs, declared)
+    diff = {**params_diff(runs, declared), **code_diff(runs)}
     return {
         "item": label, "analysis": analysis, "selection": selection,
         "declared_varies": declared, **diff,

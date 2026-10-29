@@ -278,6 +278,83 @@ def _reporter_script(ids: dict, log_filename: str) -> str:
     return _REPORTER.replace("__CFG__", cfg)
 
 
+# A script-driven run's real parameter set is the FILE, not the dict somebody
+# retyped into `params`. The record pinned `command` and `workdir` and nothing
+# about the code: edit a stage script tomorrow and the row still reads exactly
+# the same while describing a computation that no longer exists — and
+# `compare_run_params`, which the guide presents as the check that validates a
+# comparison table, called two such runs comparable (feedback 22147cb7e721).
+_SCRIPT_IN_COMMAND = re.compile(
+    r"(?:^|[\s;&|])(?:bash|sh|zsh|python3?|Rscript|perl)\s+(?:-\S+\s+)*"
+    r"(?P<path>[^\s;&|<>]+\.(?:sh|py|R|r|pl))"
+    r"|(?:^|[\s;&|])(?P<direct>\./[^\s;&|<>]+)",
+)
+# Bounded on purpose: this runs before every launch and must not turn into a
+# directory walk of someone's data.
+_MAX_HASHED_SCRIPTS = 40
+
+
+def script_in_command(command: str) -> str | None:
+    """The script path a command runs, if it names one."""
+    m = _SCRIPT_IN_COMMAND.search(command or "")
+    if not m:
+        return None
+    return m.group("path") or m.group("direct")
+
+
+def _hash_scripts(ssh, server, remote_dir: str, command: str) -> dict:
+    """Pin the code: the script the command names, and every sibling script.
+
+    One SSH round trip, `sha256sum` over a few kB. Returns the fields to store;
+    empty when nothing could be hashed, and the CALLER says so rather than
+    recording silence as "no scripts" — a run whose code was not pinned must
+    not look like a run whose code has no scripts.
+    """
+    named = script_in_command(command)
+    probe = (
+        f"cd {shlex.quote(remote_dir)} 2>/dev/null || exit 0; "
+        # The named script first, with its size and mtime; then every sibling
+        # at depth 1, newest first, capped.
+        + (f"if [ -f {shlex.quote(named)} ]; then "
+           f"stat -c 'NAMED %n %s %Y' {shlex.quote(named)}; "
+           f"sha256sum {shlex.quote(named)} | sed 's/^/HASH /'; fi; "
+           if named else "")
+        + "find . -maxdepth 1 -type f \\( -name '*.sh' -o -name '*.py' -o -name '*.R' \\) "
+          f"-printf '%f\\n' 2>/dev/null | head -n {_MAX_HASHED_SCRIPTS} | "
+          "while read -r f; do sha256sum \"$f\" | sed 's/^/SIB /'; done"
+    )
+    try:
+        rc, out, _ = ssh.run(server, probe, timeout=30)
+    except Exception:
+        return {}
+    if rc != 0:
+        return {}
+    fields: dict = {}
+    scripts: list[dict] = []
+    for line in (out or "").splitlines():
+        parts = line.split()
+        if parts[:1] == ["NAMED"] and len(parts) >= 4:
+            fields["script_path"] = f"{remote_dir}/{parts[1].lstrip('./')}"
+            try:
+                fields["script_bytes"] = int(parts[2])
+                fields["script_mtime"] = _iso_from_epoch(parts[3])
+            except (ValueError, IndexError):
+                pass
+        elif parts[:1] == ["HASH"] and len(parts) >= 2:
+            fields["script_sha256"] = parts[1]
+        elif parts[:1] == ["SIB"] and len(parts) >= 3:
+            scripts.append({"name": parts[2].lstrip("./"), "sha256": parts[1]})
+    if scripts:
+        fields["scripts"] = sorted(scripts, key=lambda x: x["name"])[:_MAX_HASHED_SCRIPTS]
+    return fields
+
+
+def _iso_from_epoch(value: str) -> str:
+    import datetime
+    return (datetime.datetime.fromtimestamp(int(value), datetime.timezone.utc)
+            .isoformat().replace("+00:00", "Z"))
+
+
 def submit_remote_job(
     state: State,
     paper_slug: str,
@@ -291,6 +368,7 @@ def submit_remote_job(
     sync_files: bool = True,
     force: bool = False,
     params: dict | None = None,
+    datasets: list[str] | None = None,
 ) -> dict:
     """Politeness-checked SSH job submission with pidfile idempotency.
 
@@ -302,6 +380,16 @@ def submit_remote_job(
            If a live PID already runs the same command, return "existing".
         5. Record an analysis_runs row.
     """
+    # Everything that can fail is checked BEFORE a process is spawned. It was
+    # not: `record_analysis_run` is step 5, and it is what raises "analysis
+    # 'x' not found" — so a submit against a typo'd or not-yet-created analysis
+    # launched the job, failed on the record, and left a RUNNING process with
+    # no run row, which is the exact gap this tool exists to close. The retry
+    # after `create_analysis` then hit the idempotency lock the first call had
+    # left and returned `existing: true` with `run_key: null`, which reads like
+    # a successful no-op (feedback 22147cb7e721, twice in one session).
+    from .runs import _ensure_analysis
+    analysis_name = _ensure_analysis(state, paper_slug, analysis_name)
     server = get_server(state, server_alias)
     # The project's root on this server: its binding, else
     # <default_workdir>/<project-slug> (workdirs.project_root). Every run of
@@ -455,24 +543,59 @@ def submit_remote_job(
             f"Duplicate submit blocked: PID {pid} already running on "
             f"{server_alias} (idempotency lock via {pidfile})."
         )
+        # `run_key: null` with a live `pid` read like a successful no-op, and
+        # on the one occasion it mattered the process the lock pointed at had
+        # NO run row at all — it came from a call that launched and then failed
+        # to record. So say which it is, by looking (feedback 22147cb7e721).
+        tracked = None
+        try:
+            tracked = next(
+                (r for r in list_analysis_runs(state, paper_slug, analysis_name)
+                 if r.get("pid") == pid and r.get("finished_at") is None), None)
+        except Exception:
+            tracked = None
+        if tracked is None:
+            polite_warnings.append(
+                f"NOT TRACKED: PID {pid} is running and no open run row names "
+                f"it. Back-fill now — record_analysis_run(slug, analysis, "
+                f"command=…, host={server_alias!r}, pid={pid}, "
+                f"workdir={remote_dir!r}, log_path={log_path_remote!r}) — or "
+                f"the work finishes with no provenance.")
         return {
-            "run_key": None, "pid": pid, "host": server_alias,
-            "log_path": log_path_relative, "remote_dir": remote_dir,
+            "run_key": tracked.get("run_key") if tracked else None,
+            "tracked": tracked is not None,
+            "pid": pid, "host": server_alias,
+            "log_path": log_path_remote, "remote_dir": remote_dir,
             "remote_log_path": log_path_remote,
             "warnings": polite_warnings, "existing": True,
         }
 
     notes = "; ".join(polite_warnings) if polite_warnings else None
     started_at = now_iso()
+    code = _hash_scripts(ssh, server, remote_dir, command)
+    if not code.get("script_sha256") and script_in_command(command):
+        # Said out loud: a row with no hash and a command that names a script
+        # is a row whose code is unpinned, and that must not read as "this
+        # analysis has no scripts".
+        polite_warnings.append(
+            f"could not hash {script_in_command(command)} in {remote_dir} — the "
+            f"code behind this run is NOT pinned; `compare_run_params` cannot "
+            f"tell a later edit from the same program.")
+        notes = "; ".join(polite_warnings)
     run = record_analysis_run(
         state, paper_slug, analysis_name,
         command=command, host=server_alias, env_name=env_name,
-        pid=pid, started_at=started_at, log_path=log_path_relative,
+        # ABSOLUTE. It was stored relative here and absolute by
+        # record_analysis_run, in the same collection, so a consumer could not
+        # resolve a log path without knowing which tool wrote the row
+        # (feedback 22147cb7e721).
+        pid=pid, started_at=started_at, log_path=log_path_remote,
         workdir=remote_dir,
         notes=notes,
         params=params,
         run_key=run_key,
         report_token=report_token if self_reporting else None,
+        **code,
     )
     return {
         "run_key": run["run_key"], "pid": pid, "host": server_alias,

@@ -619,6 +619,24 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   per-arm learning rate can be correct design — but the list must be
   complete, and a run with no params is named as uncomparable, which is a
   finding. Without `varies` the tool still lists every difference.
+- **For a script-driven run the SCRIPT is the parameter set.**
+  `submit_remote_job` hashes the script the command names and every sibling
+  `*.sh`/`*.py`/`*.R` in the working directory, and stores `script_sha256` /
+  `scripts` on the run; `compare_run_params` reports differing code at the same
+  prominence as a differing param, and names runs whose code could not be
+  hashed rather than calling them identical. Nothing in `params` closes this
+  gap, because the agent writing the params is the agent that edited the
+  script. Back-filling a run by hand? Pass `code={{"script_sha256": …}}` or
+  accept that the comparison cannot speak for the program.
+- **`datasets=["name"]` on a run says which bytes it read.** `link_dataset`
+  binds a dataset to an ANALYSIS, so two runs of one analysis against
+  different input files are otherwise indistinguishable. The run snapshots the
+  registered path, size and mtime, so "which file was this?" is answerable
+  from the run alone.
+- **The back-fill path takes `log_path` and `workdir` too**
+  (`record_analysis_run`, and `update_analysis_run` to correct either). A run
+  that escaped tracking has only this path, and a log filename that was never
+  created used to be uncorrectable — the correction ended up in `notes`.
 - **A numeric table with no `source_analysis` fails `check_requirements`**
   (`table_provenance`, with or without a journal spec). A table nobody
   computed — a primer list, values compiled from papers — says so with

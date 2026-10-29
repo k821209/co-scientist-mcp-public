@@ -88,8 +88,23 @@
   /* A borderless table is the thing that made these unreadable. display:block
      lets a wide table scroll inside itself instead of pushing the page
      sideways; it also makes the table shrink to its content. */
+  /* `display: block` is what makes `overflow-x: auto` work, so a wide table
+     scrolls inside itself instead of scrolling the page. It also stops the
+     element being a table box: width resolves as a block (auto -> fill the
+     container) while the rows keep their intrinsic width and sit at the left
+     edge — and with width: auto, `margin-inline: auto` centres NOTHING. So a
+     three-column table inside the full-bleed pattern this file's body rule
+     teaches came out flush against the far left of the frame, and the author's
+     own centring line was silently a no-op (feedback 1a1fa65c2afb).
+     `width: fit-content` gives the auto margins something to work with: a
+     narrow table shrinks to its rows and can be centred, a wide one is still
+     capped by max-width and still scrolls inside itself. `margin: 1.2em 0`
+     stays, so an ordinary table keeps the text column's left edge — centring
+     every table in body flow would be a different, louder change. Verified by
+     rendering all three cases, not by reading the spec. */
   table { border-collapse: collapse; margin: 1.2em 0; font-size: .925rem;
-          display: block; overflow-x: auto; max-width: 100%; }
+          display: block; overflow-x: auto; max-width: 100%;
+          width: fit-content; }
   th, td { border-bottom: 1px solid var(--scivo-rule); padding: .5em .7em;
            text-align: left; vertical-align: top; }
   th { font-weight: 650; border-bottom-width: 2px; white-space: nowrap; }

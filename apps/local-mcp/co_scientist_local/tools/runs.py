@@ -152,6 +152,18 @@ def record_analysis_run(
     params: dict | None = None,
     hostname: str | None = None,
     report_token: str | None = None,
+    # What the run RAN, as opposed to what someone typed into `params`:
+    # script_path / script_sha256 / script_bytes / script_mtime, and
+    # `scripts`, the sibling scripts' hashes. One dict rather than five
+    # keywords because the set is produced in one place
+    # (ssh_ops._hash_scripts) and read in one (compare_run_params).
+    code: dict | None = None,
+    # Registered datasets this run READ, snapshotted at record time: name,
+    # path, size and mtime. `link_dataset` attaches a dataset to an ANALYSIS,
+    # so two runs of the same analysis against different input files were
+    # indistinguishable — and "which bytes did this run read" is the question a
+    # reviewer actually asks (feedback 22147cb7e721).
+    datasets: list[str] | None = None,
 ) -> dict:
     """Insert a new analysis_runs doc. Used by `launch_local_job` and
     `submit_remote_job`.
@@ -196,8 +208,31 @@ def record_analysis_run(
             "the Running Jobs panel — pass the finish time from its log, or "
             "close it later with mark_run_finished")
     run_key = run_key or _new_run_key()
+    inputs: list[dict] = []
+    for name in (datasets or []):
+        from .datasets import get_dataset
+        try:
+            ds = get_dataset(state, name)
+        except Exception:
+            # A name that does not resolve is reported, not dropped: a run that
+            # claims an input it could not pin is worse than one that says it
+            # could not pin it.
+            inputs.append({"name": name, "error": "no such registered dataset"})
+            continue
+        inputs.append({
+            "name": ds.get("dataset_id") or name,
+            "path": ds.get("path"),
+            "size_bytes": ds.get("size_bytes"),
+            "mtime": ds.get("mtime"),
+            "host": ds.get("host"),
+        })
     doc = {
+        # First, so a key the caller spells wrong cannot shadow a real field.
+        **{k: v for k, v in (code or {}).items()
+           if k in ("script_path", "script_sha256", "script_bytes",
+                    "script_mtime", "scripts")},
         "run_key": run_key,
+        **({"datasets": inputs} if inputs else {}),
         # Denormalized fields so cross-paper collectionGroup queries on
         # "runs" can filter by project_id and link back to origin paper.
         "project_id": state.project_id,
@@ -245,9 +280,16 @@ def update_analysis_run(
     notes: str | None = None,
     started_at: str | None = None,
     finished_at: str | None = None,
+    log_path: str | None = None,
+    workdir: str | None = None,
 ) -> dict:
     """Back-fill `params` (replacing the whole dict) and/or append notes on an
-    existing run. The back-fill path exists because the runs that most need
+    existing run.
+
+    `log_path` and `workdir` are correctable because they were not, and a run
+    whose recorded log filename never existed could only be annotated — the
+    correction went into `notes`, which then carried what `notes` was never
+    meant to carry (feedback 22147cb7e721). The back-fill path exists because the runs that most need
     comparing are the ones recorded before anyone thought to compare them.
 
     `started_at` / `finished_at` correct the TIMES on a row already filed —
@@ -271,6 +313,10 @@ def update_analysis_run(
             f"finished_at ({effective_finish}) is before started_at "
             f"({effective_start})")
     fields: dict = {}
+    if log_path is not None:
+        fields["log_path"] = log_path
+    if workdir is not None:
+        fields["workdir"] = workdir
     if started_at is not None:
         fields["started_at"] = started_at
     if finished_at is not None:
