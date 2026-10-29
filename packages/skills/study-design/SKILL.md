@@ -130,3 +130,38 @@ reader can open it.
    If it reports no browser, ask the user to look at the tab and do not report
    the page as checked — the whole reason this file exists is that four studies
    were filed before anyone looked.
+
+## Questions on it, after it ships
+
+A reader leaves a **question** on a study, not a comment — the distinction is
+the surface's whole reason to exist. A paper comment is a defect and the loop
+closes when the prose changes; a question can be answered completely with the
+document left exactly as it is. "Where does 1.84 come from?" is owed its
+provenance, not an edit.
+
+`list_study_questions()` — every study, open ones by default, each carrying the
+`quote` it was asked about and who asked (`source`: user | ai). Answer with
+`answer_study_question(study_id, question_id, answer, changed_study=…)`.
+
+**Set `changed_study` honestly, because it is the only thing the answer text
+cannot say.** `False` means "answered, document unchanged" and is a complete
+outcome. `True` means the question showed a passage was unclear and you revised
+it with `update_study` — do the revision, then answer. The reader uses this to
+decide whether to read the document again; an answer that silently left an
+unclear passage in place costs them that reading.
+
+Two things a question is allowed to be that a comment is not:
+
+- **about the whole document** (`quote` is null) — "is this comparison fair at
+  all?" is not about one paragraph;
+- **yours.** `ask_study_question(study_id, question, quote=…)` puts what you
+  could NOT settle beside the passage: a number you could not source, a
+  comparison you are unsure of, a sentence that may only work if you already
+  know the project. That is where it belongs once the session ends. Not a
+  substitute for asking while the person is there to answer.
+
+The reader cannot select text inside the document — it renders in a sandboxed
+frame with no same-origin, so the dashboard cannot read a selection out of it —
+so they pick a paragraph and its text arrives as `quote`. Match on the quote
+first; `block_index` is where that paragraph sat when they asked, and the
+document may have moved since.

@@ -37,7 +37,10 @@ def build_banner(paper_slug: str | None) -> str:
             f"  /paper-revision            — address open user comments\n"
             f"\n"
             f"Status: call mcp__scivo__count_open_user_comments({paper_slug!r}) "
-            f"to see how many comments the dashboard has waiting for you."
+            f"to see how many comments the dashboard has waiting for you, and "
+            f"mcp__scivo__count_open_study_questions() for questions a reader "
+            f"left on a study (`from_reader`) or you left for them "
+            f"(`from_agent`)."
         )
     return (
         "co-scientist: no paper detected in the current directory.\n"

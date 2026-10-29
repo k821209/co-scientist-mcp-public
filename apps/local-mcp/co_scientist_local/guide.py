@@ -180,13 +180,20 @@ On every session start:
    `mcp__scivo__list_deck_comments(slug, deck_id)` — open slide
    comments are the deck's revision to-do list; revise the slide, then
    `resolve_deck_comment`.
-4. For each paper, call `mcp__scivo__check_requirements(slug)`.
+4. Call `mcp__scivo__count_open_study_questions()` — one call for the whole
+   project. `from_reader` is questions someone left on a study document and
+   is waiting on you: read them with `mcp__scivo__list_study_questions()`
+   (each carries the `quote` it is about) and answer with
+   `answer_study_question(...)`, setting `changed_study` honestly.
+   `from_agent` is questions a PAST session left for the reader — surface
+   those, do not answer your own.
+5. For each paper, call `mcp__scivo__check_requirements(slug)`.
    If `configured` is true and `violations` is non-empty, surface them
    (e.g. "abstract 178/150 words — over the Short Communication limit")
    and offer to fix. If `configured` is false and the paper has a
    target `journal` set, suggest `/journal-requirements` so the
    journal's word/figure/section limits get tracked.
-5. Call `mcp__scivo__list_servers()` — the project's registered
+6. Call `mcp__scivo__list_servers()` — the project's registered
    compute (HPC nodes, workstations). Treat this as the inventory of
    where analyses can run. See "## Compute resources" below.
 
@@ -355,6 +362,31 @@ names WHICH source moved, without anyone having to remember. **Read
 `list_studies()` before quoting a number out of one of these.** Passing new
 `html` to `update_study` re-stamps the sources, because rewriting the tables is
 what makes them current again.
+
+**Questions, not comments.** A reader leaves a QUESTION on a study —
+`list_study_questions()` (every study, open by default; each row carries
+`study_title`, the `quote` it is about and `source`: user | ai). Answer with
+`answer_study_question(study_id, question_id, answer, changed_study=…)`.
+
+The distinction is the whole point of a separate surface. A paper comment is a
+defect and the loop closes when the prose changes. A question may be fully
+answered without the document moving — "where is this number from?" is owed its
+provenance, and the explainer can be right as written. So `changed_study` is
+yours to set honestly: False says "answered, document unchanged", True says
+"the question showed the passage was unclear and I revised it". A reader cannot
+tell which from the answer alone, and that is the thing they need in order to
+decide whether to read it again.
+
+`ask_study_question(study_id, question, quote=…)` is the other direction: what
+you could NOT settle — a number you could not source, a comparison you are not
+sure is fair, a passage that may only work if you already know the project. It
+appears beside the document where the person can answer it. Use it for what
+would otherwise die with the session, not as a substitute for asking while they
+are there.
+
+The study renders in a sandboxed frame with no same-origin, on purpose, so the
+dashboard cannot read a text selection out of it; the reader picks a paragraph
+instead, and that paragraph's text arrives as `quote`.
 
 **`decisions_since` is a second, weaker signal — do not read it as the same
 thing.** `stale` only catches "what I quoted changed". It cannot catch "what was

@@ -46,6 +46,9 @@ STATUSES = {
 }
 DEFAULT_STATUS = "provisional"
 
+# Who the agent is, when it answers or asks. Same string discussion.py uses.
+AGENT_NAME = "Claude Code"
+
 SOURCE_KINDS = ("analysis", "decision", "graph", "paper", "run")
 
 
@@ -437,3 +440,186 @@ def delete_study(state: State, study_id: str) -> bool:
         state.backend.delete_blob(doc["blob_path"])
     state.backend.delete_doc(_study_path(state, study_id))
     return True
+
+
+# ── questions on a study ─────────────────────────────────────────────────────
+# A paper gets COMMENTS: each one is a defect with a fix, and the loop closes
+# when the prose changes. A study is written to be READ, and what a reader
+# leaves on it is a QUESTION — "why does this hold?", "where is this number
+# from?" — whose answer may not change the document at all (user, 2026-10-29).
+# Resolving it like a comment would force every answer to look like an edit.
+#
+# So: question → answer, with `changed_study` saying whether the document moved.
+# An answer that did not change it is a complete answer; one that should have is
+# the thing a reader can now see.
+#
+# Both directions, because the asymmetry is the point on this surface: the
+# reader asks what the explainer did not explain, and the agent asks what it
+# could not settle — the uncertainty belongs beside the passage, not in a
+# session that has ended.
+
+QUESTION_SOURCES = ("user", "ai")
+
+
+def _questions_col(state: State, study_id: str) -> str:
+    return state.project_path("studies", study_id, "questions")
+
+
+def _question_path(state: State, study_id: str, question_id: str) -> str:
+    return state.project_path("studies", study_id, "questions", question_id)
+
+
+def _refresh_open_count(state: State, study_id: str) -> int:
+    """Stamp the study doc with how many questions are open, and return it.
+
+    Denormalised ON PURPOSE, and RECOMPUTED rather than incremented: the
+    dashboard lists studies from one collection and needs the badge without a
+    collection-group query (which needs an explicit index — the kind whose
+    absence once hid 148 open runs), and a counter that is added to drifts the
+    first time a write is retried.
+    """
+    rows = state.backend.list_collection(_questions_col(state, study_id))
+    n = sum(1 for _, q in rows if (q.get("status") or "open") == "open")
+    try:
+        state.backend.update_doc(_study_path(state, study_id), {"open_questions": n})
+    except NotFound:
+        pass
+    return n
+
+
+def ask_study_question(
+    state: State,
+    study_id: str,
+    *,
+    question: str,
+    quote: str | None = None,
+    block_index: int | None = None,
+    source: str = "ai",
+    asked_by: str | None = None,
+) -> dict:
+    """Ask a question about a study — the agent's own, by default.
+
+    `quote` is the passage it is about. The study renders in a sandboxed frame
+    with no same-origin, deliberately, so the dashboard cannot read a selection
+    out of it; the reader picks a paragraph instead and `quote` carries its
+    text. Keep the quote SHORT (a sentence): it is an anchor, and the agent
+    answering reads the document anyway.
+    """
+    _require(state, study_id)
+    text = (question or "").strip()
+    if not text:
+        raise ValueError("question is required")
+    if source not in QUESTION_SOURCES:
+        raise ValueError(f"source must be one of {QUESTION_SOURCES}")
+    qid = new_id()
+    doc = {
+        "question_id": qid,
+        "study_id": study_id,
+        "question": text,
+        "quote": (quote or "").strip() or None,
+        "block_index": block_index,
+        "source": source,
+        "asked_by": (asked_by or "").strip() or (AGENT_NAME if source == "ai" else "User"),
+        "status": "open",
+        "answer": None,
+        "answered_at": None,
+        "answered_by": None,
+        "changed_study": None,
+        "created_at": now_iso(),
+    }
+    state.backend.set_doc(_question_path(state, study_id, qid), doc)
+    doc["open_questions"] = _refresh_open_count(state, study_id)
+    return doc
+
+
+def list_study_questions(
+    state: State,
+    study_id: str | None = None,
+    *,
+    status: str | None = "open",
+) -> list[dict]:
+    """Questions on one study, or on every study in the project.
+
+    Newest first, each carrying the study's title — a question read without
+    knowing which document it is about sends you to the wrong one. `status`
+    None returns answered ones too.
+    """
+    if status not in (None, "open", "answered"):
+        raise ValueError("status must be 'open', 'answered' or None")
+    ids = ([study_id] if study_id
+           else [sid for sid, _ in state.backend.list_collection(_studies_col(state))])
+    out: list[dict] = []
+    for sid in ids:
+        study = state.backend.get_doc(_study_path(state, sid))
+        if study is None:
+            if study_id:
+                raise NotFound(f"study {sid!r} not found")
+            continue
+        for _, q in state.backend.list_collection(_questions_col(state, sid)):
+            if status and (q.get("status") or "open") != status:
+                continue
+            out.append({**q, "study_title": study.get("title")})
+    out.sort(key=lambda q: q.get("created_at") or "", reverse=True)
+    return out
+
+
+def answer_study_question(
+    state: State,
+    study_id: str,
+    question_id: str,
+    *,
+    answer: str,
+    changed_study: bool = False,
+) -> dict:
+    """Answer a question, and say whether the document itself moved.
+
+    `changed_study=False` is a real answer, not a lesser one: a reader asking
+    "where is this number from?" is owed the provenance, and the study may be
+    right as written. But say so — the reader cannot tell from the answer alone
+    whether the explainer still needs reading again. If the answer reveals the
+    explainer WAS unclear, revise it with `update_study` and pass True.
+    """
+    path = _question_path(state, study_id, question_id)
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        raise NotFound(
+            f"question {question_id!r} not found on study {study_id!r} — "
+            "list_study_questions(study_id) shows the open ones")
+    body = (answer or "").strip()
+    if not body:
+        raise ValueError(
+            "answer is required — an empty answer closes the question without "
+            "answering it, which is the one outcome the reader cannot see")
+    now = now_iso()
+    fields = {
+        "answer": body,
+        "status": "answered",
+        "answered_at": now,
+        "answered_by": AGENT_NAME,
+        "changed_study": bool(changed_study),
+    }
+    state.backend.update_doc(path, fields)
+    out = {**existing, **fields,
+           "open_questions": _refresh_open_count(state, study_id)}
+    if not changed_study:
+        out["note"] = ("answered without changing the study — if the question "
+                       "exposed an unclear passage, revise it with update_study "
+                       "and answer again with changed_study=True")
+    return out
+
+
+def count_open_study_questions(state: State) -> dict:
+    """Open questions, split by who asked. Mirrors count_open_user_comments for
+    the session-start protocol.
+
+    Split because the two mean different things: a reader's question is work
+    waiting for the agent, and the agent's own question is work waiting for the
+    reader. One number would have the session nag itself.
+    """
+    rows = list_study_questions(state, status="open")
+    return {
+        "from_reader": sum(1 for q in rows if q.get("source") != "ai"),
+        "from_agent": sum(1 for q in rows if q.get("source") == "ai"),
+        "total": len(rows),
+        "studies": sorted({q["study_id"] for q in rows}),
+    }

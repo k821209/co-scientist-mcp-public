@@ -1340,6 +1340,55 @@ def build_mcp(state: State) -> FastMCP:
     def delete_study(study_id: str) -> dict[str, Any]:
         return {"deleted": _studies.delete_study(state, study_id)}
 
+    @mcp.tool()
+    def list_study_questions(study_id: str = "",
+                             status: str = "open") -> list[dict[str, Any]]:
+        """Questions on a study — the reader's, and your own.
+
+        A paper gets COMMENTS, each a defect whose loop closes when the prose
+        changes. A study is written to be READ, and what a reader leaves on it
+        is a question: "why does this hold?", "where is this number from?" The
+        answer may not change the document at all, and that is a complete
+        answer — see answer_study_question.
+
+        No `study_id` reads every study in the project. `status=""` or
+        `"answered"` includes the closed ones; each row carries `study_title`,
+        the `quote` it was asked about, and who asked (`source`: user | ai)."""
+        return _studies.list_study_questions(
+            state, study_id or None, status=status or None)
+
+    @mcp.tool()
+    def answer_study_question(study_id: str, question_id: str, answer: str,
+                              changed_study: bool = False) -> dict[str, Any]:
+        """Answer a reader's question about a study.
+
+        `changed_study=False` is a real answer, not a lesser one: "where is
+        this number from?" is owed its provenance and the explainer may be
+        right as written. But the reader cannot tell from the answer alone
+        whether the document still needs re-reading, so say which it is. If the
+        question showed the explainer was unclear, revise it with update_study
+        and answer with True."""
+        return _studies.answer_study_question(
+            state, study_id, question_id, answer=answer,
+            changed_study=changed_study)
+
+    @mcp.tool()
+    def ask_study_question(study_id: str, question: str, quote: str = "",
+                           block_index: int | None = None) -> dict[str, Any]:
+        """Ask the READER a question about a study you wrote.
+
+        For what you could not settle: a number you could not source, a
+        comparison you are not sure is fair, a passage you suspect only works
+        if you already know the project. It appears beside the document in the
+        dashboard, where the person reading it can answer — which is where the
+        uncertainty belongs, rather than in a session that has ended.
+
+        `quote` is the passage, one sentence. Not a substitute for saying it in
+        the conversation when the person is there to hear it."""
+        return _studies.ask_study_question(
+            state, study_id, question=question, quote=quote or None,
+            block_index=block_index, source="ai")
+
     # ─── published pages (unlisted URL, optional per-person passcodes) ──────
     @mcp.tool()
     def publish_page(
