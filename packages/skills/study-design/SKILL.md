@@ -143,7 +143,9 @@ reader can open it.
    rules, sideways scroll, a missing image, a dark theme that did not follow.
    If it reports no browser, ask the user to look at the tab and do not report
    the page as checked — the whole reason this file exists is that four studies
-   were filed before anyone looked.
+   were filed before anyone looked. The loop around that look is
+   `/visual-review`: fix, re-render, look again, and stop when a full pass
+   finds nothing — a fix you have not re-rendered and looked at is not a fix.
 
 ## Questions on it, after it ships
 

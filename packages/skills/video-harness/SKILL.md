@@ -225,7 +225,10 @@ video into one PNG — **read it**; `narration_match(video, script)` transcribes
 finished file and diffs it against the script (≥0.93 is normal for Korean TTS;
 a sudden drop means a beat's audio never made it in). Pick clip in-points from a
 contact sheet of the *source* too — a guessed in-point lands on a panel reaction
-or a cutaway often enough to matter.
+or a cutaway often enough to matter. Reading that sheet is `/visual-review`'s
+loop — the whole set before any one frame, fix, re-render, look again, stop
+when a full pass finds nothing — and a re-cut you have not re-read a sheet of
+is not checked.
 
 **Get the length before you render** — `build_beat_short(..., dry_run=True)`
 synthesizes only the VO and returns `{total, beats:[{bid, vo, seg, lint}]}`. A

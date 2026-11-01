@@ -710,6 +710,13 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   what the term means — and `lint_manuscript` cannot either (fifteen findings
   once on an abstract it called clean). Run it before the abstract is marked
   done.
+- `/visual-review` — the same reader step for anything rendered to pixels (a
+  deck, a schematic, a study page, a video): the whole set on one sheet first,
+  then the frame, and keep going until a full pass finds nothing. The faults it
+  is for — one accent doing every job, chrome drifting out, two frames drawing
+  the same thing differently — do not exist in any single frame, so no
+  per-frame check can find them. `/paper-deck`, `/scientific-image`,
+  `/study-design` and `/video-harness` all point at it.
 - `/journal-requirements` — capture a target journal's submission spec
   for a paper type (Article / Short Communication / Letter / Review …):
   the agent reads the journal's live author guidelines and stores word
@@ -793,7 +800,11 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   `preview_slide` (one slide → PNG, seconds). Call `export_deck_to_pptx`
   only ONCE the deck is done (or when the user asks for the file) — it
   re-renders every slide (tens of seconds to minutes). Don't re-export
-  after each edit. **After a design / batch / large-text edit: run
+  after each edit. Before the deck is called done, read the whole deck on ONE
+  sheet — `preview_deck_sheet` — not slide by slide: an accent used on every
+  slide and chrome that fades out after slide 8 are invisible one slide at a
+  time (`/visual-review`).
+  **After a design / batch / large-text edit: run
   `preview_slide`, `Read` the returned PNG yourself to verify it (catch
   code errors, overflow, the warning lists — incl. `inner_margin_tight`, a
   bespoke label hugging a band/card edge: fix by anchoring labels to the

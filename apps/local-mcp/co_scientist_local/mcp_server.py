@@ -3733,6 +3733,30 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
+    def preview_deck_sheet(
+        slug: str,
+        deck_id: str,
+        output_path: str | None = None,
+        cols: int = 4,
+    ) -> dict[str, Any]:
+        """The WHOLE deck on one contact sheet, tiled from the per-slide PNGs
+        preview_slide / export_deck_to_pptx already rendered — Read the
+        returned `sheet_png_local_path` and the faults that only exist ACROSS
+        slides are in one glance: one accent doing every job, chrome fading
+        out down the deck, two slides drawing the same thing differently, a
+        density cliff in the back half. None of those are visible one slide
+        at a time.
+        It renders nothing itself, so it is cheap and only as current as the
+        last render: tiles whose PNG cannot be shown to match the slide are
+        captioned STALE and listed in `stale_slides` / `missing_renders`.
+        Refresh those first — `current: false` means do not score the deck
+        off this sheet yet.
+        """
+        return _deck_render.preview_deck_sheet(
+            state, slug, deck_id, output_path=output_path, cols=cols,
+        )
+
+    @mcp.tool()
     def render_region(
         slug: str,
         deck_id: str,

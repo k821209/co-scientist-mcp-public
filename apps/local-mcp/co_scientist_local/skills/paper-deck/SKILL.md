@@ -1678,129 +1678,38 @@ turn this into slide images + .pptx."
 
 ### 9. Critique pass — vision review (todo 004 §A)
 
-**Iterate one slide at a time — don't re-export the whole deck per edit.**
-`export_deck_to_pptx` re-renders every slide (LibreOffice pass on all of
-them — tens of seconds on a 20-slide deck). While fixing a single `code`
-slide, loop with `preview_slide(slug, deck_id, slide_id)`: it renders just
-that slide to a PNG (`preview_png_local_path`) plus its
-code_errors/overlap/bounds/font/placeholder warnings. Edit
-(`update_slide`) → `preview_slide` → Read the PNG → fix → repeat; move to
-the next slide when it's clean. Run `export_deck_to_pptx` **once at the
-end** for the final bundle. (Image-only slides — paper-figure / ai-image /
-code-shape — use `render_slide`, already fast.) To scan the deck's
-structure cheaply without the bulky `code`/`notes` blobs, use
-`list_slides(fields=["title","role","render_mode"])`.
+Run `/visual-review`: the whole set first, then the frame, fix, re-render,
+and **stop when a full pass finds nothing** — not after three rounds. What
+follows is only what is specific to a deck.
 
-`export_deck_to_pptx` re-renders the whole deck (LibreOffice pass + a PNG
-per slide), so it's slow on a big deck. Speed flags when you don't need the
-full bundle: **`skip_pdf=True`** (PPTX only — skips the LibreOffice pass,
-the dominant cost, and the PNGs), **`skip_png=True`** (keep the PDF, skip
-per-slide PNGs), **`only_slides=[N,…]`** (render PNGs for just those
-slides). For a final shippable bundle, call it with no flags.
+**The whole deck before any single slide.** `preview_deck_sheet(slug,
+deck_id)` tiles every slide into one PNG — Read it first. It is the only view
+that shows the faults a slide cannot have on its own: one accent used on
+every slide so it marks nothing, chrome that fades out after slide 8, two
+slides drawing the same thing differently, a density cliff in the back half.
+It renders nothing itself, so a tile captioned STALE (and `current: false`)
+means refresh that slide with `preview_slide` before scoring anything.
 
-After `export_deck_to_pptx` the result includes a `slide_pngs[]` list:
-one PNG per slide rendered from the sibling PDF (so what the agent
-sees is exactly what an opener of the .pptx / .pdf will see). Use them
-for the final whole-deck review; the same warning fields
-(`overlap_warnings`, `bounds_warnings`, `font_warnings`,
-`placeholder_warnings`) are on both `preview_slide` and the export.
+**Then the automatic FAILs.** `preview_slide` and `export_deck_to_pptx` both
+return `overlap_warnings`, `bounds_warnings`, `font_warnings`,
+`placeholder_warnings` and `layout_warnings`. A slide in any of them fails
+regardless of how it scores — text on text, text off the canvas, a
+substituted font, "TODO" in front of the audience, an unreadable thumbnail.
+Re-render until they are empty. **The fix recipe for each, and the scoring
+rubric (visual integrity, density ≥ 25 shapes on a content slide, chrome,
+hierarchy, whitespace, alignment, type, colour, storytelling), are in
+`references/critique.md`** — open it when a warning fires or before scoring,
+not before.
 
-**First: check `result["overlap_warnings"]`** (todo 016 —
-render-time text-on-text detector). It's a list of
-`{slide_number, slide_id, pairs: [{a_preview, b_preview,
-overlap_ratio}]}` entries — any slide that appears here has
-textbox bounding boxes intersecting by ≥20% of the smaller box's
-area, which means text is visibly rendered on top of other text
-in the export. These are **automatic FAIL regardless of the visual
-rubric**. For each entry, find the two textboxes in the slide's
-`code` (the `a_preview` / `b_preview` strings are the first line
-of each box's text), and replace the manual `h.text(...)` /
-`add_textbox(...)` calls with `h.vstack(...)` for stacked content
-in a single column, or fix the y-coordinates so the boxes don't
-overlap. Re-export until `overlap_warnings == []`. This also catches
-**wrap overflow** — a big number / long line in a narrow box that wraps
-to extra lines and spills onto the box below (the box's declared height
-is small but the rendered text is taller). Fix by shrinking the font
-(`h.autofit_pt`) or widening the box so the value stays on one line.
+Read every PNG with the `Read` tool; you are multimodal and the render is the
+only evidence that counts. For each category under 4, write one specific
+complaint plus its fix, then `update_slide(slug, deck_id, slide_id,
+code=<rewritten snippet>)`.
 
-**Also check `result["bounds_warnings"]`** (render-time off-slide
-detector). Same shape as above but each entry is `{slide_number,
-slide_id, shapes: [{preview, sides, over_in}]}` — `sides` names which
-edges the text box runs past (`left`/`top`/`right`/`bottom`) and
-`over_in` is how far, in inches. Any slide here has text spilling off
-the canvas (e.g. a row of prompter/CDS boxes or a stacked proportion
-bar laid out past the right edge). **Automatic FAIL.** The usual cause
-is a width budget computed against the full slide width `sw` instead of
-the *content* width. For any horizontal run of boxes/segments + gaps:
-the budget is `content_w = sw - left_margin - right_margin` (typically
-`sw - Inches(1.2)`), and `sum(segment widths) + sum(gaps)` must be
-`≤ content_w`. Lay segments out starting at `left = left_margin` and
-size each as a fraction of `content_w` — never start at a margin and
-then add full-width segments. Re-export until `bounds_warnings == []`.
-
-**Also check `result["font_warnings"]`** — each entry is `{role, font,
-note}` for a concept Typography font (display/body/mono) NOT installed on
-the render host. LibreOffice silently substitutes a missing face, so the
-exported PDF/PNG (and the dashboard preview) diverge from PowerPoint — the
-"PPT looks right but the PDF is misaligned" trap. Two gotchas: (a) the font
-isn't installed at all → pick one that is; (b) it's a **variable** font
-(e.g. some `Noto Sans CJK KR` builds) → LibreOffice may pick the wrong weight,
-so prefer a static build or a host-bundled family. Safe cross-platform
-picks: macOS `Apple SD Gothic Neo` + `Menlo`; otherwise a static Noto
-build. Fix the concept Typography and re-export until `font_warnings == []`.
-(Empty when `fc-list` isn't on the host — then it can't be checked.)
-
-**Also check `result["placeholder_warnings"]`** — `[{slide_number,
-markers}]` for any leftover placeholder text in the rendered deck ("Lorem
-ipsum", "TODO", "[placeholder]", "XXXX", …). Every hit is real text the
-audience would see — replace it with the actual content and re-export until
-`placeholder_warnings == []`.
-
-**Also check `result["layout_warnings"]`** — `[{slide_number, issues}]`
-catching image problems the text-overlap detector can't: `tiny_image` (a
-picture under ~0.7" — too small to read at projection distance; enlarge it)
-and `header_overlap` (a picture that actually overlaps the title text —
-move it below the title block). A small top-right corner logo is exempt, so
-deck-chrome logos don't false-positive. On both `preview_slide` and the export.
-
-```
-res = mcp__scivo__export_deck_to_pptx(slug, deck_id, output_path="<dir>/<deck>.pptx")
-for png in res["slide_pngs"]:
-    # Read the PNG via the Read tool — Claude is multimodal and will
-    # see the actual slide rendering.
-    Read(png["local_path"])
-    # Score it (in your head / scratchpad) against the rubric.
-    # If any category < 4, rewrite the slide's `code` and update_slide.
-```
-
-**Rubric** (each scored 1–5; a slide passes when all ≥ 4):
-
-| Category | Question |
-|---|---|
-| **Visual integrity** (todo 014/016 — automatic FAIL) | Also flagged automatically by `result["overlap_warnings"]` for the text-on-text case. Look for any of these in the PNG and **rewrite the slide bespoke** if you see them: (a) two text elements rendered at the same coordinates (e.g., a step number "01" superimposed on the first hangul of its label — see v4 p.13 Harness 4-primitive cards) → cause is calling `h.text(...)` twice at the same `top` for stacked content → fix by replacing both calls with one `h.vstack(slide, lines=[...], left=, top=, width=)` that auto-advances `y` between items; (b) text extending past its visible container's bottom/right edge (e.g., body wrapping below a card's border — see v4 p.15 card 4 "Synthesis + provenance" wrap, v4 p.12 STACK cards' muted captions) → cause is a fixed-height container with content that doesn't fit at autofit's min_pt → fix by replacing the manual rect + h.text combo with `h.callout(slide, *, fill, items=, left=, top=, width=)` which sizes its bg rect to fit the measured content; (c) a decorative shape (accent bar / rule / line) crossing through text (e.g., v4 p.1 cover where the accent_rule cut through the italic subtitle) → cause is a hand-computed `top=` for the bar that landed on the text region → fix by deleting the manual bar and letting `h.title_block(accent_rule=True)` place its rule for slide titles, or for non-title accents use `h.pull_quote` whose bar tracks its text. Any of these = automatic FAIL regardless of other scores. |
-| Visual hierarchy | Is the focal point obvious within 1 second? |
-| Whitespace | Does the slide breathe, or is it crowded? |
-| Alignment | Are elements on an implicit grid? (no rogue offsets) |
-| Typographic discipline | Type hierarchy clear; ≤ 4 sizes; consistent? |
-| Color discipline | ≤ 3 colors, used semantically? |
-| Visual storytelling | Is there a story device (contrast, progression, arrow), or is it a static composition? |
-| **Density** (todo 011) | If this is a *content* slide (not title / chapter divider / qa), does it have ≥ **25** shapes? Toy density (single pattern call ≈ 10 shapes; pattern + chrome ≈ 15) on a slide with proposal-grade content = automatic FAIL. Rewrite **bespoke** referencing `reference_corpus/proposal_dense.png` (~50 shapes) or `personnel_equipment.png` (~60 shapes) — Read those PNGs + their source in `reference_corpus/generate.py` before the rewrite. |
-| **Chrome** (todo 011) | Does the slide carry `h.deck_chrome` (eyebrow + footer + page number)? Content slides without chrome look orphaned in the deck. Title slide / chapter divider are exempt. |
-
-For each category that scores < 4: write one specific complaint
-("S3's headline is centered, killing the asymmetric tension a thesis
-slide needs") + the fix ("left-align the headline at col=1 span=8,
-leave col=9-12 empty for breathing room"). Then call
-`update_slide(slug, deck_id, slide_id, code=<rewritten snippet>)`.
-
-**Loop**: re-export, re-score, max 3 rounds. After round 3, accept
-the deck as-is and surface the remaining weak categories in the user
-summary so they know what to ask for next.
-
-**When `slide_pngs_skipped` is True**: the export couldn't produce
-PNGs (no LibreOffice / no PyMuPDF on this machine). Skip the critique
-loop and tell the user — they can install soffice + pymupdf to enable
-it.
+**No PNGs?** `pdf_skipped` / `slide_pngs_skipped` means this machine lacks
+LibreOffice or PyMuPDF; the result names the missing piece and its install
+command. Tell the user, and do not report the deck as looked at — the warning
+lists are not a substitute for having seen it.
 
 ## Acceptance test
 

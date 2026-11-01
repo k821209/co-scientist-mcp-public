@@ -2620,6 +2620,165 @@ def preview_slide(
     }
 
 
+# ─── deck-wide contact sheet ─────────────────────────────────────────────────
+# A faults sheet, not a pretty one: `preview_slide` shows one slide, and the
+# faults it cannot show are the ones that only exist ACROSS slides — an accent
+# used on every slide so it marks nothing, chrome that thins out after slide 8,
+# the same element drawn two different ways. Those are invisible one slide at a
+# time, which is how todo 009/011 kept finding them late.
+_SHEET_TILE_W = 480
+_SHEET_GAP = 12
+_SHEET_CAPTION_H = 30
+_SHEET_BORDER = 3
+_SHEET_PAD = 16
+# Border per tile state. The caption says the same thing in words, because the
+# agent reads the caption and the colour is for the human looking over its
+# shoulder.
+_SHEET_EDGE = {"ok": "#CFCFCF", "stale": "#D98200", "missing": "#C62828"}
+
+
+def _sheet_tile_state(slide: dict, has_png: bool) -> tuple[str, str | None]:
+    """One tile's state — "ok" / "stale" / "missing" — and why, in words.
+
+    A sheet of stale PNGs read as current is worse than no sheet: the agent
+    scores a deck it is not looking at. So currency is PROVEN per tile
+    (`preview_png_at` after the slide's own `updated_at`) and anything
+    unproven is called stale."""
+    if not has_png:
+        return "missing", ("no PNG yet — run preview_slide on this slide, or "
+                           "export_deck_to_pptx once for the whole deck")
+    shot = slide.get("preview_png_at")
+    if not shot:
+        return "stale", ("the PNG predates per-slide render timestamps, so it "
+                         "cannot be shown to match the slide as it stands")
+    edited = slide.get("updated_at")
+    if edited and edited > shot:
+        return "stale", f"edited {edited} after its PNG was rendered {shot}"
+    return "ok", None
+
+
+def _contact_sheet(tiles: list[dict], *, cols: int, tile_w: int) -> bytes:
+    """Tile the per-slide PNGs into one image, captioned with slide number
+    and tile state. Captions stay ASCII on purpose: a slide title would need
+    a CJK face the render host may not have, and a caption of tofu boxes is
+    worse than no caption — the slide's own title is inside the tile anyway."""
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
+    except OSError:
+        font = ImageFont.load_default()
+
+    cells: list[tuple[Image.Image, dict]] = []
+    for t in tiles:
+        if t["png"] is None:
+            h = max(1, round(tile_w * 9 / 16))
+            im = Image.new("RGB", (tile_w, h), "#EFEFEF")
+            d = ImageDraw.Draw(im)
+            d.text((tile_w // 2, h // 2), "no render", fill="#8A8A8A",
+                   font=font, anchor="mm")
+        else:
+            im = Image.open(io.BytesIO(t["png"])).convert("RGB")
+            if im.width != tile_w:
+                im = im.resize(
+                    (tile_w, max(1, round(im.height * tile_w / im.width))),
+                    Image.LANCZOS)
+        cells.append((im, t))
+
+    rows = [cells[i:i + cols] for i in range(0, len(cells), cols)]
+    row_h = [max(im.height for im, _ in r) + _SHEET_CAPTION_H for r in rows]
+    width = _SHEET_PAD * 2 + cols * tile_w + (cols - 1) * _SHEET_GAP
+    height = _SHEET_PAD * 2 + sum(row_h) + _SHEET_GAP * (len(rows) - 1)
+    sheet = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(sheet)
+
+    y = _SHEET_PAD
+    for r, rh in zip(rows, row_h):
+        x = _SHEET_PAD
+        for im, t in r:
+            sheet.paste(im, (x, y))
+            edge = _SHEET_EDGE[t["state"]]
+            draw.rectangle([x, y, x + tile_w - 1, y + im.height - 1],
+                           outline=edge, width=_SHEET_BORDER)
+            caption = str(t["caption"])
+            draw.text((x + 2, y + im.height + 6), caption,
+                      fill="#1A1A1A" if t["state"] == "ok" else edge, font=font)
+            x += tile_w + _SHEET_GAP
+        y += rh + _SHEET_GAP
+
+    out = io.BytesIO()
+    sheet.save(out, format="PNG")
+    return out.getvalue()
+
+
+def preview_deck_sheet(
+    state: State,
+    slug: str,
+    deck_id: str,
+    *,
+    output_path: str | None = None,
+    cols: int = 4,
+) -> dict:
+    """The whole deck on ONE sheet, built from the per-slide PNGs that
+    `preview_slide` and `export_deck_to_pptx` have already rendered — Read the
+    returned PNG and the cross-slide faults are in one glance.
+
+    This renders nothing itself (no LibreOffice pass), so it is cheap and it is
+    only as current as the last render. Every tile is captioned with its slide
+    number and, when its PNG cannot be shown to match the slide as it stands,
+    the word STALE — refresh those with `preview_slide`, or run
+    `export_deck_to_pptx` once, before scoring the deck off this sheet.
+
+    Use it for what a single slide cannot show: one accent doing every job,
+    chrome that fades out down the deck, two slides drawing the same thing
+    differently, a density cliff in the back half.
+    """
+    deck = _decks.get_deck(state, slug, deck_id)
+    slides = _decks.list_slides(state, slug, deck_id)
+    if not slides:
+        raise NotFound(f"deck {deck_id!r} has no slides to sheet")
+    cols = max(1, min(int(cols or 4), 8))
+
+    tiles: list[dict] = []
+    report: list[dict] = []
+    for s in slides:
+        blob = s.get("preview_png_blob_path")
+        data = state.backend.get_blob(blob) if blob else None
+        st, why = _sheet_tile_state(s, data is not None)
+        n = s.get("slide_number")
+        tiles.append({
+            "png": data,
+            "state": st,
+            "caption": f"{n}" if st == "ok" else f"{n}  {st.upper()}",
+        })
+        report.append({"slide_number": n, "slide_id": s.get("id"),
+                       "title": s.get("title"), "state": st, "why": why})
+
+    sheet = _contact_sheet(tiles, cols=cols, tile_w=_SHEET_TILE_W)
+    dest = (pathlib.Path(output_path).expanduser() if output_path
+            else pathlib.Path(tempfile.mkstemp(
+                prefix=f"deck_sheet_{deck_id}_", suffix=".png")[1]))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(sheet)
+
+    stale = [r["slide_number"] for r in report if r["state"] == "stale"]
+    missing = [r["slide_number"] for r in report if r["state"] == "missing"]
+    return {
+        "deck_id": deck_id,
+        "deck_title": deck.get("title"),
+        "slide_count": len(slides),
+        "cols": cols,
+        "sheet_png_local_path": str(dest),
+        "slides": report,
+        "stale_slides": stale,
+        "missing_renders": missing,
+        # Said once, here, so the caller does not have to work out what a
+        # sheet with 4 stale tiles is worth.
+        "current": not stale and not missing,
+    }
+
+
 def _strip_slide_number_placeholders(prs) -> int:
     """Remove the template's slide-number (`sldNum`) placeholders from the
     master, layouts, and slides.

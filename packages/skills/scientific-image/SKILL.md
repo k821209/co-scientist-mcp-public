@@ -19,8 +19,8 @@ A staged pipeline around `mcp__scivo__generate_image`:
    BEFORE generating — pinning structure prevents the LLM-painter
    from inventing relationships that don't exist.
 3. **Generate** with a structured prompt that bakes in the blueprint.
-4. **Critique** the result against style rules; iterate up to 3
-   times if needed.
+4. **Critique** the result against style rules and re-prompt until a
+   full pass finds nothing (`/visual-review`).
 5. **Register** as a figure on the paper (or save as asset for
    exploratory shots).
 
@@ -218,13 +218,17 @@ result = mcp__scivo__generate_image(
 )
 ```
 
-### 4. Critique + iterate (max 3)
+### 4. Critique + iterate
 
-Score the output against `templates/critique_checklist.md`. The six
-weighted categories (Arrow Correctness 25%, Color Consistency 25%,
-Text Readability 15%, Layout Balance 15%, Academic Style 10%,
-Content Accuracy 10%) cover the failure modes the painter LLM
-introduces.
+Run the loop in `/visual-review` — look, write the complaint AND the fix,
+re-render, look again. **Stop when a full pass finds nothing**, not after a
+set number of rounds: a count stops on tiredness, and the painter's
+leftovers are exactly what a tired pass waves through.
+
+Score the output against `templates/critique_checklist.md`. Its six weighted
+categories cover the failure modes the painter LLM introduces — arrows and
+colour carry the most weight because they are the ones that make the figure
+say something false.
 
 Quick sniff (the checklist has the full check items):
 - All entities present? Spelled correctly?
@@ -238,8 +242,11 @@ write targeted edit instructions (max 5, prioritized by weight — fix
 Arrow and Color issues first) using the edit-instruction format in
 the checklist, and re-prompt.
 
-After 3 attempts, change tactic: simplify the blueprint (fewer
-entities) and start fresh — chained edits degrade text fidelity.
+**When a pass keeps finding the same fault, the generator is wrong, not the
+image.** After about three re-prompts on one defect, change tactic: simplify
+the blueprint (fewer entities) and start fresh. Chained edits degrade text
+fidelity, so a fourth edit on the same image is worse than a first edit on a
+simpler one — this is a tactic change, not a budget running out.
 
 ### 5. Save the final version
 
