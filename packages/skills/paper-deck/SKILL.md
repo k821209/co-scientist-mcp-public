@@ -1698,8 +1698,8 @@ substituted font, "TODO" in front of the audience, an unreadable thumbnail.
 Re-render until they are empty. **The fix recipe for each, and the scoring
 rubric (visual integrity, density ≥ 25 shapes on a content slide, chrome,
 hierarchy, whitespace, alignment, type, colour, storytelling), are in
-`references/critique.md`** — open it when a warning fires or before scoring,
-not before.
+`references/critique.md`** — open it when a warning fires, or when you are
+about to score the deck.
 
 Read every PNG with the `Read` tool; you are multimodal and the render is the
 only evidence that counts. For each category under 4, write one specific
