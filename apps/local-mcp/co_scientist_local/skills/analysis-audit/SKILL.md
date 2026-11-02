@@ -88,7 +88,25 @@ Where the user wants a durable contract, write an
   column: mean_coverage
   expect: 31.4
   tolerance: 0.1
+- type: comparison
+  claim: "1.9-fold higher than the national mean (Results)"
+  ours:   {file: out/summary.csv, column: yield_per_sown_area,
+           filter: "treated", expect: 7.8}
+  theirs: {source: "national statistics office, 2024 table 3", value: 4.12}
+  varies: population         # the ONE slot the claim is allowed to differ in
+  shared: [denominator, unit, statistic]
+  note: "ours recomputed per sown area to match theirs; the per-harvested
+         column is NOT comparable to this source"
 ```
+
+The `comparison` type is for the pairs in Pass 2 step 6 whose other side has
+no run to
+diff: it freezes both sides' provenance and the slot judgement next to the
+numbers, so a re-run that moves `ours` **breaks the sentinel** and the pair is
+re-judged instead of re-remembered six months later. Where both sides ARE runs
+of one analysis, `compare_run_params` is the contract and no sentinel is
+needed. Record the judgement itself with `record_decision`, rationale included
+— the sentinel says what was compared, the decision says why it was allowed.
 
 Re-run the sentinels each time the analysis changes — they're the
 trust contract for cited numbers.

@@ -296,6 +296,25 @@ the same 285. The claim came from one case and was written as a general one.
   actually covers the counterexample ("the cohort a gene-level test needs scales
   with that gene's allele-type count" covers both loci; the original did not).
 
+**A comparison is a case too: scope the claim to what the two sides SHARE.**
+`project_guide()` → *Analysis provenance* names the slots that must match for
+a comparison to be a comparison, and the two passes that check them. You
+cannot run that check from inside: you chose those two numbers precisely
+because they looked comparable from where you were standing. What you CAN do
+from inside is write the claim so that a slot turning out wrong costs a clause
+instead of the paper. A recorded case, both ways:
+
+- *"This demonstrates that the treatment promotes flowering"* — dies whole the
+  moment the denominator turns out to be germinated plants rather than sown
+  seed. There is nowhere to retreat to.
+- *"The proportion of flowering plants per seed sown was higher under the
+  treatment"* — same evidence, and the same discovery changes 1.28-fold to
+  another number and leaves the sentence standing.
+
+Scope is the only thing that makes a late discovery cheap. Write the claim to
+the shared slots and a mismatch narrows it; write past them and the mismatch
+takes everything built on top.
+
 ### 2d-quater. Trimming a caption can delete the paper's method
 
 Before cutting anything from a caption or legend, check whether the value exists

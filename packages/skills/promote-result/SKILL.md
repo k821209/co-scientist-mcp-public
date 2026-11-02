@@ -107,6 +107,23 @@ back-fill with `update_analysis_run` first. `source_analysis` is not optional
 for a numeric table: `check_requirements` fails one without it, and a table
 nobody computed says `source_analysis="manual"`.
 
+Then one question the tool cannot answer, asked here because here is where the
+number first enters the manuscript: **what will this number be compared to in
+the claim?** When the other side is not a run of this analysis — a published
+mean, last year's value, another paper's figure — it has no run and no
+`params`, so `compare_run_params` does not reach it and never will. Settle the
+comparability slots (`project_guide()` → *Analysis provenance*) for that pair
+by hand, now: name where the other side's value came from, and which single
+slot the claim lets differ. Write it
+down where it will be re-checked rather than remembered — a `comparison`
+sentinel (`/analysis-audit`), and `record_decision` for the judgement itself
+("compared against the national mean, claim limited to X") with its rationale.
+A side whose construction nobody can see is the finding, not a footnote; say
+which side it is.
+
+Getting this wrong here costs a re-run. Getting it wrong after Results are
+written costs the Results, and everything the Discussion built on them.
+
 ### 5. Link the analysis to its outputs
 
 ```
