@@ -24,7 +24,7 @@ So the fix is a **reader**, not more text in the rule. This skill is the
 manuscript-side entry to the same shipped reader `/reviewer-frame-check` uses —
 under `profile: manuscript`, where self-containment is the standard and a
 pointer elsewhere IS the defect. Read that skill for the reporting rule
-("a correct guess is still a finding"), the three kinds, the output shape and
+("a correct guess is still a finding"), the finding kinds, the output shape and
 the mapping onto `add_review`. This file says only what differs for a
 manuscript section.
 
@@ -33,6 +33,7 @@ manuscript section.
 | Include | Notes |
 |---|---|
 | the section text, in a temp file | `get_section(slug, key)` → write `body` to `/tmp/cold-read-<slug>-<key>.md`. **The abstract alone** when checking the abstract: that is exactly what a reader of the abstract holds. |
+| **Methods too, and only for a Results read** | a reviewer reading Results holds Methods — that is the recipient's bundle, and the profile's question is what the RECIPIENT can do without. Hand Results alone and every number whose denominator is defined in Methods comes back as a finding, which buries the real ones. With Methods in the bundle, an `unlicensed_comparison` means the slot is in neither. |
 | the seat | who reads it: "a plant genomicist who has not seen the paper," "an editor screening abstracts" — take the field from the paper's title/journal |
 | `profile: manuscript` | always; the agent's default when handed a manuscript is right, but say it |
 
@@ -59,8 +60,30 @@ The same five blocks as `/reviewer-frame-check` (`--- FINDINGS ---` … `---
 BUNDLE_NOTE ---`). For a manuscript, expect mostly `missing_premise`: an
 undefined term, a number with no scale or metric, a comparison with no
 baseline, a count that does not match what was named. `absent_referent` in an
-abstract ("as described above") is a real defect too. `frame_error` cannot
-occur — the reader has no prior copy.
+abstract ("as described above") is a real defect too. On a single section
+`frame_error` cannot occur — the reader has no prior copy. With Methods in the
+bundle the text can contradict its own declared design, and that is the finding
+to triage first whichever kind it arrives under: measured over two runs of the
+same bundle it came back once as `frame_error` and once as `missing_premise`,
+so sort on the content, not the label. The case both runs found: a Methods
+declaring a treatment-vs-control t-test, and a Results reporting the
+treatment's yield only against a national average.
+
+On Results, expect `unlicensed_comparison` — two numbers set against each other
+where the text never says what each is OF (denominator, population, filter,
+unit, statistic, n) — and `overreaching_claim`, where the verb outruns the gap.
+Expect a long list — fifteen findings on two paragraphs, in the run this
+section was written from. Most of the length is yours to cut, not the
+reader's: it flags every term the bundle does not define, and you are the one
+who knows the full Methods defines the instrument and the cultivar. **The ones
+that survive that cut are the slot findings** — denominator, population,
+filter, unit, statistic, n — because those are defects in the Results sentence
+itself and no other section fixes them.
+
+**Say the limit when you report these to the user:** the reader held text, so
+it can only report what the text did not say. Whether the two numbers were in
+fact built the same way is a pass over the DATA — `/analysis-audit` Pass 2 —
+and a clean cold read is not evidence that they were.
 
 Write them as `add_review(source="ai", reviewer_name="Cold Read (<section>)",
 section=<key>, severity=…, anchor_text=<verbatim span>,
@@ -79,6 +102,10 @@ Say to the user what the reader held (the one file) so they can judge the run.
   Measured once: fifteen findings on an abstract that had passed
   `lint_manuscript` clean.
 - The introduction's first paragraph, for the same reason.
+- **Results, when the section's claims rest on comparisons** — before it is
+  marked done, and before `/paper-export`. This is the section where the
+  author's own eye is least useful: the person who wrote "1.6-fold higher"
+  chose those two numbers *because* they looked comparable from inside.
 - The whole manuscript once, before `/paper-export`, if the paper has never had
   an outside reader.
 - Again after the section is rewritten: fixing one term routinely introduces

@@ -99,6 +99,35 @@ finding — the reader of an abstract never reaches Methods. A metric with no na
 a number with no scale, a comparison with no baseline, a count that does not
 match what was listed: each is a `missing_premise`.
 
+**Every comparison gets taken apart before it is allowed to stand.** When the
+text sets two numbers against each other — a comparative, "vs", a fold, a
+percentage point, a ratio — ask what each number is OF, in six slots:
+
+| slot | the question |
+|---|---|
+| denominator | 47% of what? the plants sown, or the ones that survived? |
+| population | the same set on both sides, or one filtered and one not? |
+| filter | QC-passed vs everything; one year vs pooled years |
+| unit / normalisation | per plant or per plot; TPM or raw count; dry or fresh weight |
+| statistic | mean against median, proportion against rate, cumulative against point |
+| n | how many units is each side measured on? |
+
+**The comparison is licensed only when the two sides differ in the one slot the
+sentence names.** Everything else matching is what makes the sentence a
+comparison rather than an illusion, and the text has to say it — you cannot
+check it, because you have no data. So report what the text did not say, and
+say that is what you are reporting: "the denominators are not given, and I
+cannot tell whether they match." Whether they actually match is someone else's
+pass, over the data.
+
+A number's own composition counts too, not only the pair: a composite index set
+against a raw measurement, or a percent change on a base small enough that one
+unit moves it, is the same finding.
+
+Then the verb. A gap you cannot see dispersion or n for does not support
+"improves", "confirms", "demonstrates" or "establishes" — that is an
+`overreaching_claim`, and the span is the verb's clause, not the numbers.
+
 ### If no profile was given
 
 Say so in `BUNDLE_NOTE` and apply `response_letter` if you were handed a letter,
@@ -108,9 +137,21 @@ Say so in `BUNDLE_NOTE` and apply `response_letter` if you were handed a letter,
 
 | kind | definition |
 |---|---|
-| `frame_error` | the letter describes **your own prior experience incorrectly** — what the submitted version contained, what a figure showed, what you asked for. **Highest value: this is a factual bug, not a readability one.** |
+| `frame_error` | the letter describes **your own prior experience incorrectly** — what the submitted version contained, what a figure showed, what you asked for. Under `profile: manuscript`, where you have no prior copy, it is the text contradicting **its own declared design**: a comparison Methods sets up and Results never reports, a procedure declared for every arm and applied to one. **Highest value: this is a factual bug, not a readability one.** |
 | `absent_referent` | refers to something outside your bundle — an internal draft, an option they rejected, a decision made in their session |
 | `missing_premise` | a term, symbol, threshold or number used before it is defined, scaled, or attributed to the arm/method/reviewer it belongs to |
+| `unlicensed_comparison` | two numbers set against each other as if they were the same kind of thing, where the text does not say what each one is OF. You had to assume the two were built the same way. |
+| `overreaching_claim` | the comparison is legible, but the sentence claims more than a difference of that size, measured on that many units, can carry |
+
+**Which kind, when two of them fit.** A denominator that is never given is
+also a number that is never scaled, so `missing_premise` and
+`unlicensed_comparison` overlap on purpose. Pick by what the finding is ABOUT:
+a number standing on its own is `missing_premise`; a number that only means
+something against another number is `unlicensed_comparison`; the verb outrunning
+the gap is `overreaching_claim`, with the verb's clause as the span even when
+the numbers above it are fine. Measured on the run this rule exists because of:
+every comparison finding landed in `missing_premise` and the comparison kinds
+went unused, because the older kind was listed first and fit well enough.
 
 Rank `frame_error` first and state it plainly. Do not soften a factual error into
 "could be clearer". If a number as printed contradicts the claim it is offered to
@@ -126,9 +167,12 @@ the paper, no praise.
 
 ```
 --- FINDINGS ---
-kind:      frame_error | absent_referent | missing_premise
+kind:      frame_error | absent_referent | missing_premise |
+           unlicensed_comparison | overreaching_claim
 span:      "<verbatim quote from the letter, 5-20 words>"
-supplied:  <what you had to infer, guess or look up — one sentence>
+supplied:  <what you had to infer, guess or look up — one sentence.
+            For unlicensed_comparison: name the slot (denominator, population,
+            filter, unit, statistic, n) and say you could not check it.>
 why:       <for frame_error: what your own material actually says, quoted>
 
 (repeat, frame_error first)
@@ -164,3 +208,6 @@ punctuation, and keep the quote long enough to be unique.
   what was being claimed.
 - **Disagreeing with the science.** If the work is legible and you simply think it
   is wrong, that is not this job. Report it under `PASSED` if you followed it.
+- **A denominator the field reads automatically.** "47% GC content" needs no
+  gloss. Flag it only when the comparison HINGES on the slot you are missing —
+  if knowing it could not change which side is larger, let it go.

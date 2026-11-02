@@ -52,6 +52,22 @@ Verify that numbers cited in the manuscript actually match the data:
 4. Re-derive the number from the live file and compare.
 5. Flag any mismatch: "Abstract says n=69 but
    `analysis/cohort/out/samples.csv` has 71 rows."
+6. **Then the pairs — a number that re-derives correctly can still sit in a
+   comparison that does not hold.** For every sentence that sets two numbers
+   against each other (a comparative, "vs", a fold, percentage points, a
+   ratio), resolve BOTH sides to the run or file that produced them and report
+   every difference beyond the one the sentence names — the six slots in the
+   guide's comparability rule (denominator, population, filter,
+   unit/normalisation, statistic, n). This is `compare_run_params` applied to a
+   claim instead of a table: where both sides are runs of one analysis, call it
+   and read `report`; where they are not, diff the slots by hand from the
+   producing scripts and CSVs.
+   **A side with no traceable producer is itself the finding** — a literature
+   value, a number typed in by hand, a figure with no `source_analysis`: the
+   comparison then has one half whose construction nobody can see, and that is
+   a `block` if the conclusion rests on it. Say which half.
+   `/cold-read` on Results is the other half of this check and does not replace
+   it: it reports what the TEXT fails to say, holding no data.
 
 Where the user wants a durable contract, write an
 `audit_sentinels.yaml` next to the analysis:

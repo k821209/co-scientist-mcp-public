@@ -619,6 +619,19 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   per-arm learning rate can be correct design — but the list must be
   complete, and a run with no params is named as uncomparable, which is a
   finding. Without `varies` the tool still lists every difference.
+- **The same rule in prose: a sentence that compares two numbers must say what
+  each number is OF.** Six slots decide whether a comparison is a comparison or
+  an illusion — denominator, population, filter, unit/normalisation, statistic,
+  n — and the comparison is licensed only when the two sides differ in the ONE
+  slot the sentence names. `compare_run_params` enforces that for the rows of a
+  table; nothing enforced it for a number written in a sentence, which is where
+  it actually goes wrong, because the author chose those two numbers precisely
+  BECAUSE they looked comparable from inside. Two passes, and neither stands in
+  for the other: `/cold-read` on Results reports the slots the TEXT does not
+  give (it holds no data, and says so), `/analysis-audit` Pass 2 resolves both
+  sides to the run or file that produced them and reports every difference
+  beyond the named one. A number that re-derives correctly can still sit in a
+  comparison that does not hold.
 - **For a script-driven run the SCRIPT is the parameter set.**
   `submit_remote_job` hashes the script the command names and every sibling
   `*.sh`/`*.py`/`*.R` in the working directory, and stores `script_sha256` /
