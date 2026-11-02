@@ -264,6 +264,15 @@ def runtime_info() -> dict:
                 out["install_warning"] = w
             else:
                 out["install_note"] = install_note(str(checkout), sys.executable)
+    # Whose protocol applies. Step 1 of every session is whoami(), so the one
+    # place a maintainer-only rule can arrive without editing the generated,
+    # user-facing CLAUDE.md is here. Inert for everyone else: no marker, no key.
+    from .maintainer import detect as _detect_maintainer
+    m = _detect_maintainer()
+    if m is not None:
+        out["maintainer_checkout"] = m["checkout"]
+        out["maintainer_canonical"] = m["canonical"]
+        out["maintainer_note"] = m["note"]
     return out
 
 
