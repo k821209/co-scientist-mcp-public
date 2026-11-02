@@ -582,21 +582,54 @@ def submit_remote_job(
             f"code behind this run is NOT pinned; `compare_run_params` cannot "
             f"tell a later edit from the same program.")
         notes = "; ".join(polite_warnings)
-    run = record_analysis_run(
-        state, paper_slug, analysis_name,
-        command=command, host=server_alias, env_name=env_name,
-        # ABSOLUTE. It was stored relative here and absolute by
-        # record_analysis_run, in the same collection, so a consumer could not
-        # resolve a log path without knowing which tool wrote the row
-        # (feedback 22147cb7e721).
-        pid=pid, started_at=started_at, log_path=log_path_remote,
-        workdir=remote_dir,
-        notes=notes,
-        params=params,
-        run_key=run_key,
-        report_token=report_token if self_reporting else None,
-        **code,
-    )
+    try:
+        run = record_analysis_run(
+            state, paper_slug, analysis_name,
+            command=command, host=server_alias, env_name=env_name,
+            # ABSOLUTE. It was stored relative here and absolute by
+            # record_analysis_run, in the same collection, so a consumer could not
+            # resolve a log path without knowing which tool wrote the row
+            # (feedback 22147cb7e721).
+            pid=pid, started_at=started_at, log_path=log_path_remote,
+            workdir=remote_dir,
+            notes=notes,
+            params=params,
+            run_key=run_key,
+            report_token=report_token if self_reporting else None,
+            # ONE dict, not five keywords — `**code` was a splat that worked
+            # only while the probe found nothing, so the feature was broken in
+            # exactly the case it exists for (feedback 75d99ef71d98,
+            # 13bffa107f9e, 183136d23a72).
+            code=code,
+        )
+    except Exception as exc:
+        # The job is ALREADY RUNNING: the launch is above this line. Raising
+        # here reads to the caller as "the submission failed", and the three
+        # reports all record the same consequence — a retry, and a remote
+        # process no run row names. So report both facts, and hand over
+        # everything a back-fill needs (the hashes included: they are computed
+        # only on this path and cannot be recovered afterwards). The token is
+        # deliberately not here; a hand-filed row cannot self-report, and
+        # `poll_remote_pids` closes it instead.
+        polite_warnings.append(
+            f"THE JOB IS RUNNING but its run row was NOT written "
+            f"({type(exc).__name__}: {exc}). PID {pid} on {server_alias}, "
+            f"pidfile {pidfile}. Back-fill it now — record_analysis_run("
+            f"slug, analysis, command=…, host={server_alias!r}, pid={pid}, "
+            f"workdir={remote_dir!r}, log_path={log_path_remote!r}, "
+            f"started_at={started_at!r}, params=…"
+            + (f", code={code!r}" if code else "")
+            + ") — or kill it. Do NOT re-submit blind: the pidfile will block "
+              "the duplicate, but nothing will name the work.")
+        return {
+            "run_key": None, "tracked": False, "recorded": False,
+            "pid": pid, "host": server_alias,
+            "log_path": log_path_relative, "remote_dir": remote_dir,
+            "remote_log_path": log_path_remote, "pidfile": pidfile,
+            "started_at": started_at, "code": code or None,
+            "warnings": polite_warnings, "existing": False,
+            "self_reporting": False,
+        }
     return {
         "run_key": run["run_key"], "pid": pid, "host": server_alias,
         "log_path": log_path_relative, "remote_dir": remote_dir,
