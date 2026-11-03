@@ -9,6 +9,7 @@ from __future__ import annotations
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso, word_count
+from .blocks import align, block_hash, join_blocks, split_blocks
 from .activity import log_event
 from .display_lint import inline_object_warnings
 from .papers import _paper_path, _regenerate_manuscript, _section_path
@@ -36,6 +37,83 @@ def list_sections(state: State, slug: str) -> list[dict]:
     return sections
 
 
+def _replace_block(existing: dict, block_id: str, text: str,
+                   if_rev: int | None) -> tuple[str, list[dict]]:
+    """The body with one block's text swapped, and the id list that goes with it.
+
+    The id is KEPT and the revision incremented, which is the whole point: a
+    reworded paragraph is the same paragraph, so a comment anchored to it still
+    points at the words its author read. (A write of the whole body cannot know
+    that, and `align` there deliberately treats rewritten text as a new block
+    so the comment is reported orphaned instead of moved.)
+    """
+    blocks, stored = _blocks_for(existing)
+    position = next((i for i, entry in enumerate(stored)
+                     if entry["id"] == block_id), None)
+    if position is None:
+        raise NotFound(
+            f"block {block_id!r} is not in {existing.get('key') or 'this section'} "
+            f"— it was rewritten or removed; read the blocks again")
+    current = stored[position]
+    if if_rev is not None and int(if_rev) != int(current["rev"]):
+        raise BlockConflict(
+            f"block {block_id} is at rev {current['rev']}, you read "
+            f"{if_rev} — someone edited it since. Their text stands; read it "
+            f"and decide.",
+            block={"id": block_id, "rev": current["rev"],
+                   "text": blocks[position]["text"]})
+    updated = list(blocks)
+    updated[position] = {"text": text, "sep": blocks[position]["sep"] or "\n\n"}
+    entries = [dict(entry) for entry in stored]
+    entries[position] = {"id": block_id, "rev": int(current["rev"]) + 1,
+                         "hash": block_hash(text)}
+    return join_blocks(updated), entries
+
+
+class BlockConflict(ValueError):
+    """A block-level write whose `if_rev` is not the block's current one.
+
+    Carries the block as it stands, because the caller has to decide with the
+    new text in hand; their edit stands either way, and this is never resolved
+    by overwriting.
+    """
+
+    def __init__(self, message: str, *, block: dict):
+        super().__init__(message)
+        self.block = block
+
+
+def _blocks_for(existing: dict) -> tuple[list[dict], list[dict]]:
+    """A section's blocks and their id entries, repaired if the two disagree.
+
+    The body is canonical. The id list lives beside it and can be stale — an
+    older client, a restore, a hand edit in the console — so it is realigned
+    against the body on every read rather than trusted.
+    """
+    blocks = split_blocks(existing.get("body") or "")
+    stored = existing.get("blocks") or []
+    if len(stored) != len(blocks) or any(
+            entry.get("hash") != block_hash(block["text"])
+            for entry, block in zip(stored, blocks)):
+        stored = align(stored, blocks)
+    return blocks, stored
+
+
+def section_blocks(state: State, slug: str, key: str) -> list[dict]:
+    """A section as addressable blocks: `id`, `rev`, `text`.
+
+    What a comment anchors to and what a block-level write names. The body
+    stays the canonical string; this is identity laid over it.
+    """
+    existing = state.backend.get_doc(_section_path(state, slug, key))
+    if existing is None:
+        raise NotFound(f"section not found: {slug!r}/{key!r}")
+    blocks, stored = _blocks_for(existing)
+    return [{"id": entry["id"], "rev": entry["rev"], "hash": entry["hash"],
+             "text": block["text"]}
+            for entry, block in zip(stored, blocks)]
+
+
 def update_section(
     state: State,
     slug: str,
@@ -44,8 +122,19 @@ def update_section(
     body: str | None = None,
     status: str | None = None,
     title: str | None = None,
+    block_id: str | None = None,
+    text: str | None = None,
+    if_rev: int | None = None,
 ) -> dict:
     """Update a section's body / status / title; regenerate manuscript blob.
+
+    `block_id` + `text` replaces ONE block instead of the whole body, and
+    `if_rev` is the revision the caller read. Writing the whole body is still
+    allowed and still the way to restructure a section — but it is also how an
+    agent and a person silently overwrote each other, because the last write
+    won and nothing said a word. A block write with a stale `if_rev` raises
+    `BlockConflict` and changes nothing: whoever typed into the section while
+    you were thinking keeps their text.
 
     Returns the updated section doc.
     """
@@ -56,10 +145,26 @@ def update_section(
     if existing is None:
         raise NotFound(f"section not found: {slug!r}/{key!r}")
 
+    keep_entries: list[dict] | None = None
+    if block_id is not None or text is not None or if_rev is not None:
+        if block_id is None or text is None:
+            raise ValueError("a block write needs both block_id and text")
+        if body is not None:
+            raise ValueError("pass body, or block_id + text — not both")
+        body, keep_entries = _replace_block(existing, block_id, text, if_rev)
+
     fields: dict = {"updated_at": now_iso()}
     if body is not None:
         fields["body"] = body
         fields["word_count"] = word_count(body)
+        # Identity, carried across the edit. A block write says which block it
+        # is, so that id survives the rewording. A whole-body write does not,
+        # and `align` keeps an id only where the text is unchanged.
+        if keep_entries is not None:
+            fields["blocks"] = keep_entries
+        else:
+            _, stored = _blocks_for(existing)
+            fields["blocks"] = align(stored, split_blocks(body))
     if status is not None:
         fields["status"] = status
     if title is not None:

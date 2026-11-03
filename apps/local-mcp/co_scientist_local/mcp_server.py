@@ -483,10 +483,37 @@ def build_mcp(state: State) -> FastMCP:
         body: str | None = None,
         status: str | None = None,
         title: str | None = None,
+        block_id: str | None = None,
+        text: str | None = None,
+        if_rev: int | None = None,
     ) -> dict[str, Any]:
         """Update a section's body/status/title; regenerates the manuscript blob.
-        For a few words, use `replace_in_section` instead of re-sending the body."""
-        return _sections.update_section(state, slug, key, body=body, status=status, title=title)
+        For a few words, use `replace_in_section` instead of re-sending the body.
+        To change ONE block, pass `block_id` + `text` (from `section_blocks`)
+        with the `if_rev` you read: a whole-body write is how the last writer
+        silently wins over whatever the author typed meanwhile, and a block
+        write keeps the block's identity so comments anchored to it survive the
+        rewording. A stale `if_rev` changes nothing and returns the block as it
+        now stands."""
+        try:
+            return _sections.update_section(
+                state, slug, key, body=body, status=status, title=title,
+                block_id=block_id, text=text, if_rev=if_rev)
+        except _sections.BlockConflict as conflict:
+            # Not an error the agent should retry: the author's text won, and
+            # it needs to be read before anything is written over it.
+            return {"conflict": True, "message": str(conflict),
+                    "block": conflict.block}
+
+    @mcp.tool()
+    def section_blocks(slug: str, key: str) -> list[dict[str, Any]]:
+        """A section as addressable blocks: `id`, `rev`, `text`. A block is what
+        a blank line separates (a fenced code block stays whole). Read these to
+        edit one paragraph with `update_section(block_id=, text=, if_rev=)`
+        instead of re-sending the whole body, and to anchor a comment to a
+        block rather than to a quoted phrase that moves when the sentence is
+        reworded."""
+        return _sections.section_blocks(state, slug, key)
 
     @mcp.tool()
     def replace_in_section(
