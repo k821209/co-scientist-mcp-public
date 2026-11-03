@@ -117,10 +117,25 @@ def count_inline_tables(text: str) -> int:
 def count_inline_images(text: str) -> int:
     """Count UNTRACKED inline markdown images (![alt](src)).
 
-    Embeds of a registered figure/table (`figure:N` / `table:N`) don't count —
-    see `_TRACKED_EMBED_RE`.
+    An embed of something the project already tracks does not count. The
+    exemption was `figure:N` / `table:N` only, and `![](references)` — the
+    bibliography embed that `prepare_export` RECOMMENDS in the same response —
+    counted as an untracked image, so every document using it was told to
+    "use add_figure" on its reference list, every export (feedback
+    fbc093254a3e). The same repair had already been made once for figures and
+    tables; `references` was missed because it has no `:N` and so never showed
+    up when the covered set was eyeballed.
+
+    The references pattern is imported rather than rewritten: a second
+    definition of the same embed is the next bug, not the fix. What keeps this
+    honest is a test that scans the package for every embed scheme it mentions
+    anywhere and fails when a new one is not exempt here.
     """
-    return len(_IMG_RE.findall(_TRACKED_EMBED_RE.sub("", text)))
+    from .numbered_citations import _REFERENCES_EMBED_RE
+
+    stripped = _TRACKED_EMBED_RE.sub("", text)
+    stripped = _REFERENCES_EMBED_RE.sub("", stripped)
+    return len(_IMG_RE.findall(stripped))
 
 
 def label_for(number: int, *, number_supplementary: bool = True) -> str:
