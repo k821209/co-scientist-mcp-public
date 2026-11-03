@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
+from ..version_check import CLIENT_ID
 from .analyses import PROJECT_SCOPE, _analysis_path, is_project_scope, iter_analyses
 
 
@@ -265,6 +266,13 @@ def record_analysis_run(
         # Deliberately not the project key, which reaches the whole account and
         # would be world-readable in `ps` on a shared compute server.
         "report_token": report_token,
+        # WHO to tell when this closes. The row knew a job had finished —
+        # self-report, poll, or sweep — and the session that launched it had no
+        # way to be told, so an agent blocked on `wait_for_run` for seven
+        # minutes and then reported a finished job as still running (feedback
+        # ecba6396d9b4). The MCP process is the session, so its id is the
+        # address. Not a secret and not an identity check: a label.
+        "client_id": CLIENT_ID,
     }
     state.backend.set_doc(_run_path(state, slug, analysis, run_key), doc)
     return doc
@@ -497,6 +505,65 @@ def read_local_exitcode(workdir: str, run_key: str) -> int | None:
         return int(p.read_text().strip())
     except (ValueError, OSError):
         return None
+
+
+# What `exit_code: -2` means, in one place: the process is gone and NOTHING
+# recorded whether it worked. Said by `wait_for_run` and by `run_notices`,
+# because "finished" read as "succeeded" is the next mistake after "stopped"
+# read as "finished".
+GONE_NOTE = ("the process is gone; nothing recorded an exit status, so read "
+             "the log before reporting a result — `tail_remote_log` also "
+             "shows whether the job TRIED to report and could not, which is "
+             "the difference between a lost status and a job that never ran")
+
+
+def run_notices(state: State, *, since: str | None = None,
+                client_id: str | None = None) -> dict:
+    """Runs THIS session launched that have closed since `since`, and how many
+    of its runs are still open.
+
+    The gap this fills: a remote job finishes, the row is closed — by the job's
+    own self-report, by `poll_remote_pids`, by the stale sweep, or by hand —
+    and the session that launched it is never told. An agent blocked on
+    `wait_for_run` for seven minutes, then told the user a finished job was
+    still running, because the only way to know was to ask (feedback
+    ecba6396d9b4).
+
+    Watching the ROW rather than the self-report event is deliberate: every
+    close path then produces the same notice, including the ones where the job
+    could not report for itself.
+
+    `still_open` is here so a caller can stop polling: no open runs of its own
+    means nothing to wait for, and the cheapest poll is the one not made.
+    """
+    from . import analyses as _analyses
+
+    who = client_id or CLIENT_ID
+    closed: list[dict] = []
+    still_open = 0
+    for slug, name in _analyses.iter_analyses(state):
+        for row in list_analysis_runs(state, slug, name):
+            if row.get("client_id") != who:
+                continue
+            when = row.get("finished_at")
+            if not when:
+                still_open += 1
+                continue
+            if since and str(when) <= str(since):
+                continue
+            notice = {
+                "slug": row.get("paper_slug"), "analysis": row.get("analysis_name"),
+                "run_key": row.get("run_key"), "host": row.get("host"),
+                "command": (row.get("command") or "")[:120],
+                "exit_code": row.get("exit_code"), "finished_at": when,
+                "log_path": row.get("log_path"), "notes": row.get("notes"),
+            }
+            if row.get("exit_code") == -2:
+                notice["caution"] = GONE_NOTE
+            closed.append(notice)
+    closed.sort(key=lambda n: str(n.get("finished_at") or ""))
+    return {"client_id": who, "now": now_iso(),
+            "closed": closed, "still_open": still_open}
 
 
 def reap_local_run(state: State, slug: str, analysis: str, run_key: str) -> dict:

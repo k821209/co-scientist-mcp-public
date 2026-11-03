@@ -892,10 +892,9 @@ _WAIT_MIN_POLL_S = 5.0
 # What -2 means on a row this closed: the process is gone and nothing said it
 # SUCCEEDED. Reported every time, because "finished" read as "worked" is the
 # next mistake after "stopped" read as "finished".
-_GONE_NOTE = ("the process is gone; nothing recorded an exit status, so read "
-              "the log before reporting a result — `tail_remote_log` also "
-              "shows whether the job TRIED to report and could not, which is "
-              "the difference between a lost status and a job that never ran")
+# One definition, in runs.py: `run_notices` says the same thing for the same
+# rows, and two copies of a caution drift.
+from .runs import GONE_NOTE as _GONE_NOTE  # noqa: E402
 
 
 def _state_once(state: State, slug: str, analysis: str, run_key: str) -> dict:

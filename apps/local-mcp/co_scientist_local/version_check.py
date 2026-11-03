@@ -28,6 +28,8 @@ import pathlib
 
 import os
 import re
+import secrets as _secrets
+import socket as _socket
 import time as _time
 import urllib.request
 
@@ -93,6 +95,19 @@ _GIT_SHA_CACHE: str | None | bool = False   # False = not computed yet
 # does not re-import a changed module, so everything shipped after this instant
 # is inert for this session — invisibly, because the tools keep answering.
 _IMPORTED_AT = _time.time()
+
+# Who this process is, minted once at import. The MCP server is started BY one
+# session and lives exactly as long as it, so "which client" and "which
+# session" are the same question — and the CLI's own session id is not
+# available in here, and changes on /clear anyway. Stamped on every run row
+# (`record_analysis_run`) so a harness can ask which of the open runs are its
+# own and be told when they close: the dashboard knew a remote job had
+# finished and the session that launched it did not, because nothing on the row
+# said whom to tell (feedback ecba6396d9b4). Host and pid because a human
+# reading a row wants to know which window that was; the suffix because pids
+# are reused.
+CLIENT_ID = "%s-%d-%s" % (_socket.gethostname(), os.getpid(),
+                          _secrets.token_hex(3))
 
 
 def git_sha() -> str | None:
@@ -241,6 +256,9 @@ def runtime_info() -> dict:
         "package_path": str(pkg_dir),
         "python_executable": sys.executable,
         "install_mode": "editable" if editable else "site-packages",
+        # Stamped on every run this process records, so a client can ask which
+        # open runs are its own (`run_notices`).
+        "client_id": CLIENT_ID,
     }
     # BOTH modes, because the mode was never the point. This was gated on
     # `editable` on the theory that only a working tree drifts under a live
