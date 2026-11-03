@@ -1232,6 +1232,13 @@ def prepare_export(
     recency = _prov.recency_check(state, slug)
     if not recency["ok"]:
         warnings.append(recency["message"])
+    # Work promised in a to-do and never done. Here because an export is where
+    # "we still have to measure X" stops being a plan and becomes an omission
+    # the paper ships with (feedback 89a37dd28ffc).
+    from . import todos as _todos
+    promises = _todos.promise_check(state)
+    if not promises["ok"]:
+        warnings.append(promises["message"])
     warnings.extend(_provenance_coverage_warnings(state, slug, figs + supp_figs,
                                                  tbls + supp_tbls))
 

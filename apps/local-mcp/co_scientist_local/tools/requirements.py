@@ -147,8 +147,13 @@ def check_requirements(state: State, slug: str) -> dict:
         _figures.list_figures(state, slug, supplementary=None),
     )
     recency = _prov.recency_check(state, slug)
+    # Promised-and-not-done, which no other check can see: the other checks all
+    # read what IS there (a table, a run, a stamp), and work that was only
+    # written about leaves nothing to read (feedback 89a37dd28ffc).
+    from . import todos as _todos
+    promises = _todos.promise_check(state)
     if not req:
-        base_checks = [prov, recency]
+        base_checks = [prov, recency, promises]
         return {
             "configured": False,
             "requirements": None,
@@ -246,6 +251,7 @@ def check_requirements(state: State, slug: str) -> dict:
 
     checks.append(prov)
     checks.append(recency)
+    checks.append(promises)
 
     violations = [c for c in checks if not c["ok"]]
     # Always present, so an empty list is a statement ("every dimension was

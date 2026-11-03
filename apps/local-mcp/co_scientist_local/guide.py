@@ -632,6 +632,15 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   sides to the run or file that produced them and reports every difference
   beyond the named one. A number that re-derives correctly can still sit in a
   comparison that does not hold.
+- **A sentence that promises work becomes a to-do in the SAME turn.**
+  "~하겠습니다" / "I'll run X" is prose, and prose is the one thing no check
+  here can read: `add_todo(text)` makes it a row that `list_todos` can be asked
+  about. Measured — a paper whose central question was memory ran 160 jobs
+  without `/usr/bin/time -v`, and "we have to measure max RSS" sat in four
+  different places (a run note, a concept graph, two discussion comments) and
+  was never run. Close it with `update_todo(status="done")` when it is done;
+  `check_requirements` and `prepare_export` name to-dos left open for days,
+  and say whether anything has run since.
 - **Never write the wait by hand: `wait_for_run(slug, analysis, run_key)`.**
   It answers in three states — running / finished / **undetermined** — and the
   third is why the tool exists. A shell condition over `ps -p $(cat
