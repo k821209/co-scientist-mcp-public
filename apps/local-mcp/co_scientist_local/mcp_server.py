@@ -2637,6 +2637,14 @@ def build_mcp(state: State) -> FastMCP:
         workdir: str | None = None,
         notes: str | None = None,
         params: dict[str, Any] | None = None,
+        # What the run RAN: script_path / script_sha256 / script_bytes /
+        # script_mtime / scripts, as one dict. Same omission `workdir` had, with
+        # the same consequence one layer worse: when a submission records
+        # nothing, the back-fill is the only way to name the work, and the
+        # hashes are computed on the submitting machine at submit time and
+        # cannot be recovered afterwards. Twelve runs were back-filled by hand
+        # and their script hashes are gone permanently (feedback 46191cc75d40).
+        code: dict[str, Any] | None = None,
         hostname: str | None = None,
         started_at: str | None = None,
         finished_at: str | None = None,
@@ -2682,8 +2690,9 @@ def build_mcp(state: State) -> FastMCP:
         return _runs.record_analysis_run(
             state, slug, analysis, command=command, host=host,
             env_name=env_name, pid=pid, log_path=log_path, workdir=workdir,
-            notes=notes, params=params, hostname=hostname, started_at=started_at,
-            finished_at=finished_at, exit_code=exit_code, datasets=datasets,
+            notes=notes, params=params, code=code, hostname=hostname,
+            started_at=started_at, finished_at=finished_at, exit_code=exit_code,
+            datasets=datasets,
         )
 
     @mcp.tool()

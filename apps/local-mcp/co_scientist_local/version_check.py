@@ -242,17 +242,24 @@ def runtime_info() -> dict:
         "python_executable": sys.executable,
         "install_mode": "editable" if editable else "site-packages",
     }
+    # BOTH modes, because the mode was never the point. This was gated on
+    # `editable` on the theory that only a working tree drifts under a live
+    # process; `pip install --upgrade` rewrites site-packages under one just as
+    # happily, and then the version check reads the NEW version off disk and
+    # reports the session as current. Measured: a session kept calling
+    # pre-fix `submit_remote_job` code for hours while `whoami` said
+    # `0.1.20261102.post3`, `update_available: false` — twelve launches whose
+    # run rows had to be back-filled by hand, and whose script hashes are gone
+    # for good, because nobody had any reason to restart (feedback
+    # 46191cc75d40). `stale_process` always could see it: its first signal is a
+    # module file newer than this process, which is exactly what pip leaves.
+    out.update(stale_process(pkg_dir))
     if editable:
         # The interpreter is what .mcp.json's `command` has to name. A bare
         # `python3` resolves through PATH, so the server silently fails to start
         # under any shell whose PATH finds a different interpreter — and the
         # user sees "it worked yesterday".
         out["mcp_json_command"] = sys.executable
-        # An editable install is the one that can drift under a live process,
-        # and the version check cannot see it. Always report the boolean, so
-        # `false` is a statement ("checked, the process matches the disk")
-        # rather than an absence.
-        out.update(stale_process(pkg_dir))
     else:
         checkout = find_checkout()
         out["dedicated_venv"] = dedicated_venv()
