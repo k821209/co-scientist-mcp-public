@@ -3192,6 +3192,26 @@ def build_mcp(state: State) -> FastMCP:
         return _ssh_ops.kill_remote_job(state, slug, analysis, run_key)
 
     @mcp.tool()
+    def wait_for_run(
+        slug: str,
+        analysis: str,
+        run_key: str,
+        timeout_s: float = 0.0,
+        poll_s: float = 15.0,
+    ) -> dict[str, Any]:
+        """Is this run still going? `state` is "running", "finished" or
+        "undetermined" — use this instead of writing the wait by hand. A shell
+        `until ! ssh host 'ps -p $(cat .pidfile_*)'` cannot tell "no such
+        process" from "could not ask" and reported a job that ran 23 minutes
+        longer as done. `undetermined` is an answer: an unreachable host is not
+        a dead job. `exit_code` -2 means the process is merely GONE and nothing
+        recorded success, so read `log_path` before reporting a result.
+        `timeout_s=0` asks once; above zero it polls until the run leaves
+        "running", which blocks this session and is capped at 600s."""
+        return _ssh_ops.wait_for_run(state, slug, analysis, run_key,
+                                     timeout_s=timeout_s, poll_s=poll_s)
+
+    @mcp.tool()
     def poll_remote_pids(alias: str) -> dict[str, Any]:
         """One SSH round-trip: close phantom rows for `alias`.
 

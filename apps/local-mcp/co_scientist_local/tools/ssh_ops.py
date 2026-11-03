@@ -856,6 +856,126 @@ def poll_remote_pids(state: State, alias: str, *, rows: list[dict] | None = None
     }
 
 
+# ── waiting for a run: three states, because two is how a wait goes wrong ──
+
+_WAIT_MAX_S = 600.0
+_WAIT_MIN_POLL_S = 5.0
+
+# What -2 means on a row this closed: the process is gone and nothing said it
+# SUCCEEDED. Reported every time, because "finished" read as "worked" is the
+# next mistake after "stopped" read as "finished".
+_GONE_NOTE = ("the process is gone; nothing recorded an exit status, so read "
+              "the log before reporting a result")
+
+
+def _state_once(state: State, slug: str, analysis: str, run_key: str) -> dict:
+    """One honest look at a run. Never guesses, never collapses two states."""
+    from .runs import get_analysis_run, is_this_machine
+
+    run = get_analysis_run(state, slug, analysis, run_key)
+    base = {"run_key": run_key, "host": run.get("host") or "local",
+            "pid": run.get("pid"), "log_path": run.get("log_path"),
+            "exit_code": run.get("exit_code")}
+
+    def closed(reason: str) -> dict:
+        row = get_analysis_run(state, slug, analysis, run_key)
+        code = row.get("exit_code")
+        out = {**base, "state": "finished", "exit_code": code,
+               "finished_at": row.get("finished_at"), "why": reason,
+               "log_path": row.get("log_path")}
+        if code == -2:
+            out["caution"] = _GONE_NOTE
+        return out
+
+    if run.get("finished_at"):
+        return closed("the run row is already closed")
+    pid = run.get("pid")
+    if pid is None:
+        # A provenance row for work that was never a tracked process. Not
+        # running, and not something this can call finished either.
+        return {**base, "state": "undetermined",
+                "why": "this row has no pid, so there is no process to ask "
+                       "about — it was recorded after the fact, or the "
+                       "submission failed to record one"}
+    host = base["host"]
+    # `host == "local"` is the only thing that makes a pid checkable here.
+    # `is_this_machine` answers a narrower question — it defaults to True for
+    # rows written before `hostname` existed — so using it to choose the branch
+    # sent a REMOTE run down the local path, where `os.kill` found no such pid
+    # and closed a running job as finished. Caught by the first test written
+    # for this function, which is the whole reason it exists.
+    if host == "local":
+        if not is_this_machine(run):
+            return {**base, "state": "undetermined",
+                    "why": f"pid {pid} was recorded on another machine "
+                           f"({run.get('hostname')}), which cannot be asked from here"}
+        from .runs import reap_local_run
+        after = reap_local_run(state, slug, analysis, run_key)
+        if after.get("finished_at"):
+            return closed("the local process is gone")
+        return {**base, "state": "running", "why": f"local pid {pid} is alive"}
+
+    # Remote: one SSH round trip through the probe that already tells "no such
+    # process" apart from "could not ask" (feedback aa02e57c6f16).
+    probe = poll_remote_pids(state, host, rows=[{
+        "pid": pid, "paper_slug": slug, "analysis_name": analysis,
+        "run_key": run_key}])
+    if probe.get("undetermined"):
+        return {**base, "state": "undetermined",
+                "why": probe.get("error") or "the liveness probe did not run",
+                "host_unreachable": True}
+    if probe.get("finished"):
+        return closed(f"{host} reports pid {pid} is no longer running")
+    return {**base, "state": "running", "why": f"{host} reports pid {pid} alive"}
+
+
+def wait_for_run(
+    state: State,
+    slug: str,
+    analysis: str,
+    run_key: str,
+    *,
+    timeout_s: float = 0.0,
+    poll_s: float = 15.0,
+) -> dict:
+    """Is this run still going? Answered in THREE states, never two.
+
+    An agent wrote its own wait condition:
+
+        until ! ssh host 'ps -p $(cat .../.pidfile_* 2>/dev/null) >/dev/null'; \
+            do sleep 60; done
+
+    With no pidfile `$(cat …)` is empty, `ps -p ""` fails at once, and the loop
+    exits on its first pass. The job ran 23 more minutes while the user was
+    told it had finished (feedback 89a37dd28ffc). The condition could not tell
+    "no such process" from "could not ask", and a hand-written wait almost
+    always collapses the two — the honest third state has no shell syntax.
+
+    `state` is "running", "finished" or "undetermined", and the last is an
+    answer, not a failure: an unreachable host is not a dead job. A finished
+    run with `exit_code` -2 carries `caution`, because the row was closed by
+    the process being absent and nothing recorded success.
+
+    `timeout_s=0` (default) asks once. Above zero it polls until the run leaves
+    "running" or the time is up — that blocks this session, so it is capped at
+    600s — and reports `waited_s` either way.
+    """
+    import time as _t
+
+    limit = min(max(float(timeout_s), 0.0), _WAIT_MAX_S)
+    gap = max(float(poll_s), _WAIT_MIN_POLL_S)
+    started = _t.monotonic()
+    while True:
+        out = _state_once(state, slug, analysis, run_key)
+        waited = _t.monotonic() - started
+        if out["state"] != "running" or waited >= limit:
+            out["waited_s"] = round(waited, 1)
+            if out["state"] == "running" and limit:
+                out["why"] += f" — still running after {out['waited_s']}s"
+            return out
+        _t.sleep(min(gap, max(limit - waited, 0.0)) or gap)
+
+
 def _parse_iso(value) -> datetime | None:
     """Best-effort ISO-8601 → aware datetime. None when absent/unparseable."""
     if isinstance(value, datetime):

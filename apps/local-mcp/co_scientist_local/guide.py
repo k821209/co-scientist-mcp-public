@@ -632,6 +632,13 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   sides to the run or file that produced them and reports every difference
   beyond the named one. A number that re-derives correctly can still sit in a
   comparison that does not hold.
+- **Never write the wait by hand: `wait_for_run(slug, analysis, run_key)`.**
+  It answers in three states — running / finished / **undetermined** — and the
+  third is why the tool exists. A shell condition over `ps -p $(cat
+  .pidfile_*)` reads an unreadable pidfile as "no process": one such loop
+  exited on its first pass and a 23-minute job was reported as finished. Pass
+  `timeout_s` to have it poll for you. And `finished` is not `succeeded`:
+  `exit_code` -2 means only that the process is gone, so read the log.
 - **For a script-driven run the SCRIPT is the parameter set.**
   `submit_remote_job` hashes the script the command names and every sibling
   `*.sh`/`*.py`/`*.R` in the working directory, and stores `script_sha256` /
