@@ -105,10 +105,17 @@ def section_blocks(state: State, slug: str, key: str) -> list[dict]:
     What a comment anchors to and what a block-level write names. The body
     stays the canonical string; this is identity laid over it.
     """
-    existing = state.backend.get_doc(_section_path(state, slug, key))
+    path = _section_path(state, slug, key)
+    existing = state.backend.get_doc(path)
     if existing is None:
         raise NotFound(f"section not found: {slug!r}/{key!r}")
     blocks, stored = _blocks_for(existing)
+    # Persist a list that had to be rebuilt, or the ids are minted fresh on
+    # every read and nothing can be anchored to them — a comment stored
+    # yesterday would point at an id that no longer exists. Written only when
+    # it actually changed, so a read stays a read in the common case.
+    if stored != (existing.get("blocks") or []):
+        state.backend.update_doc(path, {"blocks": stored})
     return [{"id": entry["id"], "rev": entry["rev"], "hash": entry["hash"],
              "text": block["text"]}
             for entry, block in zip(stored, blocks)]
@@ -251,6 +258,9 @@ def add_section(
         "title": title,
         "body": body,
         "word_count": word_count(body),
+        # Block identity from the start, so a comment made on a section nobody
+        # has edited yet still anchors to a block rather than to a phrase.
+        "blocks": align(None, split_blocks(body)),
         "status": "pending",
         "sort_order": sort_order,
         "updated_at": now,
