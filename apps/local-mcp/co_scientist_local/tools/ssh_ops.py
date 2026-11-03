@@ -225,9 +225,14 @@ def _collect_unfinished_pids_for_host(state: State, host: str) -> list[int]:
 # closes (apps/cloud-functions/report-run).
 REPORT_RUN_URL = "https://us-central1-co-scientist-5af1a.cloudfunctions.net/report_run"
 
-# Posted by the job, not by a session: python3 + stdlib only, no curl, no
-# credentials on disk beyond the one-run token, and every failure swallowed —
-# a job must never die because the dashboard was unreachable.
+# Posted by the job, not by a session: python3 + stdlib only, no curl, and no
+# credentials on disk beyond the one-run token. A failed report must never kill
+# the job — but it must not be INVISIBLE either, which is what "every failure
+# swallowed" bought: six 404s and then `rc=0`, under a `|| true`, so "reported"
+# and "gave up" were the same observable. The POST is the only thing that
+# carries this run's exit code off the machine; when it does not go through,
+# the last error goes to stderr (the wrapper's stderr IS the job log) and the
+# script exits non-zero (feedback 9e655a516640).
 _REPORTER = r"""#!/usr/bin/env python3
 import json, sys, time, urllib.request
 CFG = __CFG__
@@ -258,17 +263,34 @@ def main():
     # written just after the launch returns, and a job that ends in under a
     # second can otherwise report before the row exists.
     attempts = 6 if event == "finish" else 2
+    last = None
     for n in range(attempts):
         try:
             req = urllib.request.Request(
                 CFG["url"], data=data,
                 headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 resp.read()
-            return
-        except Exception:
-            time.sleep(3 * (n + 1))
-main()
+            return 0
+        except Exception as exc:
+            detail = ""
+            try:
+                detail = " " + exc.read().decode("utf-8", "replace")[:200]
+            except Exception:
+                pass
+            last = "%s: %s%s" % (type(exc).__name__, exc, detail)
+            if n + 1 < attempts:
+                # Short and bounded: the only race this retries around is the
+                # run row being written just after the launch returns, which is
+                # sub-second. The old 3/6/9/12/15 ladder kept the wrapper alive
+                # ~70s past its payload, and `wait_for_run` honestly reported
+                # the wrapper's pid as running all the while.
+                time.sleep(min(2 ** n, 8))
+    sys.stderr.write(
+        "[scivo] self-report (%s) FAILED after %d attempts: %s\n"
+        % (body["event"], attempts, last))
+    return 1
+sys.exit(main())
 """
 
 
@@ -494,8 +516,14 @@ def submit_remote_job(
         f"( while kill -0 $MAIN 2>/dev/null; do sleep 300; "
         f"python3 {reporter} heartbeat >/dev/null 2>&1 || true; done ) & HB=$!; "
     ) if self_reporting else ""
+    # NOT >/dev/null: the wrapper's own output is already redirected into the
+    # job log, so letting the reporter speak puts its failure where
+    # `tail_remote_log` will show it. `|| true` stays — the dashboard being
+    # unreachable must not change the job's exit code. Heartbeats stay quiet
+    # (every 300s, they would fill the log with the same line).
     finish = (
-        f"python3 {reporter} finish \"$EC\" >/dev/null 2>&1 || true; "
+        f"python3 {reporter} finish \"$EC\" || "
+        f"echo '[scivo] the run row was NOT closed by the job'; "
     ) if self_reporting else ""
     wrapped = (
         f"trap 'rm -f {pidfile}' EXIT; "
@@ -865,7 +893,9 @@ _WAIT_MIN_POLL_S = 5.0
 # SUCCEEDED. Reported every time, because "finished" read as "worked" is the
 # next mistake after "stopped" read as "finished".
 _GONE_NOTE = ("the process is gone; nothing recorded an exit status, so read "
-              "the log before reporting a result")
+              "the log before reporting a result — `tail_remote_log` also "
+              "shows whether the job TRIED to report and could not, which is "
+              "the difference between a lost status and a job that never ran")
 
 
 def _state_once(state: State, slug: str, analysis: str, run_key: str) -> dict:
