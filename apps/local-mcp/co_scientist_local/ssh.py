@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+import time as _time
+
+from . import netlog as _netlog
 import time
 from pathlib import Path
 from typing import Protocol
@@ -135,14 +138,29 @@ class RealSSHExecutor:
             if server.get("ssh_key"):
                 args += ["-i", server["ssh_key"]]
             args += [target, command]
+            # One line per call, so "are we flooding the link?" stops being a
+            # guess (todo d27e0606a7bb). The DURATION is the signal that
+            # matters: a reused master answers in 0–1 s and a login on a busy
+            # Ubuntu box costs ~24 s, so a short call that took seconds means
+            # the master had died and this one paid for it again. The command
+            # itself is never logged — it can carry a run's report token.
+            started = _time.monotonic()
+
+            def _log(rc: int, note: str = "") -> None:
+                _netlog.record("ssh", host=target, kind=_netlog.classify(command),
+                               ms=int((_time.monotonic() - started) * 1000),
+                               rc=rc, fresh=first, note=note)
+
             try:
                 proc = subprocess.run(
                     args, capture_output=True, text=True, timeout=budget,
                 )
                 if proc.returncode == 0:
                     _REACHED.add(target)
+                _log(proc.returncode)
                 return proc.returncode, proc.stdout, proc.stderr
             except subprocess.TimeoutExpired:
+                _log(-1, f"timeout after {budget}s")
                 # Named, and separated from "cannot connect": the host that
                 # produced this one was up the whole time, and "unreachable"
                 # sent the author to raw `ssh … nohup`, which the guardrails
@@ -157,6 +175,7 @@ class RealSSHExecutor:
                        if first else
                        f" (ssh was given {budget}s for this command)"))
             except FileNotFoundError:
+                _log(-1, "no ssh binary")
                 return -1, "", "ssh binary not found"
 
         def _attempt() -> tuple[int, str, str]:
