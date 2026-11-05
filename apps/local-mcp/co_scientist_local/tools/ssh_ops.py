@@ -22,6 +22,7 @@ import os
 import pathlib
 import re
 import secrets
+import time as _time
 import shlex
 from datetime import datetime, timedelta, timezone
 
@@ -279,6 +280,17 @@ def main():
             except Exception:
                 pass
             last = "%s: %s%s" % (type(exc).__name__, exc, detail)
+            # 403/400 will not become 200 by waiting: a spent or wrong token
+            # and a malformed body are decided, and the ladder only buries the
+            # server's own explanation under 23 seconds of silence. 404 DOES
+            # retry — that is the sub-second race this ladder exists for, the
+            # run row being written just after the launch returns.
+            code = getattr(exc, "code", None)
+            if code in (400, 403):
+                sys.stderr.write(
+                    "[scivo] self-report (%s) REFUSED, not retried: %s\n"
+                    % (body["event"], last))
+                return 1
             if n + 1 < attempts:
                 # Short and bounded: the only race this retries around is the
                 # run row being written just after the launch returns, which is
@@ -489,12 +501,22 @@ def submit_remote_job(
     # BEFORE the launch, because the wrapper has to carry the run_key and the
     # token, and the row is only written afterwards (a duplicate submit must not
     # create one). `|| true` throughout: reporting is never allowed to change
-    # whether the job runs or what it returns, and `.exitcode` is still written
-    # exactly as before, so the session-driven reap path keeps working unchanged
+    # whether the job runs or what it returns, and `.exitcode_<run_key>` is
+    # still written, so the session-driven reap path keeps working unchanged
     # on a host with no python3 or no outbound network.
     run_key = _new_run_key()
     report_token = secrets.token_urlsafe(24)
-    reporter = ".scivo_report.py"
+    # PER RUN, not per directory. `.scivo_report.py` was one file in
+    # remote_dir — which is one directory per ANALYSIS — with a single run's
+    # run_key and token baked inside it. A second submit under the same
+    # analysis overwrote it, and from that moment the FIRST job reported as the
+    # SECOND run: it closed the second run's row with its own exit code, spent
+    # that row's token, and left its own row open forever, while the second
+    # job's honest finish came back 403 (feedback dc798ec49587, measured on two
+    # arms of `readlm` on b200 — the 0.667 arm closed the 0.936 arm's row).
+    # Running two arms under one analysis is normal, so the identity has to
+    # live in the filename.
+    reporter = f".scivo_report_{run_key}.py"
     rc_rep, _, err_rep = ssh.run(server, (
         f"cat > {shlex.quote(f'{remote_dir}/{reporter}')} <<'SCIVO_REPORTER_EOF'\n"
         + _reporter_script({
@@ -526,12 +548,14 @@ def submit_remote_job(
         f"echo '[scivo] the run row was NOT closed by the job'; "
     ) if self_reporting else ""
     wrapped = (
-        f"trap 'rm -f {pidfile}' EXIT; "
+        # The reporter is named here only when one was actually installed: a
+        # wrapper must not mention a file that does not exist.
+        f"trap 'rm -f {pidfile}{' ' + reporter if self_reporting else ''}' EXIT; "
         f"( {command} ) & MAIN=$!; "
         + beat
         + f"wait $MAIN; EC=$?; "
         + ("kill $HB 2>/dev/null || true; " if self_reporting else "")
-        + f"echo $EC > .exitcode; "
+        + f"echo $EC > .exitcode_{run_key}; "
         + finish
     )
     launch = (
@@ -571,6 +595,16 @@ def submit_remote_job(
             f"Duplicate submit blocked: PID {pid} already running on "
             f"{server_alias} (idempotency lock via {pidfile})."
         )
+        # The reporter for THIS run_key was installed before the launch, and
+        # no row will ever be created for it. Take it back out: a stray
+        # reporter in a shared analysis directory is how the bug above
+        # started.
+        if self_reporting:
+            try:
+                ssh.run(server, f"rm -f {shlex.quote(remote_dir)}/{reporter}",
+                        timeout=10)
+            except Exception:
+                pass
         # `run_key: null` with a live `pid` read like a successful no-op, and
         # on the one occasion it mattered the process the lock pointed at had
         # NO run row at all — it came from a call that launched and then failed
@@ -767,22 +801,99 @@ def kill_remote_job(
         return {"error": "run has no pid recorded"}
     host = run.get("host") or "local"
 
+    # What the recorded pid is NOT: the job. A kill reported success because
+    # `kill -9 <pid>` returned 0, the row was stamped finished, and the
+    # training ran 27 more minutes holding 31 GB on the GPU — the recorded pid
+    # was a shell that had already exited, and the python child was never
+    # signalled (feedback cc8b965626ca). Two changes follow. The job's own
+    # pidfile is the target and the evidence: the wrapper's EXIT trap removes
+    # it, so its absence is the one thing that says the work stopped. And
+    # `killed` is only true when that is established — an unconfirmed kill
+    # leaves the row OPEN, because an open row with a live heartbeat is the
+    # true state and the permissive reading is the one that gets believed.
+    marker = hashlib.sha256(
+        f"{analysis_name}|{run.get('command') or ''}".encode("utf-8")).hexdigest()[:12]
+    pidfile = f".pidfile_{marker}"
+    workdir = run.get("workdir") or ""
+    evidence: dict = {"pidfile": pidfile, "workdir": workdir}
+
     if host == "local":
-        try:
-            import signal
-            os.kill(int(pid), signal.SIGKILL)
-            killed = True
-        except ProcessLookupError:
-            killed = False
-        except Exception as e:
-            return {"error": f"local kill failed: {e}"}
+        import signal as _signal
+
+        def _alive(target: int) -> bool:
+            try:
+                os.kill(target, 0)
+                return True
+            except (ProcessLookupError, PermissionError):
+                return False
+            except OSError:
+                return True
+
+        for sig in (_signal.SIGTERM, _signal.SIGKILL):
+            try:
+                os.kill(int(pid), sig)
+            except ProcessLookupError:
+                break
+            except Exception as e:  # noqa: BLE001
+                return {"error": f"local kill failed: {e}"}
+            _time.sleep(1.0)
+            if not _alive(int(pid)):
+                break
+        killed = not _alive(int(pid))
+        evidence["alive"] = not killed
     else:
         server = get_server(state, host)
         ssh = state.require_ssh()
-        rc, _, err = ssh.run(server, f"kill -9 {int(pid)}", timeout=10)
-        if rc != 0 and "no such process" not in (err or "").lower():
-            return {"error": f"remote kill failed: {(err or '').strip() or f'rc={rc}'}"}
-        killed = (rc == 0)
+        # One round trip: signal the pidfile's process AND its children, then
+        # the recorded pid, wait for the trap to clear the pidfile, escalate,
+        # and report what is actually true at the end.
+        cd = f"cd {shlex.quote(workdir)} 2>/dev/null; " if workdir else ""
+        script = (
+            f"{cd}P=$(cat {pidfile} 2>/dev/null || true); "
+            f"for T in \"$P\" {int(pid)}; do "
+            f"  [ -n \"$T\" ] || continue; "
+            f"  pkill -TERM -P \"$T\" 2>/dev/null || true; "
+            f"  kill -TERM \"$T\" 2>/dev/null || true; "
+            f"done; "
+            f"for i in 1 2 3 4 5; do "
+            f"  [ -f {pidfile} ] || break; sleep 1; "
+            f"done; "
+            f"if [ -f {pidfile} ]; then "
+            f"  P=$(cat {pidfile} 2>/dev/null || true); "
+            f"  for T in \"$P\" {int(pid)}; do "
+            f"    [ -n \"$T\" ] || continue; "
+            f"    pkill -KILL -P \"$T\" 2>/dev/null || true; "
+            f"    kill -KILL \"$T\" 2>/dev/null || true; "
+            f"  done; sleep 1; "
+            f"fi; "
+            f"echo PIDFILE:$([ -f {pidfile} ] && echo present || echo gone); "
+            f"P=$(cat {pidfile} 2>/dev/null || true); "
+            f"echo ALIVE:$(kill -0 \"${{P:-{int(pid)}}}\" 2>/dev/null && echo yes || echo no)"
+        )
+        rc, out, err = ssh.run(server, script, timeout=30)
+        if rc != 0 and not (out or "").strip():
+            return {"error": f"remote kill failed: {(err or '').strip() or f'rc={rc}'}",
+                    **evidence}
+        text = out or ""
+        evidence["pidfile_state"] = "present" if "PIDFILE:present" in text else "gone"
+        evidence["alive"] = "ALIVE:yes" in text
+        killed = evidence["pidfile_state"] == "gone" and not evidence["alive"]
+
+    if not killed:
+        # The row stays open on purpose: it is the only surface that would
+        # still say "this is running", and a session that believes the GPU is
+        # free launches the next job on top of this one.
+        return {
+            "run_key": run_key, "host": host, "pid": pid, "killed": False,
+            "finished_at": None, **evidence,
+            "warning": (
+                "could not confirm the job stopped, so the run row is LEFT "
+                "OPEN and nothing was marked finished. Check the host — "
+                f"`ps -eo pid,etime,args` and {workdir or '<workdir>'}/"
+                f"{pidfile} — before launching anything that needs the same "
+                "resources: a kill that cannot say the work ended has not "
+                "ended it."),
+        }
 
     fin = mark_run_finished(
         state, paper_slug, analysis_name, run_key,
@@ -790,7 +901,7 @@ def kill_remote_job(
     )
     return {
         "run_key": run_key, "host": host, "pid": pid,
-        "killed": killed, "finished_at": fin["finished_at"],
+        "killed": True, "finished_at": fin["finished_at"], **evidence,
     }
 
 
