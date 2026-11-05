@@ -106,8 +106,15 @@ _IMPORTED_AT = _time.time()
 # said whom to tell (feedback ecba6396d9b4). Host and pid because a human
 # reading a row wants to know which window that was; the suffix because pids
 # are reused.
-CLIENT_ID = "%s-%d-%s" % (_socket.gethostname(), os.getpid(),
-                          _secrets.token_hex(3))
+# `SCIVO_CLIENT_ID` when the host sets one, because a SESSION is not a
+# process: the harness's run watcher opens its own MCP connection — a second
+# process, so a second pid — and `run_notices` filtered by the caller's id then
+# saw none of the runs the session's main MCP had recorded. It stopped on the
+# first poll, by design and in silence, and a remote job sat finished for an
+# hour and a half with nobody told (feedback f7c878a2b9c6). The pid form stays
+# as the fallback: one process on its own is still one client.
+CLIENT_ID = os.environ.get("SCIVO_CLIENT_ID") or "%s-%d-%s" % (
+    _socket.gethostname(), os.getpid(), _secrets.token_hex(3))
 
 
 def git_sha() -> str | None:
