@@ -153,6 +153,12 @@ def record_analysis_run(
     params: dict | None = None,
     hostname: str | None = None,
     report_token: str | None = None,
+    # True when the job was launched with `setsid`, so `pid` is also its
+    # process GROUP and the whole tree can be signalled at once. Recorded
+    # rather than assumed: a host without setsid gets the old single-process
+    # launch, and a kill that cannot reach the group must not claim it did
+    # (feedback ccfba10f37e6).
+    process_group: bool | None = None,
     # What the run RAN, as opposed to what someone typed into `params`:
     # script_path / script_sha256 / script_bytes / script_mtime, and
     # `scripts`, the sibling scripts' hashes. One dict rather than five
@@ -266,6 +272,7 @@ def record_analysis_run(
         # Deliberately not the project key, which reaches the whole account and
         # would be world-readable in `ps` on a shared compute server.
         "report_token": report_token,
+        "process_group": process_group,
         # WHO to tell when this closes. The row knew a job had finished —
         # self-report, poll, or sweep — and the session that launched it had no
         # way to be told, so an agent blocked on `wait_for_run` for seven

@@ -567,9 +567,26 @@ def submit_remote_job(
         f"  fi; "
         f"  rm -f {pidfile}; "
         f"fi; "
-        f"nohup bash -c {shlex.quote(wrapped)} > {shlex.quote(log_filename)} 2>&1 & "
-        f"PID=$!; echo $PID > {pidfile}; sync; "
-        f"echo \"PID:$PID\""
+        # setsid, so the job is its own SESSION and process GROUP and the
+        # whole tree can be signalled at once. Without it, killing the run
+        # could only reach the wrapper and its direct children: a script whose
+        # work is done by `xargs -P 3` left the xargs parent alive, and it
+        # went on starting fresh curls for 30 minutes while the run row said
+        # finished (feedback ccfba10f37e6). `setsid` makes the leader's pid the
+        # PGID, so the pid already recorded on the row IS the group.
+        #
+        # Falls back when the host has no setsid — the launch must not depend
+        # on it — and the row says which happened, because a kill that cannot
+        # reach the group must not claim it did.
+        f"if command -v setsid >/dev/null 2>&1; then "
+        f"  setsid nohup bash -c {shlex.quote(wrapped)} > {shlex.quote(log_filename)} 2>&1 & "
+        f"  PID=$!; GROUP=1; "
+        f"else "
+        f"  nohup bash -c {shlex.quote(wrapped)} > {shlex.quote(log_filename)} 2>&1 & "
+        f"  PID=$!; GROUP=0; "
+        f"fi; "
+        f"echo $PID > {pidfile}; sync; "
+        f"echo \"GROUP:$GROUP\"; echo \"PID:$PID\""
     )
     rc, out, err = ssh.run(server, launch, timeout=30)
     if rc != 0:
@@ -577,6 +594,8 @@ def submit_remote_job(
             "error": f"launch failed (rc={rc}): {(err or '').strip()}",
             "stdout": out,
         }
+    # Whether the job got its own process group, from the launcher that knows.
+    own_group = "GROUP:1" in (out or "")
     last = (out.strip().splitlines() or [""])[-1]
     existing = False
     pid: int | None = None
@@ -658,6 +677,7 @@ def submit_remote_job(
             params=params,
             run_key=run_key,
             report_token=report_token if self_reporting else None,
+            process_group=own_group,
             # ONE dict, not five keywords — `**code` was a splat that worked
             # only while the probe found nothing, so the feature was broken in
             # exactly the case it exists for (feedback 75d99ef71d98,
@@ -844,40 +864,81 @@ def kill_remote_job(
     else:
         server = get_server(state, host)
         ssh = state.require_ssh()
-        # One round trip: signal the pidfile's process AND its children, then
-        # the recorded pid, wait for the trap to clear the pidfile, escalate,
-        # and report what is actually true at the end.
+        in_group = bool(run.get("process_group"))
+        evidence["process_group"] = in_group
+        # One round trip. With a process GROUP the whole tree is signalled at
+        # once and the group is then asked whether anything is left; without
+        # one, only the pid and its direct children can be reached.
+        #
+        # The pidfile is NOT the proof any more. The wrapper's EXIT trap
+        # removes it, so its absence says the wrapper exited — and a script
+        # whose work is done by `xargs -P 3` leaves the xargs parent alive,
+        # starting fresh curls, while the pidfile is already gone and this
+        # reported killed:true (feedback ccfba10f37e6). What is left in the
+        # group is the only answer that means "the work stopped".
         cd = f"cd {shlex.quote(workdir)} 2>/dev/null; " if workdir else ""
-        script = (
-            f"{cd}P=$(cat {pidfile} 2>/dev/null || true); "
-            f"for T in \"$P\" {int(pid)}; do "
-            f"  [ -n \"$T\" ] || continue; "
-            f"  pkill -TERM -P \"$T\" 2>/dev/null || true; "
-            f"  kill -TERM \"$T\" 2>/dev/null || true; "
-            f"done; "
-            f"for i in 1 2 3 4 5; do "
-            f"  [ -f {pidfile} ] || break; sleep 1; "
-            f"done; "
-            f"if [ -f {pidfile} ]; then "
-            f"  P=$(cat {pidfile} 2>/dev/null || true); "
-            f"  for T in \"$P\" {int(pid)}; do "
-            f"    [ -n \"$T\" ] || continue; "
-            f"    pkill -KILL -P \"$T\" 2>/dev/null || true; "
-            f"    kill -KILL \"$T\" 2>/dev/null || true; "
-            f"  done; sleep 1; "
-            f"fi; "
-            f"echo PIDFILE:$([ -f {pidfile} ] && echo present || echo gone); "
-            f"P=$(cat {pidfile} 2>/dev/null || true); "
-            f"echo ALIVE:$(kill -0 \"${{P:-{int(pid)}}}\" 2>/dev/null && echo yes || echo no)"
-        )
-        rc, out, err = ssh.run(server, script, timeout=30)
+        if in_group:
+            script = (
+                f"{cd}"
+                f"kill -TERM -- -{int(pid)} 2>/dev/null || true; "
+                f"for i in 1 2 3 4 5; do "
+                f"  ps -o pid= -g {int(pid)} 2>/dev/null | grep -q . || break; "
+                f"  sleep 1; "
+                f"done; "
+                f"if ps -o pid= -g {int(pid)} 2>/dev/null | grep -q .; then "
+                f"  kill -KILL -- -{int(pid)} 2>/dev/null || true; sleep 1; "
+                f"fi; "
+                f"echo LEFT:$(ps -o pid= -g {int(pid)} 2>/dev/null | wc -l | tr -d ' '); "
+                f"echo PIDFILE:$([ -f {pidfile} ] && echo present || echo gone)"
+            )
+        else:
+            script = (
+                f"{cd}P=$(cat {pidfile} 2>/dev/null || true); "
+                f"for T in \"$P\" {int(pid)}; do "
+                f"  [ -n \"$T\" ] || continue; "
+                f"  pkill -TERM -P \"$T\" 2>/dev/null || true; "
+                f"  kill -TERM \"$T\" 2>/dev/null || true; "
+                f"done; "
+                f"for i in 1 2 3 4 5; do "
+                f"  [ -f {pidfile} ] || break; sleep 1; "
+                f"done; "
+                f"if [ -f {pidfile} ]; then "
+                f"  P=$(cat {pidfile} 2>/dev/null || true); "
+                f"  for T in \"$P\" {int(pid)}; do "
+                f"    [ -n \"$T\" ] || continue; "
+                f"    pkill -KILL -P \"$T\" 2>/dev/null || true; "
+                f"    kill -KILL \"$T\" 2>/dev/null || true; "
+                f"  done; sleep 1; "
+                f"fi; "
+                f"echo PIDFILE:$([ -f {pidfile} ] && echo present || echo gone); "
+                f"P=$(cat {pidfile} 2>/dev/null || true); "
+                f"echo ALIVE:$(kill -0 \"${{P:-{int(pid)}}}\" 2>/dev/null && echo yes || echo no)"
+            )
+        rc, out, err = ssh.run(server, script, timeout=40)
         if rc != 0 and not (out or "").strip():
             return {"error": f"remote kill failed: {(err or '').strip() or f'rc={rc}'}",
                     **evidence}
         text = out or ""
         evidence["pidfile_state"] = "present" if "PIDFILE:present" in text else "gone"
-        evidence["alive"] = "ALIVE:yes" in text
-        killed = evidence["pidfile_state"] == "gone" and not evidence["alive"]
+        if in_group:
+            left = re.search(r"LEFT:(\d+)", text)
+            evidence["left_in_group"] = int(left.group(1)) if left else None
+            # None, not 0: a reply that did not carry the count establishes
+            # nothing, and "nothing left" is exactly the claim that was wrong.
+            killed = evidence["left_in_group"] == 0
+        else:
+            evidence["alive"] = "ALIVE:yes" in text
+            evidence["left_in_group"] = None
+            # The honest ceiling without a group: the wrapper and its direct
+            # children are gone. A grandchild cannot be seen from here.
+            killed = evidence["pidfile_state"] == "gone" and not evidence["alive"]
+            if killed:
+                evidence["caveat"] = (
+                    "this run was launched before process groups were used, so "
+                    "only the wrapper and its direct children could be "
+                    "signalled; a worker started by the script (xargs, GNU "
+                    "parallel, a background loop) may still be running. Check "
+                    "with `ps -eo pid,etime,args` on the host.")
 
     if not killed:
         # The row stays open on purpose: it is the only surface that would
