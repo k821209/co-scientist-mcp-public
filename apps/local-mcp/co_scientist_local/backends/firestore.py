@@ -170,6 +170,32 @@ _FS_TIMEOUT = float(os.environ.get("CO_SCIENTIST_FIRESTORE_TIMEOUT", "60"))
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+class _FirestoreWatch:
+    """A live `on_snapshot` listener.
+
+    The library reconnects by itself on the errors a long-lived stream meets
+    (an expired token among them), and when it gives up it does so SILENTLY:
+    the callback simply never fires again. `alive` is therefore something the
+    caller must ask, every time, before believing that silence means "nothing
+    changed"."""
+
+    def __init__(self, watch) -> None:
+        self._watch = watch
+
+    @property
+    def alive(self) -> bool:
+        try:
+            return bool(self._watch.is_active)
+        except Exception:  # noqa: BLE001 — a handle we cannot ask is not alive
+            return False
+
+    def close(self) -> None:
+        try:
+            self._watch.unsubscribe()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 class FirestoreBackend(Backend):
     def __init__(
         self,
@@ -250,6 +276,13 @@ class FirestoreBackend(Backend):
             out.append((snap.id, snap.to_dict() or {}))
         out.sort(key=lambda kv: kv[0])
         return out
+
+    def watch_collection(self, path: str, on_change) -> "_FirestoreWatch":
+        def on_snapshot(_docs, changes, _read_time):
+            on_change([(change.type.name, change.document.id,
+                        change.document.to_dict() or {}) for change in changes])
+
+        return _FirestoreWatch(self._db.collection(path).on_snapshot(on_snapshot))
 
     def query_collection(self, path: str, field: str, value,
                          op: str = "==") -> list[tuple[str, dict]]:

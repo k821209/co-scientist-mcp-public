@@ -16,6 +16,15 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 
+class CollectionWatch(Protocol):
+    """What `watch_collection` hands back."""
+
+    @property
+    def alive(self) -> bool: ...
+
+    def close(self) -> None: ...
+
+
 class NotFound(Exception):
     """Raised when a doc or blob does not exist and the caller required it."""
 
@@ -67,6 +76,22 @@ class Backend(Protocol):
         collection it has already read: the control-page poller was reading
         every message of the session again twice a second, which is 98% of this
         project's Firestore bill (measured 2026-10-10)."""
+        ...
+
+    def watch_collection(self, path: str, on_change) -> "CollectionWatch":
+        """Be TOLD when a collection changes, instead of asking.
+
+        `on_change(changes)` is called — from another thread — with
+        `[(kind, doc_id, data), ...]`, kind in ADDED / MODIFIED / REMOVED;
+        the first call carries every existing document as ADDED. The handle's
+        `alive` says whether changes can still arrive, and `close()` stops it.
+
+        This exists because asking is billed and being told is not. The
+        control page's session side could only poll: six reads a time, twice a
+        second, per session, for as long as the process lived — 34 million
+        reads a day across 22 sessions that were mostly waiting for nobody
+        (measured 2026-11-10). A listener is billed for the documents that
+        change and nothing while they do not."""
         ...
 
     # --- blobs ---------------------------------------------------------------

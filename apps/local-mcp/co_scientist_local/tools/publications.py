@@ -353,6 +353,143 @@ def list_responses(
     return rows
 
 
+# ─────────────────────── being told, instead of asking ───────────────────────
+
+# How long the first snapshot may take before the listener is called not ready.
+WATCH_READY_SECONDS = 15.0
+# The longest one `wait_for_responses` call may be held open. Short enough that
+# a caller which went away frees its thread soon; long enough that an idle
+# session makes two calls a minute and reads nothing.
+WATCH_MAX_WAIT = 50.0
+
+
+class ResponseWatch:
+    """One live listener on a publication's responses, and what it has seen.
+
+    Every change gets the next number of a counter, and a caller asks for
+    "everything after the number I hold" — a cursor that is OURS, not a clock
+    and not a field the page writes. (`since_seq` leans on `seq`, which the
+    page stamps from the browser's clock; two devices a minute apart can lose
+    a message to it.) The cursor carries this watch's own id, so a cursor
+    from a listener that has since been replaced — the server restarted, the
+    stream gave up — is recognised and answered with everything, rather than
+    compared against a counter it was never counted on.
+    """
+
+    def __init__(self, backend, path: str) -> None:
+        import secrets
+        import threading
+
+        self.epoch = secrets.token_hex(4)
+        self._cond = threading.Condition()
+        self._docs: dict[str, tuple[int, dict]] = {}
+        self._version = 0
+        self._ready = False
+        self._handle = backend.watch_collection(path, self._on_change)
+
+    def _on_change(self, changes: list) -> None:
+        with self._cond:
+            for kind, doc_id, data in changes:
+                self._version += 1
+                if kind == "REMOVED":
+                    self._docs.pop(doc_id, None)
+                else:
+                    self._docs[doc_id] = (self._version, dict(data or {}))
+            self._ready = True          # an empty collection is ready too
+            self._cond.notify_all()
+
+    @property
+    def alive(self) -> bool:
+        return bool(self._handle.alive)
+
+    def close(self) -> None:
+        self._handle.close()
+        with self._cond:
+            self._cond.notify_all()
+
+    def _after(self, cursor: str) -> int:
+        epoch, _, number = str(cursor or "").partition(":")
+        if epoch != self.epoch:
+            return 0
+        try:
+            return int(number)
+        except ValueError:
+            return 0
+
+    def _rows_after(self, version: int) -> list[dict]:
+        rows = [(seen, {"id": doc_id, **data})
+                for doc_id, (seen, data) in self._docs.items() if seen > version]
+        return [row for _seen, row in sorted(rows, key=lambda item: item[0])]
+
+    def wait(self, cursor: str = "", timeout_s: float = 25.0) -> dict:
+        """What changed after `cursor`; if nothing has, wait for something.
+
+        Three answers, and the caller can tell them apart:
+          rows, listening=True      — something changed
+          no rows, listening=True   — waited, and nothing did
+          listening=False           — the listener is not delivering, so
+                                      silence here means NOTHING. Ask again
+                                      (a new one is made) or fall back to
+                                      reading.
+        """
+        import time
+
+        started = time.monotonic()
+        timeout_s = max(0.0, min(float(timeout_s), WATCH_MAX_WAIT))
+        with self._cond:
+            if not self._ready:
+                self._cond.wait_for(lambda: self._ready, timeout=WATCH_READY_SECONDS)
+            if not self._ready:
+                return {"rows": [], "cursor": cursor, "listening": False,
+                        "why": f"no first snapshot in {WATCH_READY_SECONDS:.0f}s"}
+            after = self._after(cursor)
+            if not self._rows_after(after):
+                # In slices, so a listener that dies mid-wait is noticed at
+                # the next slice instead of being waited out in full and
+                # reported as a quiet half minute.
+                deadline = started + timeout_s
+                while self.alive:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or self._cond.wait_for(
+                            lambda: bool(self._rows_after(after)),
+                            timeout=min(remaining, 2.0)):
+                        break
+            rows = self._rows_after(after)
+            reply = {"rows": rows, "cursor": f"{self.epoch}:{self._version}",
+                     "listening": self.alive,
+                     "waited_s": round(time.monotonic() - started, 2)}
+            if not reply["listening"]:
+                reply["why"] = "the listener stopped delivering"
+            return reply
+
+
+# One listener per publication for the life of this server process: the point
+# is a stream that stays open, so it cannot be made per call.
+_WATCHES: dict[tuple[str, str, str], ResponseWatch] = {}
+
+
+def response_watch(state: State, pub_id: str, collection: str = "responses") -> ResponseWatch:
+    """This process's listener on a publication's responses, made on first use
+    and remade when the one we had has stopped delivering."""
+    key = (state.project_id, pub_id, collection)
+    watch = _WATCHES.get(key)
+    if watch is not None and watch.alive:
+        return watch
+    if watch is not None:
+        watch.close()
+    _require(state, pub_id)             # once per listener, not once per ask
+    watch = ResponseWatch(
+        state.backend, state.project_path("publications", pub_id, collection))
+    _WATCHES[key] = watch
+    return watch
+
+
+def wait_for_responses(state: State, pub_id: str, *, cursor: str = "",
+                       timeout_s: float = 25.0, collection: str = "responses") -> dict:
+    """See `ResponseWatch.wait`. Blocks: call it from a worker thread."""
+    return response_watch(state, pub_id, collection).wait(cursor, timeout_s)
+
+
 def clear_page_data(
     state: State, pub_id: str, *, collection: str, doc_id: str | None = None,
 ) -> dict:

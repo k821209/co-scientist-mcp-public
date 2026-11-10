@@ -17,10 +17,31 @@ def _split(path: str) -> list[str]:
     return parts
 
 
+class _MemoryWatch:
+    """The in-memory listener, with the one failure the real one has: it can
+    stop delivering without saying so (`break_silently`), which is the case
+    every caller has to survive."""
+
+    def __init__(self, backend, path: str, on_change) -> None:
+        self._backend, self.path, self.on_change = backend, path, on_change
+        self._alive = True
+
+    @property
+    def alive(self) -> bool:
+        return self._alive
+
+    def close(self) -> None:
+        self._alive = False
+
+    def break_silently(self) -> None:
+        self._alive = False
+
+
 class InMemoryBackend(Backend):
     def __init__(self) -> None:
         self._docs: dict[str, dict] = {}
         self._blobs: dict[str, bytes] = {}
+        self._watches: list["_MemoryWatch"] = []
 
     # --- documents -----------------------------------------------------------
 
@@ -33,16 +54,36 @@ class InMemoryBackend(Backend):
         parts = _split(path)
         if len(parts) % 2 != 0:
             raise ValueError(f"doc path must have even segments: {path!r}")
+        kind = "MODIFIED" if path in self._docs else "ADDED"
         self._docs[path] = copy.deepcopy(data)
+        self._tell(path, kind)
 
     def update_doc(self, path: str, fields: dict) -> None:
         existing = self._docs.get(path)
         if existing is None:
             raise NotFound(f"doc not found: {path!r}")
         existing.update(copy.deepcopy(fields))
+        self._tell(path, "MODIFIED")
 
     def delete_doc(self, path: str) -> bool:
-        return self._docs.pop(path, None) is not None
+        existed = self._docs.pop(path, None) is not None
+        if existed:
+            self._tell(path, "REMOVED")
+        return existed
+
+    # --- being told ----------------------------------------------------------
+
+    def watch_collection(self, path: str, on_change) -> "_MemoryWatch":
+        watch = _MemoryWatch(self, path.strip("/"), on_change)
+        self._watches.append(watch)
+        on_change([("ADDED", doc_id, data) for doc_id, data in self.list_collection(path)])
+        return watch
+
+    def _tell(self, path: str, kind: str) -> None:
+        collection, _, doc_id = path.strip("/").rpartition("/")
+        for watch in list(self._watches):
+            if watch.alive and watch.path == collection:
+                watch.on_change([(kind, doc_id, copy.deepcopy(self._docs.get(path) or {}))])
 
     def query_collection(self, path: str, field: str, value,
                          op: str = "==") -> list[tuple[str, dict]]:
