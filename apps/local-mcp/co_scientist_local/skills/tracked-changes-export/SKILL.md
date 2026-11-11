@@ -25,8 +25,7 @@ why.
    A markdown diff converted to `.docx` produces coloured strikethrough text
    with **zero** `w:ins`/`w:del` elements — Word's review pane shows nothing and
    nothing can be accepted or rejected. It also leaks markdown into the body
-   (`**Authors:**` appearing literally). This is not hypothetical: the vcf2hash
-   2026-07-28 submission shipped exactly that file.
+   (`**Authors:**` appearing literally).
 2. **Edit OOXML with `lxml`, never with regular expressions.** A regex pass that
    unwrapped `<w:ins>` produced a `mismatched tag` document. LibreOffice still
    opened it, so "it opens" proves nothing.
@@ -48,53 +47,25 @@ why.
 
 ### 1. Locate the two documents
 
-- **OLD** — the version the reviewers actually received:
-  `list_submissions(slug)` → `get_submission(slug)`. If it is empty, ASK — do not
-  substitute an export. (An earlier version of this step said to look in
-  `list_exports` under `exports/.<label>/`; that is the newest-export trap hard
-  rule 5 exists to prevent, and nothing in the exports tool writes such a path.)
+The guide's "The SUBMITTED BASELINE" (under "Project memory") is the rule for
+both documents — read it first. On this skill's surface:
 
-  Before either document: if `get_paper_state(slug)["paper"]["submission_sync"]`
-  reads `unreconciled`, the SECTIONS may not match the sent file — see
-  `/paper-revision` "If this paper has been SUBMITTED". A revision built on
-  sections that drifted from the baseline diffs against text nobody sent.
-- **NEW** — the revised document. **Edit a COPY of the OLD file; do not export a
-  fresh one from co-scientist.** The submitted `.docx` carries material that never
-  existed in the sections and cannot be regenerated: Key Points, a Biographical
-  Note, the journal's author/affiliation formatting, content controls from a
-  reference manager. A `/paper-export` looks complete and silently omits all of
-  it. That shipped: a R2 revision was started from a fresh export and the Key
-  Points and Biographical Note were simply gone — the user caught it by reading
-  the file ("제출본의 키포인트 같은것들이 다 빠지네").
-
-  So the revision is applied TO the submitted document. Use `/paper-export` for a
-  fresh manuscript, not for a revision of one that has already been sent.
+- **OLD** — the version the reviewers actually received: `list_submissions(slug)`,
+  then `get_submission(slug)` downloads it verified. Empty → ask, and have the
+  user register the file they actually sent; never substitute an export (the
+  newest-export trap). Directory mtimes are not evidence of what the journal
+  received, and `paper.submission` (`manuscript_id`, `status`) corroborates but
+  does not identify the file. An older project may carry the baseline as a
+  note in `get_project_memory()` instead — the guide says how to treat it. If `submission_sync` reads `unreconciled`, the
+  sections may not match the sent file — reconcile first, per the guide.
+- **NEW** — **edit a COPY of the OLD file; do not export a fresh one** (the
+  guide's "And the reverse direction"). Use `/paper-export` for a fresh
+  manuscript, not for a revision of one that has already been sent.
 
 **STOP and confirm the pairing with the user before running — this is a gate.**
 Name both files and wait for an answer; do not proceed on your own inference.
 Nothing downstream can catch a wrong choice: the marked-up file will be
 structurally perfect and diffed against a document nobody has read.
-
-**The newest archived export is often the WRONG answer.** A revision package
-prepared and then superseded before it was ever submitted is the classic trap, and
-it sorts to the top by date and looks more authoritative than the file that was
-actually sent. This happened: a marked-up copy was built against an n=69 revision
-packaged locally on Jul 28 but never submitted (the cohort had grown to n=285),
-so the diff was against a document that existed nowhere outside the repo. Asking
-cost one question, and the answer was the OLDER file.
-
-Directory mtimes are not evidence of what the journal received. **Call
-`list_submissions(slug)` first** — the first entry is the registered baseline,
-with the file, the journal, the date it was sent, and a checksum;
-`get_submission(slug)` downloads it verified. That is the whole of step 1 when
-it is there.
-
-If it is EMPTY, ask the user and have them register it (the paper page's
-Exports → Submitted card takes an upload of the file they actually sent).
-Older projects may still carry the pointer as a `Submitted baseline for <slug>:`
-line in `get_project_memory()` with the snapshot in Materials — read that too,
-and offer to register it properly. `paper.submission` (`manuscript_id`,
-`status`) corroborates but does not identify the file.
 
 Sanity signal worth surfacing, not an error: the intended pair should share a
 title and author block. If your comparison inserts the entire author/affiliation
@@ -104,27 +75,17 @@ Say so and re-confirm.
 
 ### 2a. Build the marks directly — the first attempt
 
-`build_tracked_changes(old_path, new_path, out_path, author)` writes NEW with
-every difference from OLD as real `w:ins` / `w:del`, with no LibreOffice
-involved, and **verifies itself before writing**: accepting every mark must
-reproduce NEW and rejecting every mark must reproduce OLD, paragraph for
-paragraph. That is a check the LibreOffice path cannot make, and it is the
-one that catches a deleted paragraph landing one slot early — invisible to
-every row of the step 6 table. On a real revision round it produced the
-marked main text in seconds where the LibreOffice macro path produced nothing
-(soffice idle, exit 0, empty log) on Linux, and the user reports the same
-flakiness on macOS.
-
-Read the tool's return: what it does not produce (formatting-only revisions,
-moved text — shown as delete + insert) is listed there. When the revision is
-mostly of that kind, or the result reads wrong, go on to the LibreOffice
-compare (step 2); otherwise skip to step 5 (tables) and step 6.
+`build_tracked_changes` is the first attempt: no LibreOffice, and it verifies
+its own round trip before writing (its description says what it does and does
+not produce). The LibreOffice path cannot make that check and is flaky on Linux
+and macOS. When the revision is mostly what the builder does not produce, or the
+result reads wrong, go on to the LibreOffice compare (step 2); otherwise skip to
+step 5 (tables) and step 6.
 
 ### 2. If the builder cannot do it — the LibreOffice compare
 
-`build_tracked_changes` does not produce formatting-only revisions or moved
-text, and it refuses rather than write a file it cannot verify. For those
-cases the fallback is LibreOffice's own document compare, run headless:
+For what the builder does not produce, or refuses to write, the fallback is
+LibreOffice's own document compare, run headless:
 `references/libreoffice-fallback.md` — an isolated profile, the compare
 macro, how to DIAGNOSE a run that produced nothing (do not just retry), and
 stamping the author on its marks, which otherwise all say "Unknown Author".
@@ -242,22 +203,8 @@ raw.count("independently constructed")     # the answer
 pd.count("independently constructed")      # a fact about python-docx
 ```
 
-> **Recorded: a caption "restored" that was never broken** (GeneReL,
-> DATABASE-2026-0057.R1, 2026-08-27). A Figure 4 legend read as truncated
-> mid-sentence — the rest of it sat in a `w:sdt` between two runs, so
-> `paragraph.text` skipped it. It was reported to the user as a defect in their
-> submitted file, "repaired", and shipped: the same sentence appeared TWICE in
-> the clean and tracked-changes documents, and the user caught it by eye. The
-> same blind spot also produced three confident false reports — `44.7` "absent"
-> (present twice), `independently constructed` "absent" (present), and a
-> manuscript/submission "divergence" that did not exist — which cost the user a
-> pointless which-file-is-real question and reversed a revision decision on a
-> false premise.
->
-> Same lesson as the images retraction above, from the other direction: **"I
-> cannot see it" is evidence about the instrument.** The skill already forbade
-> editing OOXML with the wrong tool; nothing said the same about reading it, and
-> reading is where the damage started.
+**"I cannot see it" is evidence about the instrument.** A "restore" of text that
+was only hidden from python-docx ships the same sentence twice.
 
 ### 7. Upload
 

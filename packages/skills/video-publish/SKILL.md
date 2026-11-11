@@ -1,16 +1,10 @@
 ---
 name: video-publish
 description: Publish a Video-tab deliverable to YouTube (long-form or Shorts) — assemble title/description + chapter block, upload from the local mp4, and save the URL back on the video. Use when the user says "upload this to YouTube," "publish the video," "put it on my channel."
+requires: video
 ---
 
 # /video-publish
-
-> **Video tools missing?** The video/YouTube tool family registers only on
-> machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
-> / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
-> session — needed once per fresh machine; after `youtube_connect` the token file
-> auto-enables it.
 
 **Triggers:** "upload to YouTube," "publish the video," "put this on my
 channel," "make it a Short on YouTube." The video counterpart of

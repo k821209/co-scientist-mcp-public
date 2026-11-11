@@ -1,16 +1,10 @@
 ---
 name: science-short
 description: Produce a fact-checked science Short with real DOI-verified references — research (2-source) → fact-check → reference management in co-scientist → self-drawn graphics + narration → auto-built reference card + description citations. Use when the user says "make a science short about X," "explain this paper as a Short," "science explainer video with sources."
+requires: video
 ---
 
 # /science-short
-
-> **Video tools missing?** The video/YouTube tool family registers only on
-> machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
-> / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
-> session — needed once per fresh machine; after `youtube_connect` the token file
-> auto-enables it.
 
 **Triggers:** "make a science Short about …," "explain this study as a Short,"
 "science explainer with references." Builds on `/news-short` (text → vertical
@@ -84,7 +78,8 @@ description_block = format_description(refs) # full bibliography + DOIs for the 
 
 ### 5. Verify + upload
 Frame↔sentence mapping, audio levels (mean ≈ -20 dB / max < 0), pronunciation
-check (spell abbreviations in Hangul for the TTS). Then `add_video`, with
+check (spell abbreviations in Hangul for the TTS). Then
+`mcp__scivo__add_video(...)` registers it in the Video tab, with
 the citation block ready for the description — and STOP there. Uploading is
 `/video-publish`, after the user has watched it and said to: an unlisted
 upload is still a video on their channel, and it is not this skill's to
@@ -96,7 +91,7 @@ Same lineage as `/news-short`, `build_rank_race`, and `vh.style_gallery`.
 ## Assembly
 
 Mixed graphics + quoted clips go through `vh.steps.beats.build_beat_short`
-(see "3c" in `/video-harness`): one beat per narration unit, audio-led timing,
+(`/video-harness` §3c — its beat-assembly reference): one beat per narration unit, audio-led timing,
 blur-pad reframing, per-source pre-crop, credit burned on every quoted frame.
 Draw the explainer cards with `vh.cardkit` — its `rule()` guard fails the build
 rather than shipping a divider line through a number — and verify with

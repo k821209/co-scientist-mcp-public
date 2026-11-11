@@ -34,13 +34,17 @@ import sys
 
 _PKG_DIR = pathlib.Path(__file__).resolve().parent
 
-# (event, matcher, [(hook file stem, timeout seconds)]) — the same three groups
+# (event, matcher, [(hook file stem, timeout seconds)]) — the groups
 # `co-scientist link` writes for Claude Code (packages/cli/.../link_cmd.py).
 HOOK_GROUPS: list[tuple[str, str | None, list[tuple[str, int]]]] = [
     ("SessionStart", None, [("session_start", 5)]),
     ("PreToolUse", "Bash", [("pretool_block_ssh_nohup", 3),
                             ("pretool_cutadapt_lint", 2)]),
-    ("PostToolUse", "mcp__scivo__*", [("post_tool", 3)]),
+    # No PostToolUse group. `post_tool.py` reads its input and exits — its own
+    # docstring calls it "almost a no-op", kept as a hand-off point — and it
+    # was installed on every MCP call: a Python process started 3,000 times in
+    # a working day to do nothing. The file stays for whoever needs the hook;
+    # nothing installs it until it does something.
 ]
 
 

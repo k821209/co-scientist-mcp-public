@@ -39,8 +39,30 @@ _STOP = {
     "only", "also", "into", "onto", "over", "under", "between", "because",
     "does", "doing", "done", "been", "being", "must", "could", "같은", "대한",
     "그리고", "하지만", "때문에", "한다", "하는", "있는", "없는",
+    # Korean grammar that the word pattern picks up as words of its own when
+    # it follows code or Latin text ("`settings.json`에서"): particles and
+    # auxiliaries, not subjects. Every section of every Korean document has
+    # them, and with these in the terms a decision about a harness setting
+    # "matched" five sections of a paper about refunds (feedback 7714d8f63c2e).
+    "에서", "으로", "에게", "까지", "부터", "이다", "있다", "없다", "된다", "않는",
+    "않는다", "없이", "또는", "것은", "것이", "위해", "대해", "통해", "따라",
+    "경우", "때문", "그대로",
 }
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{3,}|[\uac00-\ud7a3]{2,}")
+# A noun and the particle stuck to it are one word in Korean: "파일에",
+# "파일을", "파일의". Left whole, the decision's "파일에" does not find the
+# section's "파일을". Cut back to the stem when at least two syllables remain.
+_PARTICLES = ("에서는", "으로는", "에서", "으로", "에게", "까지", "부터", "하고", "하며",
+              "은", "는", "이", "가", "을", "를", "의", "에", "로", "와", "과", "도", "만")
+
+
+def _stem(word: str) -> str:
+    if not ("\uac00" <= word[-1] <= "\ud7a3"):
+        return word
+    for particle in _PARTICLES:
+        if word.endswith(particle) and len(word) - len(particle) >= 2:
+            return word[: -len(particle)]
+    return word
 
 
 def decision_terms(*parts: str | None) -> set[str]:
@@ -53,14 +75,55 @@ def decision_terms(*parts: str | None) -> set[str]:
     for part in parts:
         for word in _WORD_RE.findall(part or ""):
             low = word.lower()
-            if low not in _STOP:
-                out.add(low)
+            if low in _STOP:
+                continue
+            stem = _stem(low)
+            if stem not in _STOP:
+                out.add(stem)
     return out
 
 
 def _section_hits(body: str, terms: set[str]) -> list[str]:
     low = (body or "").lower()
     return sorted(t for t in terms if t in low)
+
+
+# A section "discusses" a decision when it shares at least this many of the
+# words of the decision ITSELF — not of its rationale, which is a paragraph of
+# explanation and shares a word or two with anything.
+_MIN_SHARED = 2
+# …and a word that most of the sections under comparison contain says nothing
+# about any one of them. Judged only when there are enough sections to judge.
+_COMMON_SHARE = 1 / 3
+_COMMON_FLOOR = 6
+
+
+def sections_discussing(bodies: dict, *, text: str, rationale: str | None = None) -> dict:
+    """Which of `bodies` ({key: text}) talk about what a decision is about.
+
+    Returns {key: [the shared words, the decision's own first]} for the ones
+    that do. One shared word used to be enough, and the words were whatever
+    the pattern caught: every section came back, which is the same as none.
+    """
+    own = decision_terms(text)
+    wider = decision_terms(rationale) - own
+    if not own:
+        return {}
+    lowered = {key: (body or "").lower() for key, body in bodies.items()}
+    if len(lowered) >= _COMMON_FLOOR:
+        ceiling = len(lowered) * _COMMON_SHARE
+        common = {t for t in own | wider
+                  if sum(1 for low in lowered.values() if t in low) > ceiling}
+        own, wider = own - common, wider - common
+    need = min(_MIN_SHARED, len(own))
+    if not need:
+        return {}
+    out = {}
+    for key, low in lowered.items():
+        shared = sorted(t for t in own if t in low)
+        if len(shared) >= need:
+            out[key] = shared + sorted(t for t in wider if t in low)
+    return out
 
 
 # A decision is about the paper you are writing, so the scan starts at the most
@@ -94,8 +157,7 @@ def sections_to_review(
     discuss the decision's own subject is enough — the agent can then read
     them, which is the step that was never prompted.
     """
-    terms = decision_terms(text, rationale)
-    if not terms:
+    if not decision_terms(text):
         return []
     rows: list[dict] = []
     try:
@@ -103,6 +165,8 @@ def sections_to_review(
         from . import sections as _sections
         paper_list = _papers.list_papers(state)[:_SCAN_PAPERS]
         seen = 0
+        found: dict[tuple, dict] = {}
+        bodies: dict[tuple, str] = {}
         for paper in paper_list:
             slug = paper.get("slug")
             if not slug:
@@ -117,22 +181,24 @@ def sections_to_review(
                 if body is None:
                     full = _sections.get_section(state, slug, sec.get("key", ""))
                     body = (full or {}).get("body") or ""
-                hits = _section_hits(body, terms)
-                if not hits:
-                    continue
-                updated = sec.get("updated_at") or ""
-                rows.append({
-                    "paper": slug,
-                    "section": sec.get("key"),
-                    "title": sec.get("title"),
-                    "word_count": sec.get("word_count"),
-                    "updated_at": updated or None,
-                    # False only when the section was edited AFTER the decision
-                    # — then somebody has already had the chance to apply it.
-                    "written_before_this_decision": bool(
-                        decided_at and updated and updated < decided_at),
-                    "mentions": hits[:6],
-                })
+                found[(slug, sec.get("key"))] = sec
+                bodies[(slug, sec.get("key"))] = body
+        # Judged together: which words are common is a fact about all of them.
+        for (slug, key), hits in sections_discussing(bodies, text=text, rationale=rationale).items():
+            sec = found[(slug, key)]
+            updated = sec.get("updated_at") or ""
+            rows.append({
+                "paper": slug,
+                "section": key,
+                "title": sec.get("title"),
+                "word_count": sec.get("word_count"),
+                "updated_at": updated or None,
+                # False only when the section was edited AFTER the decision
+                # — then somebody has already had the chance to apply it.
+                "written_before_this_decision": bool(
+                    decided_at and updated and updated < decided_at),
+                "mentions": hits[:6],
+            })
     except Exception:
         return []
     rows.sort(key=lambda r: (-len(r["mentions"]), r.get("updated_at") or ""))

@@ -78,3 +78,32 @@ def write_servers_cache(state: State) -> pathlib.Path | None:
         print(f"co-scientist-local: servers cache not written ({e}) — the ssh guard "
               f"fails open", file=sys.stderr)
         return None
+
+
+def write_servers_cache_soon(state: State):
+    """Write the cache on a background thread; return the thread.
+
+    At startup. Building the cache reads the registry — 0.8 s measured against
+    the real backend — and it used to run before the server could answer its
+    first request, on every start (a scivo-harness session starts two
+    servers). Nothing needs it finished by then: the guard reads the FILE, a
+    file from the last session is already there, and the first Bash call of a
+    session is seconds away. The same reasoning as the reaper's sweep, a few
+    lines below this call in `__main__`.
+
+    Not silent: `write_servers_cache` reports a failure on stderr itself, and
+    a thread that dies for another reason says so here.
+    """
+    import threading
+
+    def run() -> None:
+        try:
+            write_servers_cache(state)
+        except Exception as exc:  # noqa: BLE001
+            print(f"co-scientist-local: servers cache not written ({type(exc).__name__}: {exc}) — "
+                  "the ssh guard keeps the previous file, or fails open if there is none",
+                  file=sys.stderr)
+
+    thread = threading.Thread(target=run, name="servers-cache", daemon=True)
+    thread.start()
+    return thread

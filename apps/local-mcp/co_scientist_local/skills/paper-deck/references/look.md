@@ -38,10 +38,15 @@ without a network round-trip. Each PNG is < 100 KB.
 ### 5e. Don'ts + palette library — avoid the AI-slide look (ref: Anthropic pptx skill)
 
 **Tells of an AI-generated deck — don't do these:**
-- **Don't reflexively underline every title with an accent line.** A short
-  rule under every title is the #1 AI tell. Use the deck's accent *motif*
-  purposefully (the top `h.accent_stripe`, ONE highlight number per slide) —
-  not a default underline on every heading.
+- **Don't underline every title by reflex.** A short rule under every title
+  is the #1 AI tell when nobody chose it. It is a THEME decision, made once:
+  the presets whose concept says "a thin accent rule under each title" have
+  it, and `h.title_block` draws it by default (`accent_rule=True`) for them.
+  In a concept you wrote yourself, say in the concept whether titles carry
+  one — and pass `accent_rule=False` when it does not — rather than getting
+  it because it is the default. Either way, no SECOND underline of your own
+  under a heading; the accent motif is used on purpose (the top
+  `h.accent_stripe`, ONE highlight number per slide).
 - **Don't center body text.** Left-align body/bullets; centering is only for
   short cover/section hero lines (`p.title_slide` already left-aligns multi-
   line titles).

@@ -107,7 +107,7 @@ h.title_block(slide, title, palette=palette, fonts=fonts,
               type_scale=type_scale, sw=sw, sh=sh)
 h.deck_chrome(slide, eyebrow="HOW · 추진 방법",
               footer="기러기류 종 특이적 마커 발굴 · ㈜디보",
-              page_number=5, total=13,
+              # page_number and total fill themselves in — do not pass them
               palette=palette, fonts=fonts, sw=sw, sh=sh)
 
 # ── 3 platform comparison cards (top half) ────────────────────────────
@@ -291,9 +291,9 @@ So:
   The bad case is 60 shapes with no hierarchy; not 60 shapes by
   themselves.
 - **Chrome is part of every content slide.** `h.deck_chrome(eyebrow,
-  footer, page_number, total)` after `h.title_block`. Pair the
-  eyebrow with the slide's role (`role="method"` → `eyebrow="HOW ·
-  …"`, `role="result"` → `eyebrow="WHAT · …"`).
+  footer)` after `h.title_block`. The eyebrow names the section of
+  YOUR talk this slide belongs to. `HOW · …` / `WHAT · …` in the examples
+  here is one team's convention, not a mapping from `role` to a word.
 
 **Image placeholder workflow for code slides.** When a `code` slide
 needs images (a paper figure, an AI-generated diagram, a code-shape

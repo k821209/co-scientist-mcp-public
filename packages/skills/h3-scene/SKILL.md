@@ -1,6 +1,7 @@
 ---
 name: h3-scene
 description: Build a generated video scene chunk by chunk with the vh.h3 pipe (MiniMax-H3 via ComfyUI, Krea2 keyframes) against the Video tab's chunk rows — boundaries first, the user's GO, then only the approved chunks, then the join. Use when the user asks for a generated scene, a multi-shot clip, "청크로 장면 만들기", or names H3 / Krea.
+requires: video
 ---
 
 # /h3-scene

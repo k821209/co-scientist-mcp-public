@@ -21,8 +21,8 @@ upstream step), and the paper's headline number depended on it entirely:
 | **250 kb** | **213/474 = 44.9%** ← the manuscript's number |
 | 1 Mb | 256/474 = 54.0% |
 
-`lint_manuscript`'s sibling `lint_legends` now flags this as **`caption_only`**,
-ranked above every other flag, with the action **RELOCATE, do not delete**.
+`lint_legends` flags this as **`caption_only`** — relocate, do not delete (its
+description has the rule).
 
 Two rules follow:
 
@@ -70,11 +70,8 @@ become a worse-formatted copy of the table underneath it.
 - **Word count will not save you.** A numeric-dense caption can be short, so the
   `long` flag stays quiet.
 
-`lint_legends` reports this as **`number_restatement`** (warn) and lists every
-offending number in `duplicated_numbers` with its source (`own_cells` vs
-`body_or_other_item`), so one editing pass clears the item. It never fires on the
-same token as `caption_only`: a parameter you must relocate and a measurement you
-should cut are different things, and the report will not ask you to do both.
+`lint_legends` reports this as **`number_restatement`**; its description says
+what it lists and how it relates to `caption_only`.
 
 #### 2d-quinquies-bis. What goes in a caption, and what does not
 
@@ -125,7 +122,5 @@ The tell is not the comparative word — legends compare all the time — it is
 axis), a comparison describes an encoding. When the subject is a result (the
 models, the loci, the pipeline), it is a claim.
 
-`lint_legends` flags these as **`interpretive`** and puts each offending sentence
-in `interpretive_spans`. Comparisons in a sentence about the graphic are
-deliberately not flagged. One such sentence is `info`; two or more is `warn`,
-which is the signal that the legend has grown a mini-Results.
+`lint_legends` flags these as **`interpretive`**; its description gives the
+thresholds and what is deliberately not flagged.

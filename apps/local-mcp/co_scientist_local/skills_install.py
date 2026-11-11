@@ -26,6 +26,8 @@ import re
 import shutil
 import sys
 
+from . import features as _features
+
 _PKG_DIR = pathlib.Path(__file__).resolve().parent
 
 
@@ -60,6 +62,47 @@ def _skill_names(source: pathlib.Path) -> list[str]:
         for c in source.iterdir()
         if c.is_dir() and (c / "SKILL.md").is_file()
     )
+
+
+def skill_requires(skill_dir: pathlib.Path) -> set[str]:
+    """What a skill says it needs: the frontmatter line `requires: video`.
+
+    A skill whose every step calls a tool this machine does not have is not a
+    skill here; it is a description that fires on "make a short" and then
+    cannot do it. The video tools are gated (`features.video_enabled`) and the
+    guide's video section with them — the seven video skills were not, so they
+    were advertised on every machine (review 2026-11-11).
+    """
+    try:
+        text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    front = re.match(r"---\n(.*?)\n---", text, re.S)
+    line = re.search(r"^requires:\s*(.+)$", front.group(1), re.M) if front else None
+    return {w.strip().lower() for w in line.group(1).split(",")} - {""} if line else set()
+
+
+def _video_wanted(project_dir: pathlib.Path) -> bool:
+    """Is video on for THIS project — asked the way the server will ask.
+
+    The server decides from its own environment, and that environment is
+    written in the project's config (`.mcp.json` → env). A shell that runs
+    `install-skills` does not have it. Deciding from the shell alone would
+    unlink the video skills of a machine whose video is switched on in the
+    config, on every update, until the next server start put them back. So
+    the config is read too; only then the machine-wide signal (a token).
+    """
+    if os.environ.get("CO_SCIENTIST_ENABLE_VIDEO") is not None:
+        return _features.video_enabled()
+    for name in (".mcp.json", ".codex/config.toml", ".pi/mcp.json"):
+        try:
+            text = (project_dir / name).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        found = re.search(r"CO_SCIENTIST_ENABLE_VIDEO[\"']?\s*[:=]\s*[\"']?([A-Za-z0-9]+)", text)
+        if found:
+            return found.group(1).strip().lower() in ("1", "true", "yes", "on")
+    return _features.video_enabled()
 
 
 SKILL_DEST = {
@@ -97,9 +140,22 @@ def install_skills(
 
     installed: list[str] = []
     skipped: list[str] = []
+    held: list[str] = []
+    video = _video_wanted(project_dir)
     for name in _skill_names(source):
         src = source / name
         dst = dest_root / name
+        if "video" in skill_requires(src) and not video:
+            # Not linked — and a link WE made earlier is taken away, so the
+            # skill stops being offered. Only a symlink into this package: a
+            # directory someone put there by hand is theirs.
+            try:
+                if dst.is_symlink() and pathlib.Path(os.readlink(dst)).resolve().parent == source.resolve():
+                    dst.unlink()
+            except OSError:
+                pass
+            held.append(name)
+            continue
         try:
             if dst.is_symlink() or dst.is_file():
                 dst.unlink()
@@ -116,8 +172,14 @@ def install_skills(
         except OSError as e:
             skipped.append(f"{name}: {e}")
 
-    return {"installed": installed, "skipped": skipped, "host": host,
-            "source": str(source), "dest": str(dest_root), "strategy": strategy}
+    out = {"installed": installed, "skipped": skipped, "host": host,
+           "source": str(source), "dest": str(dest_root), "strategy": strategy}
+    if held:
+        out["held"] = held
+        out["held_reason"] = ("video tools are off on this machine — set "
+                              "CO_SCIENTIST_ENABLE_VIDEO=1 in the MCP env, or connect a "
+                              "YouTube channel, and these link on the next start")
+    return out
 
 
 def _skill_description(skill_dir: pathlib.Path) -> str:

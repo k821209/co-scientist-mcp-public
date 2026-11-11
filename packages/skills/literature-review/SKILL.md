@@ -32,9 +32,8 @@ For a single topic, run 2–3 progressively-narrower queries via
 - **Recent reviews** (`"<topic> review"` filter, year_from = current
   year − 3) to find synthesis papers
 
-`search_works` hits CrossRef. Each result has `title`, `authors`,
-`journal`, `year`, `subjects`, `abstract`, `doi`, `url`. No Firestore
-writes happen.
+`search_works` hits CrossRef (its description lists the result fields). No
+Firestore writes happen.
 
 ### 2. Show candidates to the user
 
@@ -67,13 +66,7 @@ For each picked candidate:
 mcp__scivo__add_reference_by_doi(slug, doi=…)
 ```
 
-The tool:
-- Re-fetches CrossRef with the DOI (definitive metadata)
-- Refuses if CrossRef returns 404 (won't happen here since we found
-  them via CrossRef, but the guard is harmless)
-- Auto-derives citation_key like `smith2024`
-- Returns the saved reference doc
-
+It fetches and cross-checks the metadata itself (see its description).
 Collect any failures and report at the end.
 
 ### 5. Synthesis (always do)
@@ -89,7 +82,7 @@ shown candidates if no slug was given):
 ### Methodological approaches
 <grouping of papers by approach>
 
-### Recent advances (2024–2026)
+### Recent advances (last ~3 years)
 <focus on what's new>
 
 ### Gaps

@@ -1,11 +1,11 @@
 ---
 name: cold-read
-description: Read a manuscript section — the abstract first — as a domain expert who has never seen the paper and will not get the rest of it, and report every term, number or claim the text required from outside itself. The check an author cannot run on their own text. Use before a section is marked done, when the user says "would a reader follow this," "read it cold," "이 abstract 처음 보는 사람이 이해되나," or when a term is questioned that you thought was obvious.
+description: Read a manuscript section — the abstract first — as an expert who has never seen the paper; report every term, number or claim it needed from outside. Use before a section is marked done, when the user says "read it cold," "이 abstract 처음 보는 사람이 이해되나," or an "obvious" term is questioned.
 ---
 
 # /cold-read
 
-**Triggers:** "read it cold," "would a reviewer follow this abstract," "check
+**Triggers:** "read it cold," "would a reader follow this abstract," "check
 it from outside," "처음 보는 사람 입장에서 읽어줘," and, without being asked,
 **before the abstract is marked `complete`**.
 

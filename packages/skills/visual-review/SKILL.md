@@ -1,6 +1,6 @@
 ---
 name: visual-review
-description: Read a rendered artifact as its viewer — the whole set first, then the single frame — and keep fixing until a full pass finds nothing. Use before calling any rendered thing done: a deck, a schematic, a study page, a video. Pointed at by /paper-deck, /scientific-image, /study-design and /video-harness; invoke it directly when you have pixels and need to know whether they are good.
+description: Read a rendered artifact as its viewer — the whole set first, then each frame — and keep fixing until a full pass finds nothing. Use before calling any rendered thing done (a deck, a schematic, a study page, a video), or whenever you have pixels and need to know whether they are good.
 ---
 
 # /visual-review

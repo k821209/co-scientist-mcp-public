@@ -854,17 +854,22 @@ def _decision_pairs(state, sections: list[dict]) -> dict:
     items = []
     for d in decisions[:_MAX_DECISIONS]:
         decided_at = d.get("decided_at") or ""
-        terms = _discussion.decision_terms(d.get("text"), d.get("rationale"))
+        # The same judgement record_decision makes, over this paper's
+        # sections: at least two of the decision's own words, none of them a
+        # word most sections share.
+        written = {sec.get("key"): sec.get("body") or "" for sec in sections
+                   if (sec.get("word_count") or 0)}
+        discussing = _discussion.sections_discussing(
+            written, text=d.get("text") or "", rationale=d.get("rationale"))
         before = []
         for sec in sections:
-            if not (sec.get("word_count") or 0):
+            hits = discussing.get(sec.get("key"))
+            if not hits:
                 continue
             updated = sec.get("updated_at") or ""
             if decided_at and updated and updated >= decided_at:
                 continue      # already revised since this was decided
-            hits = _discussion._section_hits(sec.get("body") or "", terms)
-            if hits:
-                before.append({"section": sec.get("key"), "mentions": hits[:5]})
+            before.append({"section": sec.get("key"), "mentions": hits[:5]})
         if before:
             items.append({
                 "decision_id": d.get("decision_id"),

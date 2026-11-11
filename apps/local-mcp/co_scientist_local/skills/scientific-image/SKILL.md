@@ -50,28 +50,13 @@ When you draw a schematic in **code** (hand-placed boxes/arrows) instead of via
 the painter, do NOT loop by rendering the PNG and eyeballing it — that misses
 overlaps, off-canvas elements, and arrows crossing unrelated boxes. Instead:
 
-1. **Represent the layout as a spec** — `nodes: [{id, x, y, w, h}]` ((x,y) =
-   box bottom-left, y-up) and `edges: [{src, dst, src_side?, dst_side?}]` on a
-   `canvas_w × canvas_h`.
-2. **Lint deterministically before rendering.** Give each box a `label` +
-   `font_size` (pt) and pass the figure size so overflow is caught too:
-   ```
-   mcp__scivo__lint_figure_layout(
-       nodes, canvas_w, canvas_h, edges=edges, min_gap=<pad>,
-       figure_w_in=<figsize[0]>, figure_h_in=<figsize[1]>)
-   ```
-   → `{ok, issues, counts}` for **box_overlap**, **out_of_canvas**,
-   **arrow_crosses_box** (an edge through an unrelated node — the defect a
-   visual review reliably misses), and **label_overflow** (a box's text doesn't
-   fit — reports measured vs available size + a suggested max font / min box).
-   Nodes: `{id, x, y, w, h, label?, font_size?, padding?, wrap?}`. Iterate on
-   the spec until `ok`, THEN render.
-3. **Label overflow is now linted deterministically** (a CJK-aware
-   char-advance estimate, using `figure_w_in`/`figure_h_in` to map box DATA
-   units ↔ text POINTS — the part a naive `len(text)*fontsize` gets wrong). Fix
-   flagged labels by shrinking the font (`suggested_max_font`), enlarging the
-   box (`suggested_min_box`), or setting `wrap=True`. For borderline hits,
-   confirm with matplotlib's real extent
+1. **Represent the layout as a spec** of nodes and edges on a canvas, each box
+   with its `label` and `font_size` — `lint_figure_layout`'s description has
+   the schema, what it checks and what it returns.
+2. **Lint before rendering, and iterate on the spec until `ok`, THEN render.**
+   Pass the figure size so label overflow is measured. Fix a flagged label by
+   shrinking the font, enlarging the box, or setting `wrap=True`; confirm a
+   borderline hit with matplotlib's real extent
    (`t.get_window_extent(fig.canvas.get_renderer())`) at render.
 
 This turns the unreliable render-and-eyeball loop into a deterministic one.
@@ -267,17 +252,6 @@ mcp__scivo__update_figure(
 
 The dashboard's Paper page shows it under Figures with a
 download/preview button.
-
-## Anti-patterns
-
-- **"Make a heatmap of gene expression"** → wrong skill. Use
-  `/analysis-run` with matplotlib/seaborn; the painter LLM hallucinates
-  cell colors and labels.
-- **Skipping the blueprint** → painter improvises; you spend more
-  iterations correcting than blueprinting would have cost.
-- **Inlining precise numbers / gene names you care about** → painter
-  mis-spells; use numbered labels + a caption legend.
-- **Edit chain >3** → quality degrades. Restart with a tighter prompt.
 
 ## Aspect ratios + sizes
 

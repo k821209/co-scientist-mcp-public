@@ -194,9 +194,8 @@ these are not licences to strip:
 
 ## The mechanical pass
 
-`lint_manuscript(slug)` covers the regex-able part of all four leaks —
-`defensive_aside`, `insider_context`, `colloquial_register`, `estimator_voice`,
-`duplication`, `section_leakage`. Run it before resolving any comment, not only
+`lint_manuscript(slug)` covers the regex-able part of all four leaks (its
+description lists the groups). Run it before resolving any comment, not only
 before declaring a section done: a revised section has not been through it.
 
 **Know what it is worth.** Replayed over this corpus, those rules fire on 7% of

@@ -1,6 +1,6 @@
 ---
 name: journal-requirements
-description: Capture a target journal's submission requirements for a paper type (Article, Short Communication, Letter, Review, …) — word limits, figure/table caps, structured-abstract rules, required sections — and check the manuscript against them. Use when the user names a target journal + paper type, asks "what are the limits for journal X", or "is this within the journal's requirements".
+description: Record a target journal's submission limits for one paper type (Article, Letter, …) and check the manuscript against them. Use when the user names a target journal + paper type, asks "what are the limits for journal X", or "is this within the journal's requirements".
 ---
 
 # /journal-requirements
@@ -53,57 +53,25 @@ items." Pick the row for the chosen type.
 
 ### 3. Record the spec
 
-```
-mcp__scivo__set_paper_requirements(
-  slug,
-  paper_type="Short Communication",
-  abstract_max_words=150,
-  abstract_structured=false,
-  main_text_max_words=2000,
-  max_figures=4,
-  max_tables=null,
-  max_display_items=4,
-  max_references=30,
-  required_sections=["abstract","introduction","methods","results"],
-  alt_text_required=true,
-  max_main_file_mb=null,
-  max_supplementary_file_mb=5,
-  notes="Methods may go after Discussion. Cover letter required.",
-  source="https://journal.example.org/author-guidelines",
-)
-```
+Call `set_paper_requirements(slug, paper_type=…, …)` with the fields the
+guidelines actually state — its description carries the fields, including the
+per-file size caps and `alt_text_required`, and why each goes in its field
+rather than in `notes`.
 
 Rules:
-- **Never invent a limit.** If the guidelines state no abstract limit,
-  leave `abstract_max_words` null. A null means "no stated limit", not
-  zero.
+- **Never invent a limit.** A null means "no stated limit", not zero.
 - `required_sections` uses the canonical keys: `abstract`,
   `introduction`, `methods`, `results`, `discussion`, `conclusion`.
 - Anything that doesn't fit a structured field goes in `notes` verbatim
   — section-order rules, cover-letter/ORCID requirements, "no
   subheadings", colour-figure fees, etc. You will re-read `notes` every
   session, so keep them concrete.
-- **File-size caps go in `max_main_file_mb` / `max_supplementary_file_mb`,
-  not in `notes`.** Guidelines state them per uploaded FILE ("supplementary
-  data must not exceed 5MB"), and `export_to_path` checks the file it just
-  wrote against them. A per-figure cap is a different number and not what the
-  submission system measures.
-- `alt_text_required=true` when the guidelines ask for figure alt text
-  (increasingly common; OUP journals state "Alt text: Required for all
-  figures"). Put it in the field rather than in `notes` — the field is
-  measured, a note is only re-read.
 - `source` = the guidelines URL, so the spec can be re-verified later.
 
 ### 4. Check the manuscript
 
-```
-result = mcp__scivo__check_requirements(slug)
-```
-
-Returns `{configured, requirements, metrics, checks, violations, ok}`.
-Each entry in `checks` is a deterministic pass/fail (`abstract_words`,
-`main_text_words`, `figures`, `tables`, `display_items`, `references`,
-`required_sections`).
+`check_requirements(slug)` — deterministic per-limit checks; its description
+gives the return shape.
 
 ### 5. Report + act on the soft rules
 

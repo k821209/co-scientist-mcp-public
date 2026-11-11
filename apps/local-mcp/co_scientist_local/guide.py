@@ -576,7 +576,7 @@ def render_guide(include_video: bool = True, installed: dict | None = None,
     stub_publishing = _STUBS['publishing']
     stub_graphs = _STUBS['graphs']
     stub_image_generation = _STUBS['image-generation']
-    video_block = _VIDEO_GUIDE if include_video else ""
+    video_block = _VIDEO_GUIDE if include_video else _VIDEO_OFF
     installed_block = installed_skills_block(installed)
     from .tab_roles import render_tab_roles
     tab_roles_block = render_tab_roles(include_video=include_video)
@@ -1397,6 +1397,16 @@ regardless of age (`since_hours` only narrows the sweep).
 
 # The video/YouTube skill bullets — spliced into render_guide() only when the
 # video tool family is registered on this machine.
+# What a session without the video family is told instead. Its tools are not
+# registered and its skills are not linked, so without this line nothing in
+# the session would say that video work exists or how it is switched on.
+_VIDEO_OFF = """- Video (recordings to publish-ready, shorts, dubbing, YouTube) is OFF on this
+  machine: its tools are not registered and its skills are not linked. If the
+  user asks for video work, say so — it turns on with
+  `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP's env (the project's config file),
+  or once a YouTube channel has been connected, and a session restart.
+"""
+
 _VIDEO_GUIDE = """- `/video-harness` — for VIDEO projects: raw recording → publish-ready via
   the `vh` toolkit. One-shot `vh run <input> --preset <screencast|
   talkinghead|shorts|shorts_boxed|slides> [--lang ko]` (clean → reframe →

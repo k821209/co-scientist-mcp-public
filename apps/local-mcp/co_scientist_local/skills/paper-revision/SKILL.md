@@ -12,16 +12,11 @@ skill walks through them one by one.
 
 ## Triage (decision) comes first
 
-Each comment carries a `decision` the author sets in the dashboard:
-`accepted` (act on it), `pending` (not triaged yet), or `rejected` (declined).
-This is separate from `status` (open → resolved).
-
-- If the author has triaged, your work list is the **accepted** ones:
-  `list_reviews(slug, status='open', decision='accepted')`. Address those.
-- **Never act on a `rejected` comment** — the author declined it. Leave it.
-- For `pending` comments, don't silently rewrite. Surface them and ask the
-  author to Accept / Reject (in the dashboard, or tell you), then proceed.
-  If they say "just handle all of them," treat pending as accepted.
+The guide's session-start step 3 ("How this project works") states the
+`decision` rule — act on `accepted`, never on `rejected`, ask before `pending` —
+and the approved-work-list call. `decision` is separate from `status`
+(open → resolved). If the author says "just handle all of them," treat pending
+as accepted.
 
 ## Reopened comments (follow-up replies)
 
@@ -55,24 +50,11 @@ author the revision is done, and again right before any export / submission.
 
 ## If this paper has been SUBMITTED, read this before editing anything
 
-`get_paper_state(slug)["paper"]["submission_sync"]` says whether the sections have
-ever been checked against the file the journal received. When it reads
-`unreconciled`, do that first with `diff_submission(slug)` — the export is usually
-hand-edited on its way out, so the sections are not what the reviewers hold, and a
-revision written on them revises a document that exists nowhere. Show
-`missing_from_sections`, ask which differences were deliberate, then
-`acknowledge_submission_sync(slug)`.
-
-**And when the revision goes back to the journal, it is applied to the submitted
-`.docx` — not to a fresh `/paper-export`.** That file carries material that never
-existed in the sections and cannot be regenerated from them: Key Points, a
-Biographical Note, the journal's author/affiliation formatting, reference-manager
-fields. An export looks complete and drops all of it silently. That shipped once,
-and the user found it by reading the file.
-
-Two different failures, and this skill sits between them: the sections can be
-behind what was sent, and a re-export can be missing what was sent. Neither
-announces itself.
+The guide's "The SUBMITTED BASELINE" (under "Project memory") applies before
+the first edit: if `submission_sync` reads `unreconciled`, reconcile the sections
+with the sent file first, and a revision going back to the journal is applied to
+the submitted `.docx`, not a fresh `/paper-export`. This skill sits between both
+failures that section names.
 
 ## Flow
 
@@ -108,11 +90,8 @@ announces itself.
      can't show *where* the comment was addressed — it falls back to the top of
      the section. Re-anchoring moves the highlight to the new wording, so the
      reader sees exactly what changed.
-   - Use the rendered wording (no `**`/`{doi:…}` markers), a distinctive
-     ~5–15 word span that exists verbatim in the new body.
-   - **Edited several spots for one comment?** Pass `new_anchor_texts=[…]`
-     instead — one verbatim phrase per edited location. The dashboard then
-     highlights each and lets the reviewer cycle through them ("N spots").
+   - Span choice and several edited spots (`new_anchor_texts`): see the
+     tool's description.
    - This is ENFORCED: if you revised the anchored sentence and resolve WITHOUT
      a new anchor, the MCP refuses with "anchored text is no longer in the
      manuscript" — re-run with `new_anchor_text(s)`. If the passage was removed
@@ -178,11 +157,8 @@ rather than the text being gone — run `/reconcile-reviews [slug]` (wraps
 
 ## After editing sections
 
-Editing sections regenerates the manuscript blob, which can leave some
-comments pointing at the wrong section. Before you report done, run
-`mcp__scivo__reconcile_review_anchors(slug, dry_run=True)`; if it
-reports any `relocated`, apply it (`dry_run=False`) so the user's remaining
-highlights resolve correctly. See `/reconcile-reviews`.
+Before you report done, run the reconcile pass the guide's "How this project
+works" prescribes after `/paper-revision` (`/reconcile-reviews`).
 
 ## Comment sources
 
@@ -196,17 +172,10 @@ highlights resolve correctly. See `/reconcile-reviews`.
   response letter). When the user says "address the AI review / self-review
   findings" — or right after a `/paper-review` run — work this set the same
   way: `list_reviews(slug, source='ai', status='open')`, then for EACH finding
-  decide **address vs defer**:
-  - **Address** → revise the section, then resolve it anchored to the revised
-    text: `resolve_paper_comment(slug, review_id, status='accepted',
-    new_anchor_text='<verbatim phrase from the revised passage>',
-    response='<what changed>')`.
-  - **Defer / won't-fix** → leave it `open` but record a `response` with the
-    plan or rebuttal (`update_review(slug, review_id, response='…')`).
-  Editing the manuscript does NOT auto-resolve AI rows, so finish with
-  `review_triage_summary(slug)['ai_open'] == 0` (every finding resolved or
-  deferred-with-a-response) — otherwise the dashboard shows addressed findings
-  as still open.
+  decide **address vs defer**. The resolve-or-respond rule and the
+  `review_triage_summary(slug)['ai_open'] == 0` finish line are in the guide's
+  session-start step 3; a deferred finding's
+  `response` goes on with `update_review(slug, review_id, response='…')`.
 - `source='external'` — anonymous share-link visitors (collaborators).
 
 ## After Addressing All Open Comments
@@ -216,12 +185,8 @@ count is zero. Report the resolution summary back to the user.
 
 ## Write from the reader's context
 
-When you rewrite a passage to address a comment, the reviewer re-reading it
-shares none of this session's memory. At first use, every term/symbol/threshold
-needs its meaning, its scale or baseline, and — when several methods or reviewers
-are in play — whose it is. A number without a scale is not information, and when
-you compress, cut claims rather than the context that makes a claim checkable.
-See "Write from the READER's context" in `project_guide()`.
+The guide's "Write from the READER's context, not yours" applies in full — the
+reviewer re-reading a rewritten passage shares none of this session's memory.
 
 Two checks exist for the two ways this fails, and they catch different things:
 

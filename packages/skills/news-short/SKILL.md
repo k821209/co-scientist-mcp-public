@@ -1,16 +1,10 @@
 ---
 name: news-short
 description: Turn a news story or text (no source video) into a vertical news Short — script → free neural TTS → Ken-Burns image montage → burned captions → register in the Video tab. Use when the user says "make a news short about X," "turn this article into a Short," "make a briefing video."
+requires: video
 ---
 
 # /news-short
-
-> **Video tools missing?** The video/YouTube tool family registers only on
-> machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
-> / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
-> session — needed once per fresh machine; after `youtube_connect` the token file
-> auto-enables it.
 
 **Triggers:** "make a news Short about …," "turn this article into a vertical
 video," "daily news briefing video." Unlike `/video-harness` (edits an existing
@@ -111,8 +105,8 @@ ones — use it as a fallback for short clips only.)
    - **Mixing stills and clips in one episode → use `vh.steps.beats`, not this.**
      `build_short` is stills-only and `build_clip_short` is clips-only; a real
      news/review episode usually wants a quoted clip for the cold open, drawn
-     cards for the numbers, and a photo for the person. See "3c — Synthesized
-     shorts: beat-driven assembly" in `/video-harness` — same VO/credit/BGM
+     cards for the numbers, and a photo for the person. See
+     `/video-harness` §3c (its beat-assembly reference) — same VO/credit/BGM
      conventions, one call, and it asserts clip length instead of freezing.
      Draw the cards with `vh.cardkit` (its layout guard turns "divider line
      through the price" into a build failure) and check the result with

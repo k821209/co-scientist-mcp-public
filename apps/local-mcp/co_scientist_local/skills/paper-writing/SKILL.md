@@ -100,11 +100,10 @@ manuscript still came out in ML-workshop register.
   on", "pave the way", "utilize"* (use "use"), *"in order to"* (use "to").
   State the fact directly.
 - **Define a term once**, then reuse it; don't re-explain.
-- **Korean manuscripts** (보고서/국문 논문): draft natively in Korean
-  academic register (`~하였다 / ~로 나타났다`), consistent sentence endings,
-  keep only field-standard English abbreviations (GWAS, BLUP, QTL). Don't
-  translate from English — it reads as 번역체. Avoid `매우 중요한 역할을 한다`,
-  `아무리 강조해도 지나치지 않다`, 완곡어 남발.
+- **Korean manuscripts** (보고서/국문 논문): the guide's "Prose for
+  non-English audiences" applies (draft natively, not translated). Specific to
+  a manuscript: academic register (`~하였다 / ~로 나타났다`); avoid
+  `매우 중요한 역할을 한다`, `아무리 강조해도 지나치지 않다`, 완곡어 남발.
 
 ### 2a. You are drafting inside a coding harness. Its voice is not neutral.
 
@@ -217,14 +216,9 @@ term-before-definition, one-topic-per-paragraph) are yours: run the checklist.
 
 ### 2c. Write from the reader's context, not yours
 
-You remember the whole analysis; the reader has read the paper once. At FIRST
-use, every term, symbol and threshold must carry what it means, the scale or
-baseline that makes a value interpretable, and which method/arm it belongs to
-when more than one exists ("λ" only where it is defined). A number without a
-scale is not information: "0.904 on a 0–1 scale where 1 means the same
-partition", not "0.904". This is separate from §2b: plain phrasing does not
-supply a missing premise. And when trimming for length, cut claims — never the
-clause that lets a reader check one.
+The guide's "Write from the READER's context, not yours" applies in full (its
+first-use audit and its two corollaries). It is separate from §2b: plain
+phrasing does not supply a missing premise.
 
 ### 2d. Never write from inside the authoring session
 
@@ -387,26 +381,11 @@ Before marking sections `complete` (and before `/paper-export`), run:
 mcp__scivo__lint_manuscript(slug)
 ```
 
-It deterministically flags **duplication** (same sentence across sections),
-**section leakage** (results/stats in Methods, procedure in Results, plus
-`measurement_in_methods` — a measured size/time/memory/fold reported in Methods —
-and `result_only_in_methods`, a number that appears in Methods and in a
-figure/table but never in Results), **style** (LLM-tell + writerly/forward-reference
-phrases, run-on sentences, `vague_comparative` bare "larger/higher",
-`overused_word` repeated rhetorical words, `prose_cross_reference` — see below),
-and **insider_context** (§2d). Treat it like the deck
-layout lint: **a section isn't done until its warnings are resolved.** Fix
-the offending sentences (each warning quotes the sentence + its section),
-re-run until `summary.clean == true`, then report the clean result to the
-user. If you leave any warning intentionally, say which and why.
-
-`clean` is `true`, `false` **or `null`** — null means the lint had nothing to
-read (every section empty, no figures or tables), and `not_assessed` says
-which. Null is not a pass: an unwritten manuscript used to satisfy this gate
-because "I looked and found nothing" and "there was nothing to look at"
-returned the same `true`. Treat null as not done, and read `summary.examined`
-when you report the result — "clean" over 7 words is a different claim than
-"clean" over 4,000.
+Its description lists the warning groups and the tri-state `clean`. **A
+section isn't done until its warnings are resolved:** fix the quoted sentences,
+re-run until `summary.clean == true`, then report the clean result to the user
+with `summary.examined` — "clean" over 7 words is a different claim than
+"clean" over 4,000. If you leave any warning intentionally, say which and why.
 
 **Then, for the abstract: `/cold-read`.** `lint_manuscript` is clean on an
 abstract that uses "condition" three times and defines it nowhere, because
@@ -417,17 +396,13 @@ Its findings arrive as `source='ai'` comments in the usual triage loop.
 
 ## Citation Format
 
-Inline DOIs: `{doi:10.1234/example}`. A reference with NO DOI — software, a
-report, a book, a GenBank submission — is cited by its key: `{cite:andrews2010}`.
-Never `[@key]`: that is pandoc syntax, this system does not resolve it, and it
-reads as cited on screen while exporting with no bibliography entry
-(`lint_manuscript` flags it as `foreign_citation_syntax`).
-
-Register a reference with `add_reference_by_doi(slug, doi)` — it fetches the
-metadata, so nothing is invented, and it refuses a DOI that does not resolve.
-`add_reference` (typed by hand) is for a work that HAS no DOI, with the
-details copied from the source in front of you; never for one whose DOI you
-could look up. Before or after the prose — `prepare_export` checks for
+The guide's "Citation format + hallucination check" has the `{doi:…}` /
+`{cite:key}` tokens and `add_reference_by_doi`. Beyond it: never `[@key]` —
+that is pandoc syntax, this system does not resolve it, and it reads as cited
+on screen while exporting with no bibliography entry (`lint_manuscript` flags
+it as `foreign_citation_syntax`). `add_reference` (typed by hand) is for a work
+that HAS no DOI, with the details copied from the source in front of you;
+never for one whose DOI you could look up. `prepare_export` checks for
 unresolved citations at export time.
 
 ## Formatting

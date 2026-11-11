@@ -1,16 +1,10 @@
 ---
 name: video-revision
 description: Address open timecode comments left on a video in the dashboard's Video tab — re-cut, re-caption, reframe, or re-chapter as needed, re-render with video-harness, re-register, and resolve each comment. Use when the SessionStart banner reports open video comments, or the user says "handle the video comments," "apply the video feedback."
+requires: video
 ---
 
 # /video-revision
-
-> **Video tools missing?** The video/YouTube tool family registers only on
-> machines that do video work (a YouTube token exists, or
-> `CO_SCIENTIST_ENABLE_VIDEO=1` in the MCP env). If `mcp__scivo__add_video`
-> / `youtube_*` are absent, add that env var to `.mcp.json` and restart the
-> session — needed once per fresh machine; after `youtube_connect` the token file
-> auto-enables it.
 
 **Triggers:** "address the video comments," "apply the video feedback,"
 "handle the timecode notes," or a report of open video comments. The video

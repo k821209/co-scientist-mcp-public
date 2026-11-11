@@ -61,9 +61,7 @@ The tool returns a bundle with a `warnings` array plus dedicated lists:
   (flags, duplicated spans, trim suggestion). A legend should describe the
   panels + key numbers + cross-refs; move derivation/interpretation to Results.
 - `warnings[]` — short human-readable summary
-- `csl_filename` / `csl_slug` / `csl_source` / `csl_status` — the
-  citation style resolved from `paper.journal` (see step 4). Resolved
-  offline here; the file is downloaded at export time.
+- the resolved citation style (see "Journal citation style")
 - `requirements_check` — the journal / paper-type submission check
   (word limits, figure & table caps, required sections). If
   `configured` is false, the paper has no journal spec yet — suggest
@@ -97,28 +95,15 @@ If the user wants to proceed despite warnings, continue.
 ### 3. Decide format + output path
 
 - Default format: **docx** (most common journal submission target).
-- Other accepted formats: `tex`, `pdf`, `md`, `html`. `html` is one
-  self-contained file for anything that travels as a file rather than to a
-  journal — teaching material, a handout; `theme="course"` adds the
-  classroom affordances (see the tool's docstring). Fenced code carries its
-  language (```bash, ```powershell) so the badge shows; a fold-away solution
-  is a raw `<details><summary>…</summary>…</details>` block; a checklist is
-  a task list (`- [ ] step`).
+- Other formats, and `html` with its `theme` for material that travels as a
+  file rather than to a journal: see `export_to_path`'s description.
 - Default path: `./{slug}.{ext}` in the current working directory
   unless the user supplied one.
 
 ### 4. Run `export_to_path`
 
-```
-mcp__scivo__export_to_path(
-  slug,
-  output_path="<absolute path or ./{slug}.{ext}>",
-  fmt="docx" | "tex" | "pdf" | "md" | "html",
-  scope="main",     # "main" | "supplementary" | "all"
-  page_size="a4",   # "a4" (default) | "letter" — .docx only
-  theme="paper",    # "paper" | "course" — .html only
-)
-```
+`export_to_path(slug, output_path=…, fmt=…)` — its description carries the
+formats, `scope`, `page_size` and `theme`.
 
 **Where tables and figures land.** By default a registered table or figure is
 collected into a `Tables` / `Figures` section at the END of the document, which
@@ -164,35 +149,12 @@ including inside a table cell, which is the one way markdown has to break a
 cell — and no other tag. Anything else is dropped and named in the export's
 warnings (and in `prepare_export` beforehand); write it as markdown instead.
 
-**Main vs supplementary (`scope`).** A journal receives a main manuscript
-containing only the MAIN figures/tables; supplementary items (figure/table
-number ≥ 101) belong in a separate file. This convention applies to
-`doc_type="paper"` ONLY — in a report or proposal, table 100 is the hundredth
-table, not a supplementary one, and every item is body content. So:
-- `scope="main"` (default) — manuscript text + main figures/tables only.
-- `scope="supplementary"` — a standalone *Supplementary Material* document
-  with only the supplementary figures/tables (no main body).
-- `scope="all"` — everything in one file (legacy; use only if asked).
-
-If `prepare_export` shows any `supplementary_figures` / `supplementary_tables`,
-deliver BOTH files: run once with `scope="main"` to `{slug}.{ext}` and again
-with `scope="supplementary"` to `{slug}_supplementary.{ext}`. Tell the user
-both paths.
-
-The tool:
-- Re-runs `prepare_export` (so warnings are fresh)
-- Writes manuscript.md + references.bib + every figure file into a
-  temp dir
-- **Resolves + downloads the journal's CSL citation style** (see
-  "Journal citation style" below)
-- Invokes Pandoc with appropriate flags (citeproc + `--csl` when a bib
-  exists, `-t latex` for tex, etc.)
-- Uploads the output blob to Storage at
-  `papers/{slug}/exports/{filename}` so it's downloadable from the
-  dashboard.
-
-Returns `{ local_path, blob_path, format, page_size, size_bytes, csl_filename,
-csl_status, warnings, placeholders, unresolved_citations }`.
+**Main vs supplementary (`scope`).** The ≥ 101 supplementary convention
+applies to `doc_type="paper"` ONLY — in a report or proposal, table 100 is the
+hundredth table, and every item is body content. `scope="all"` is legacy; use
+it only if asked. If `prepare_export` shows any `supplementary_figures` /
+`supplementary_tables`, deliver BOTH files (`{slug}.{ext}` and
+`{slug}_supplementary.{ext}`) and tell the user both paths.
 
 **Read the `warnings` for dangling references.** A warning of the form
 "the body references Table 107 … excluded by scope='main'" means the reader gets
@@ -208,41 +170,15 @@ rather than using `export_to_path`.
 
 ### Journal citation style (CSL)
 
-The export matches the **journal's citation format** automatically — no
-manual CSL handling. The pipeline:
+The export matches the **journal's citation format** automatically from
+`paper.journal` (resolution order: `register_journal_csl`'s description); a
+successful download of a guessed style is auto-registered for next time.
+Report `csl_filename` from the export result.
 
-1. `prepare_export` resolves `paper.journal` → a CSL filename, offline,
-   in this order:
-   - the project's **CSL registry** (entries you pinned earlier)
-   - an **in-code map** of ~30 common journals
-   - a **kebab-case guess** of the journal name
-2. `export_to_path` downloads that `.csl` from the public
-   citation-style-language/styles repo and passes it to Pandoc.
-3. A successful download of a *guessed* slug is **auto-registered** in
-   the project registry, so the next export of that journal is exact.
-
-`export_to_path` returns `csl_status`:
-
-- `downloaded` — style fetched + applied. Report `csl_filename`.
-- `explicit` — you passed `csl_path=` with a local CSL file; used as-is.
-- `missing` — the resolved filename isn't in the styles repo (or the
-  network failed). Export still succeeds with Pandoc's **default**
-  style; a warning carries the filename that failed.
-- `no_journal` — `paper.journal` is empty; default style used.
-- `no_references` — the paper has no references, so CSL is moot.
-
-**When `csl_status` is `missing`:** the journal name probably doesn't
-kebab-case to a real style slug. Look up the correct filename at
-https://github.com/citation-style-language/styles and pin it:
-
-```
-mcp__scivo__register_journal_csl(
-  journal="<exact paper.journal value>",
-  csl_filename="journal-of-experimental-botany.csl",
-)
-```
-
-Then re-export. `list_journal_csls()` shows what's pinned;
+**When `csl_status` is `missing`** the export still succeeded, with Pandoc's
+default style. Find the correct filename and pin it with
+`register_journal_csl(journal="<exact paper.journal value>", csl_filename=…)`,
+then re-export. `list_journal_csls()` shows what's pinned;
 `delete_journal_csl(journal)` removes an entry. Never guess a CSL
 filename into the registry — only pin one you verified exists in the
 styles repo.
@@ -268,9 +204,7 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
   the user.
 - **NEVER re-invent the export pipeline** in the skill (don't manually
   build BibTeX, don't manually run pandoc). The MCP tools already do
-  it; deviating risks shipping stale figure data — the original
-  co-scientist had a May 2026 incident where re-implemented assembly
-  shipped an outdated figure caption.
+  it; deviating risks shipping stale figure data.
 - **NEVER hardcode or guess a CSL filename**. CSL resolution is
   harness-managed: `prepare_export` resolves it and `export_to_path`
   downloads it. The only manual lever is `register_journal_csl` with a
@@ -313,11 +247,8 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
   letter, converted table) needs an explicit
   `attach_export(slug, local_path=…, scope=…)` or it never appears on the
   dashboard.
-- **If `export_to_path` times out, check before retrying.** The export can
-  finish and lose only its reply, so a "failure" may be a success. Compare
-  `list_exports(slug)` (newest `updated_at`, `size_bytes`) against the file at
-  `output_path`; if they agree the export is done. Retrying blind costs another
-  full run and can create a second artifact under a different filename.
+- **If `export_to_path` times out, check before retrying** — its description
+  says how.
 - **A separate document exports under ITS OWN slug.** Exporting a response
   letter / cover letter that lives as its own paper puts the blob at
   `papers/<that-slug>/exports/…`, so it never shows on the manuscript's Exports

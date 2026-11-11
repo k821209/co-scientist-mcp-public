@@ -79,7 +79,7 @@ one of them cannot be fixed by retrying and the other is fixed by nothing else:
 `ps -p <pid>` (or `pgrep -f soffice`) once, at the moment you notice no output, is
 the whole diagnosis. Reading only "no output file + 0% CPU" makes a crash and a
 lock-hang look like one phenomenon — that mistake produced two wrong reports and
-a since-retracted claim about images (below).
+a false claim that images deadlock the compare.
 
 The crash stack is worth recognising; it is LibreOffice trying to open the Manage
 Changes panel under `--headless`:
@@ -137,9 +137,7 @@ done
 
 **When a pair hangs, re-run a pair you know worked.** If the known-good pair hangs
 too, the fault is environmental (a lock, a leftover process) and not the documents
-— stop investigating the documents. This one step would have prevented both wrong
-reports behind the retraction above: the control pair from the previous day hung
-as well, which ruled out the documents immediately.
+— stop investigating the documents.
 
 **zsh footgun: never write `rm -f .~lock.*#`.** With no match, zsh's `nomatch`
 aborts the WHOLE command line, so anything sharing that line silently does not
@@ -172,17 +170,8 @@ Better than remembering to clean: **copy both inputs to fresh names for each
 attempt.** A new filename cannot have a stale lock, so the failure mode becomes
 structurally impossible instead of something to police.
 
-> **Retracted: "embedded images deadlock the compare."** Earlier versions of this
-> skill said figure-bearing documents deadlock deterministically and told you to
-> strip images by default. That was wrong, and the mechanism above is why the
-> evidence looked so strong: stripped copies were always written to NEW filenames,
-> so they never carried a lock, while the originals were retried under their own
-> names and inherited one every time. Images were perfectly confounded with
-> "fresh filename". A later retest of the same pair that had "hung 4/4" — after
-> clearing `.~lock` files — crashed once and then succeeded in 38 s with all 7
-> figures intact, and the revision-mark counts came out identical to the stripped
-> build (`w:ins` 522 / `w:del` 240 either way). Stripping cost the figures and
-> bought nothing. Recorded here so the hypothesis is not rediscovered.
+Images do not deadlock the compare: a stripped copy written to a new filename
+simply carries no stale lock.
 
 **Keep the figures.** Compare the real documents; the marked-up copy a reviewer
 reads should have its figures in place. `strip_images()` below is a FALLBACK, not

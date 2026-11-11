@@ -1,6 +1,6 @@
 ---
 name: prose-review
-description: Read an already-written manuscript and comment ONLY where the prose does not read like a journal — imported metaphor, chat register, LLM tells, patch-note sentences left by revisions. Writes each finding as a Firestore review row (source='ai') with the replacement sentence. Use when the user says "the writing doesn't read like a paper", "문체가 논문 같지 않다", "check the writing", "does this sound like a journal".
+description: Read a written manuscript as the journal's copy-editor and comment, with the replacement sentence, only where the prose does not read like a journal. Use when the user says "the writing doesn't read like a paper", "문체가 논문 같지 않다", "check the writing", "does this sound like a journal".
 ---
 
 # /prose-review
@@ -31,10 +31,8 @@ that never opened the skill.
    not actionable; the author now has to invent the fix that you already had in
    mind. Write: `현재: "…" → 제안: "…"`. A comment without a rewrite is not
    worth a round-trip.
-3. **Run `lint_manuscript(slug)` FIRST and do not repeat it.** It already
-   reports em-dashes, run-ons, vague comparatives, colloquial register,
-   overused words, LLM tells, foreign citation syntax and insider context.
-   Anything it caught is on its own rail; duplicating it means the author reads
+3. **Run `lint_manuscript(slug)` FIRST and do not repeat it** (its
+   description lists what it reports). Anything it caught is on its own rail; duplicating it means the author reads
    the same complaint twice from two places and starts skipping both.
 4. **Comment, never edit.** Prose is the author's. Even an obvious fix goes in
    as a suggestion.

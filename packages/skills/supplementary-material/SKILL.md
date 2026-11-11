@@ -124,10 +124,8 @@ ask.
 - **+100 offset, always.** A supplementary figure is never
   `figure_number < 101`.
 - **Reordering / renumbering** — don't delete-and-re-add to change order.
-  Use `reorder_supplementary(slug, kind, order)` (or `/reorder-supplementary`):
-  it renumbers the docs, moves figure blobs server-side, and rewrites
-  `{fig:N}`/`{tab:N}` + `![](figure:N)` refs, returning freeform prose mentions
-  for you to fix.
+  Use `/reorder-supplementary` (`reorder_supplementary(slug, kind, order)`),
+  and fix the prose mentions it returns.
 - **Don't auto-export.** Registering supplementary content and
   exporting are separate steps.
 - **Large numeric tables → ship as data, not a giant Word table.** A

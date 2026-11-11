@@ -1,6 +1,6 @@
 ---
 name: study-design
-description: Design a Study document — the explainer that reads inline in the dashboard's Study tab. Covers what the surface actually does (sandboxed frame, layered base stylesheet and its tokens, asset: images, links open in a new tab), how to design one on top of the base, how to see the rendered page before calling it done, and how to keep a standalone copy (a `publish_page` URL, or any host's page) from drifting. Use before write_study, or when a study reads as an unstyled wall of text.
+description: Design a Study document — the explainer that reads inline in the dashboard's Study tab — on top of its base stylesheet, check the rendered page, and keep a standalone copy from drifting. Use before write_study, when a study reads as an unstyled wall of text, or "스터디로 정리해줘".
 ---
 
 # /study-design
@@ -16,17 +16,18 @@ the agent guessed, and guessing wrong is invisible from this side.
 ## What the surface actually is
 
 The document is rendered in a **sandboxed iframe of its own** (`srcDoc`, no
-`allow-same-origin`). Everything below follows from that, and none of it is
-guessable:
+`allow-same-origin`). `write_study`'s description states what follows from that
+— the layered base sheet, `asset:` images, links in a new tab, scripts off. What
+it does not:
 
-| | |
-|---|---|
-| **Styling** | The dashboard's CSS does NOT reach the document. The tab injects a base sheet into every document — measure, type scale, ruled tables, tabular numerals, a Latin+Korean font stack, both colour themes — as a cascade layer (`@layer scivo-base`). Your own `<style>` block sits above the layer and **adds to it**: style the one element that needs it and the rest stays typeset. |
-| **Images** | `<img src="asset:FILENAME">`, where FILENAME is what `add_asset` stored. The tab resolves it to a download URL before rendering. |
-| **Links** | Work, and open a NEW TAB. Write `<a href="…" target="_blank" rel="noopener">`. The frame is not allowed to navigate the dashboard away. |
-| **Scripts** | Off unless the reader turns them on. The document must be readable without them. Motion is CSS: `@keyframes` and `transition` run without scripts, and the base sheet turns them off under `prefers-reduced-motion` — do not re-enable it. |
-| **CSS scope** | The document owns its page. `:root`, `body` and bare element selectors are yours and leak nowhere — it is a separate document, not an injection into the dashboard. |
-| **Editing** | `update_study(study_id, html=…)` amends in place, and passing `html` **re-stamps `sources` as read-now** — rewriting the tables is what makes them current. `write_study(study_id=…)` replaces the whole record (every field) and does not re-stamp. Never write-new-then-delete: it breaks any `follows` chain and changes the URL. |
+- **CSS scope.** The document owns its page. `:root`, `body` and bare element
+  selectors are yours and leak nowhere — it is a separate document, not an
+  injection into the dashboard.
+- **Motion is CSS.** `@keyframes` and `transition` run without scripts; the base
+  sheet turns them off under `prefers-reduced-motion` — do not re-enable it.
+- **Editing.** `update_study(study_id, html=…)` amends in place and re-stamps
+  `sources`. `write_study(study_id=…)` replaces the whole record (every field)
+  and does not re-stamp. Never write-new-then-delete.
 
 **Compose with the base; do not rebuild it.** The base publishes its colours as
 tokens — `--scivo-ground`, `--scivo-surface`, `--scivo-ink`, `--scivo-muted`,
@@ -84,21 +85,10 @@ structure, on top of the base:
 
 ## What makes it a STUDY and not just a page
 
-`sources` is the reason this surface exists rather than a document in Materials:
-
-```
-sources=[{"kind": "analysis", "ref": "mlm-eval", "label": "bits/bp"}]
-```
-
-Record one for **every measured value in the document**. It stamps "read now",
-and when that analysis is next updated the study shows as out of date on its own
-— nobody has to remember. A study full of numbers and no sources is a document
-that will quietly go stale and be quoted anyway.
-
-`summary` is for the reader, in the list: what this explains. Your caveats and
-reasoning go in a material's `ai_note`, not here.
-
-`follows` chains a series into reading order.
+`sources`, `summary` and `follows` are in `project_guide(topic="study")` and
+`write_study`'s description. The rule this skill adds: record a source for
+**every measured value in the document** — a study full of numbers and no
+sources will quietly go stale and be quoted anyway.
 
 ## Also publishing a standalone copy
 
@@ -119,15 +109,11 @@ same file:
   the tab resolve it. The same page was 95 KB inlined and 25 KB by reference.
 - **Links.** Both need `target="_blank"`.
 
-**Record the copy: `mark_study_published(study_id, url)` right after
-publishing, and again after every republish.** The study's staleness tracking
-stops at the study's own edge; this is the one step past it. From then on a
-rewrite of the study warns in its return value that the copy is behind, and
-`list_studies` / the tab show `published_behind` — so the standalone copy
-cannot sit behind a link that reads as current after the study moved on. When
-that warning comes back, republish and re-record, or forget the copy with
-`url=None`. Also put the copy's URL in the study as an ordinary anchor so a
-reader can open it.
+**Record the copy with `mark_study_published(study_id, url)`** right after
+publishing and after every republish (its description says what that buys).
+When a rewrite warns that the copy is behind, republish and re-record, or
+forget the copy. Also put the copy's URL in the study as an ordinary anchor so
+a reader can open it.
 
 ## Before you call it done
 
@@ -137,47 +123,18 @@ reader can open it.
    escaped entities gets through.
 2. **Check every number has a source** in `sources`.
 3. **Look at it: `preview_study(study_id, theme="both")`, then Read the
-   PNGs.** It renders the html the way the tab does — same base sheet, same
-   theme attribute, `asset:` images inlined — in a headless browser on this
-   machine. What you are looking for: a wall of unstyled text, a table without
-   rules, sideways scroll, a missing image, a dark theme that did not follow.
-   If it reports no browser, ask the user to look at the tab and do not report
-   the page as checked — the whole reason this file exists is that four studies
-   were filed before anyone looked. The loop around that look is
-   `/visual-review`: fix, re-render, look again, and stop when a full pass
-   finds nothing — a fix you have not re-rendered and looked at is not a fix.
+   PNGs** — its description says what to look for and what to do with no
+   browser; do not report the page as checked without the look. The loop around
+   that look is `/visual-review`: fix, re-render, look again, and stop when a
+   full pass finds nothing — a fix you have not re-rendered and looked at is not
+   a fix.
 
 ## Questions on it, after it ships
 
-A reader leaves a **question** on a study, not a comment — the distinction is
-the surface's whole reason to exist. A paper comment is a defect and the loop
-closes when the prose changes; a question can be answered completely with the
-document left exactly as it is. "Where does 1.84 come from?" is owed its
-provenance, not an edit.
+Questions vs comments, `changed_study`, and asking your own with
+`ask_study_question` are in `project_guide(topic="study")`. Specific to this
+surface: a question may be **about the whole document** (`quote` is null).
 
-`list_study_questions()` — every study, open ones by default, each carrying the
-`quote` it was asked about and who asked (`source`: user | ai). Answer with
-`answer_study_question(study_id, question_id, answer, changed_study=…)`.
-
-**Set `changed_study` honestly, because it is the only thing the answer text
-cannot say.** `False` means "answered, document unchanged" and is a complete
-outcome. `True` means the question showed a passage was unclear and you revised
-it with `update_study` — do the revision, then answer. The reader uses this to
-decide whether to read the document again; an answer that silently left an
-unclear passage in place costs them that reading.
-
-Two things a question is allowed to be that a comment is not:
-
-- **about the whole document** (`quote` is null) — "is this comparison fair at
-  all?" is not about one paragraph;
-- **yours.** `ask_study_question(study_id, question, quote=…)` puts what you
-  could NOT settle beside the passage: a number you could not source, a
-  comparison you are unsure of, a sentence that may only work if you already
-  know the project. That is where it belongs once the session ends. Not a
-  substitute for asking while the person is there to answer.
-
-The reader cannot select text inside the document — it renders in a sandboxed
-frame with no same-origin, so the dashboard cannot read a selection out of it —
-so they pick a paragraph and its text arrives as `quote`. Match on the quote
-first; `block_index` is where that paragraph sat when they asked, and the
+The reader picks a paragraph and its text arrives as `quote`. Match on the
+quote first; `block_index` is where that paragraph sat when they asked, and the
 document may have moved since.

@@ -597,9 +597,9 @@ lists are not a substitute for having seen it.
 
 `/paper-deck <slug> "lab seminar" 20` should produce:
 - One deck doc with concept + theme + audience + duration_min
-- 9 default-role slides (title, outline, background ×2, method,
-  result × `min(figs, 4)`, discussion, conclusion, qa) — adjusted to
-  not exceed the paper's figure count
+- Slides whose roles follow from THIS paper's story — there is no
+  standard sequence (§4) — in a number the duration supports and with no
+  more result slides than the paper has figures to show
 - Every slide has `notes` non-empty
 - Every slide's `prompt` starts with the unity header placeholders
 - `status == "drafted"` on the deck

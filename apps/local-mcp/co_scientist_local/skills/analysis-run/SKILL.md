@@ -1,41 +1,22 @@
 ---
 name: analysis-run
-description: Run a computational analysis (local or HPC) within a named group attached to a paper, then map its outputs (PNG/CSV) to manuscript figures/tables. Use when the user says "run analysis," "do X computation," "submit a job," "execute this script," or wants to produce a result figure from data.
+description: Run a computational analysis (local or HPC) within a named group attached to a paper, with a run record for every execution. Use when the user says "run analysis," "do X computation," "submit a job," "execute this script," or wants to compute a result from data.
 ---
 
 # /analysis-run
 
 **Triggers:** "run the differential expression analysis," "submit a
-GATK pipeline," "compute X from Y data," "do a t-test on …", "make
-figure 2 from this CSV."
+GATK pipeline," "compute X from Y data," "do a t-test on …", "run the
+plotting script."
 
 **This is the DEFAULT path for ANY computation that produces a manuscript
 figure, table, or number — not just "big" jobs.** A quick `zcat | awk`, a
 one-off `gm_compare`, a plotting script, an ssh command on a registered node:
-all of it needs a run record (host · command · env · log · pid) or the
-paper's provenance has a silent hole ("which server / which command made
-Fig 3?" must be answerable from `analysis_runs`). Never run a result-producing
-analysis via raw Bash/ssh and move on. If you already did, **back-fill it now**
-with `create_analysis(...)` + `record_analysis_run(host=, command=, …)` —
-**with the run's real `started_at` / `finished_at`** off its own log, or the
-row claims the work happened today and every artifact made since the real run
-is reported stale on every export. Reconcile with `scan_untracked_jobs` /
-`list_analysis_runs`.
-
-**Where this actually gets lost: the exploratory stretch.** Nine short
-interactive `ssh … python script.py` runs never feel like "time to use
-/analysis-run", and then six tables depend on them. One measured case: 9 hours of
-foreground training, no log file written, checkpoints sitting on disk, and no way
-left to say which command or hyperparameters produced the reported auPRC. Treat
-the **second** ad-hoc run in a session as the signal to start recording.
-
-**To reconstruct a gap after the fact, `scan_untracked_jobs` is the wrong tool.**
-It reads `ps`, so it only ever sees a job still RUNNING — and nearly every
-provenance gap is a job that already finished, which is why it can keep returning
-clean while a paper has zero records. Use
-`scan_recent_outputs(alias, workdir=…, since_hours=…)`: it lists output files
-recently written on that host next to the runs we did record, so "7 checkpoints
-in the window, 0 recorded runs" becomes visible. It reports both sides and does
+all of it needs a run record. The guide's "Analysis provenance" is the rule:
+back-filling an ad-hoc run (with its real `started_at` / `finished_at`), the
+second ad-hoc run as the signal to start recording, and which of the two
+detectors finds a gap after the fact. One thing specific to reconstruction:
+`scan_recent_outputs` reports outputs and recorded runs side by side but does
 not claim which file came from which command — a run record doesn't declare its
 outputs, so that inference is yours to make.
 
@@ -63,8 +44,8 @@ Every run goes **one of two ways**, and you pick per run:
   server and launches there (nohup or a scheduler like `sbatch`). Use
   for heavy/long jobs. → `submit_remote_job`
 
-The original repo split these the same way; keep them distinct — don't
-try to run a remote command through the local tool or vice-versa.
+Keep them distinct — don't try to run a remote command through the local
+tool or vice-versa.
 
 ### A. Local (your machine)
 
@@ -254,20 +235,10 @@ the next agent) reads it to understand what each group does.
 - **NEVER bypass the MCP for run tracking**. `nohup ssh "…"` skips
   the database; the run won't appear in the Runs tab and there's no
   log tail. Use `submit_remote_job` even for one-shot remote work.
-- **The script is the parameter set, and it is pinned for you.**
-  `submit_remote_job` hashes the script your command names plus every sibling
-  `*.sh`/`*.py`/`*.R` in the working directory before it launches, and stores
-  `script_sha256` / `scripts` on the run. Two runs with identical `params` and
-  an edited `run.sh` are NOT comparable, and `compare_run_params` now says so.
-  If it could not hash them it says that too — read the warning instead of
-  assuming the code is pinned.
-- **Name the inputs: `datasets=["muju-hifi-reads"]`** on `submit_remote_job` /
-  `record_analysis_run`. The run then carries the registered path, size and
-  mtime, so "which bytes did this read" is answerable from the run alone;
-  `link_dataset` binds to the analysis, which cannot tell two runs apart.
-- **Back-filling a stray job**: `record_analysis_run` takes `workdir=` and
-  `log_path=`, and `update_analysis_run` corrects either — a wrong log
-  filename does not belong in `notes`.
+- **Script hashing, `datasets=` and back-filling `log_path` / `workdir`** are
+  in the guide's "Analysis provenance": two runs with identical `params` and an
+  edited `run.sh` are NOT comparable, and naming the inputs is what makes
+  "which bytes did this read" answerable from the run.
 - **Output dir per run is fine** but DON'T create a separate
   `analysis/<group>/scripts/` directory. Scripts + outputs in the
   same group folder.
