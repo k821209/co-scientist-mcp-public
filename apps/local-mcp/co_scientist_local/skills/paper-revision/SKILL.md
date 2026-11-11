@@ -88,10 +88,17 @@ announces itself.
    - **Accept** — make the requested change in the manuscript.
    - **Reject** — explain why and respond.
    - **Need more info** — pause that one and come back later.
-4. For accepted comments, edit the relevant section via
-   `mcp__scivo__update_section(slug, key, body=...)`. **The replacement is
-   manuscript prose, not a note about the change** — see "The revised sentence is
-   manuscript prose, not a patch note" below, and `/paper-writing` §2a.
+4. For accepted comments, change the passage the comment points at — and
+   only that. A comment is about a sentence or a paragraph, so the edit is
+   `mcp__scivo__replace_in_section` (a phrase, a sentence) or one block
+   through `mcp__scivo__section_blocks` + `update_section(block_id=…)`.
+   **Do not re-send the section body to change part of it**: the author edits
+   paragraphs in the dashboard while you work, and a whole-body write puts
+   back whatever you read before they typed — theirs is gone, with no error.
+   A whole-body `update_section` is for a section that is being rewritten.
+   **The replacement is manuscript prose, not a note about the change** — see
+   "The revised sentence is manuscript prose, not a patch note" below, and
+   `/paper-writing` §2a.
 5. Mark the comment resolved AND re-anchor it to the revised text:
    `mcp__scivo__resolve_paper_comment(slug, review_id,
    status='accepted', response='...', new_anchor_text='<a verbatim phrase

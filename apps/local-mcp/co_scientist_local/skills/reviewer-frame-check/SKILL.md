@@ -26,13 +26,13 @@ flow the author already uses — accept / reject per finding, exactly like
 | Tool | Reads | Blind to |
 |---|---|---|
 | `/paper-review` | the MANUSCRIPT, judging science | whether the LETTER is legible from outside |
-| `lint_manuscript` | regex phrase-lists + Jaccard sentence pairs (`tools/manuscript_lint.py`) | anything whose words are all ordinary |
+| `lint_manuscript` | phrase lists and near-duplicate sentence pairs | anything whose words are all ordinary |
 
 Four real failures, all on one response letter, all surviving four consecutive
 human corrections:
 
 1. *"we considered"* — an internal deliberation the reviewer never saw. A
-   wordlist could catch this; `_STYLE_TELLS` does not contain it.
+   wordlist could catch this; the lint's does not contain it.
 2. *"an earlier draft"* — a document outside the reviewer's bundle. Same: a
    wordlist could catch it, and none does.
 3. A sentence describing a **removed figure panel** as having shown "the 285
@@ -75,8 +75,7 @@ bug** rather than a readability one. A `frame_error` tells the reviewer somethin
 false about what they read. Report these first and say so plainly; do not soften
 them into "could be clearer".
 
-Severities are limited to `major | minor | suggestion`
-(`tools/reviews.py:27`) — map as in the table and put the kind name in the
+Severities are limited to `major | minor | suggestion` — map as in the table and put the kind name in the
 comment text so the author can sort.
 
 ## The context bundle
@@ -114,10 +113,8 @@ fold it into a reviewer run.
 
 ### Getting the original submission
 
-There is no manuscript version history in this system — nothing in
-`tools/sections.py`, `tools/papers.py` or `tools/exports.py` stores a
-point-in-time manuscript, and `get_manuscript(slug)` returns only the current
-assembled blob.
+`get_manuscript(slug)` is the manuscript as it is NOW. What the reviewers
+hold is the file that was sent, and that is a registered submission:
 
 1. `list_submissions(slug)` — the first entry IS the manuscript the reviewers
    hold. `get_submission(slug)` downloads it, checksum verified.
@@ -181,9 +178,8 @@ face value they were instructions to write the paper a second time — acting on
 of them would have grown the letter past 5,000 words, while acting on the ones that
 DID apply shortened it from 3,600 to 2,580.
 
-Infer the default from the section key — `response_letter` / `cover_letter` (see
-`tools/doc_profile.py`, which `lint_manuscript` uses for the same classification) —
-and state it explicitly anyway. Under `response_letter` the agent also runs a
+Infer the default from the section key — `response_letter` / `cover_letter`,
+the same classification `lint_manuscript` uses — and state it explicitly anyway. Under `response_letter` the agent also runs a
 **compliance-drift** check: does the letter claim something was ADDED that already
 stood in the submitted version? That reports as `frame_error`, and it is the most
 damaging error a letter can make.
@@ -263,8 +259,7 @@ unanchored finding leaves the triage flow.
 ## Emitting the findings
 
 The letter must be a **section** first, or anchors dangle. `add_review` does not
-validate `anchor_text` (only `update_review`/`resolve_paper_comment` do —
-`tools/reviews.py:57`), so a comment anchored to a standalone `.docx` is accepted
+validate `anchor_text` (only `update_review`/`resolve_paper_comment` do), so a comment anchored to a standalone `.docx` is accepted
 and then silently fails to highlight. Save the letter per `/response-letter`
 step 3:
 
@@ -273,7 +268,7 @@ mcp__scivo__add_section(slug, key='response_letter',
   title='Response to Reviewers', sort_order=<after the last section>, body=…)
 ```
 
-`sort_order` is required (`tools/sections.py:91`). Note the letter then exports
+`sort_order` is required. Note the letter then exports
 with the paper — check that against the journal package the author wants.
 
 ### The mapping is mechanical — do not improvise it
@@ -383,13 +378,9 @@ pointer.
 Real capabilities this skill needs and the system does not have. Stated so they
 are not rediscovered:
 
-- **No manuscript version history**, by decision rather than omission. There is
-  no tool returning the manuscript as submitted — no `list_journal_versions` or
-  equivalent (verified across all ~200 tools in
-  `apps/local-mcp/co_scientist_local/mcp_server.py`). The author keeps the
-  snapshot in Materials instead, with the pointer in project memory (see above),
-  which avoids a schema change; the cost is that the baseline is a convention
-  rather than a guarantee, so the confirm-once step stays a gate.
+- **The baseline is whatever the user registered.** `list_submissions` returns
+  the file they said was sent; nothing can check that it is the file the
+  reviewers actually opened, so the confirm-once step stays a gate.
 - **Per-seat scoping is available but not enforced.** `list_reviews` now takes
   `reviewer_name` and `round`, so isolating one seat's registered points is a tool
   call rather than hand-slicing. What nothing can enforce is the FILE side: if the
@@ -401,6 +392,6 @@ are not rediscovered:
   letter only as a section or a local file. The editor run therefore depends on
   the author naming both.
 - **No finding-kind field on reviews.** The kind is carried as a `[frame_error]`
-  prefix in `comment` because `severity` has only three values
-  (`tools/reviews.py:27`) and there is no free-form label field. Filtering by
+  prefix in `comment` because `severity` has only three values and there is
+  no free-form label field. Filtering by
   kind means string-matching the comment.

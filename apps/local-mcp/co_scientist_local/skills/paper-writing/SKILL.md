@@ -36,7 +36,12 @@ description: Create a new paper or update sections of an existing one. Use when 
    - Ask any clarifying questions (target audience, key claims).
    - Draft the section content **per the Writing craft rules below**
      (section contracts, journal register, no duplication).
-   - Call `mcp__scivo__update_section(slug, key, body=..., status='draft')`.
+   - Call `mcp__scivo__update_section(slug, key, body=..., status='draft')`
+     — for a section you are DRAFTING or rewriting whole. To change part of
+     one that already has text, edit that part (`replace_in_section`, or one
+     block via `section_blocks`): the author edits paragraphs in the
+     dashboard, and re-sending the body overwrites what they typed since you
+     read it.
 4. After updating sections, run `mcp__scivo__lint_manuscript(slug)`,
    resolve every warning, then call `mcp__scivo__get_paper_state(slug)`
    and show the user a summary of what changed (and the clean lint result).
@@ -315,159 +320,20 @@ Scope is the only thing that makes a late discovery cheap. Write the claim to
 the shared slots and a mismatch narrows it; write past them and the mismatch
 takes everything built on top.
 
-### 2d-quater. Trimming a caption can delete the paper's method
+### 2d-quater. Captions and legends — `CAPTIONS-LEGENDS.md`
 
-Before cutting anything from a caption or legend, check whether the value exists
-anywhere else. A caption can be the **sole carrier** of a parameter, and every
-other lint flag here (`long`, `interpretive`, `bare_cross_reference`) invites
-deletion.
+Read it before writing or trimming ANY caption or legend, and whenever
+`lint_legends` fires. The one rule that cannot wait for the file: **before
+cutting anything from a caption, check that the value exists somewhere
+else.** A caption can be the sole carrier of a parameter, and the lint's
+flags all invite deletion.
 
-This nearly shipped: a Figure 6 legend carried "projected … with **± 250 kb
-padding**". It reads exactly like method detail whose home is Methods — but
-Methods never stated it (it stated a *different* 100 kb constant, for a separate
-upstream step), and the paper's headline number depended on it entirely:
+### 2d-quater-bis. Korean: a line that stands alone — `KOREAN-STANDALONE-LINES.md`
 
-| padding | candidates inside a QTL |
-|---|---|
-| 0 kb | 188/474 = 39.7% |
-| 100 kb | 196/474 = 41.4% |
-| **250 kb** | **213/474 = 44.9%** ← the manuscript's number |
-| 1 Mb | 256/474 = 54.0% |
-
-`lint_manuscript`'s sibling `lint_legends` now flags this as **`caption_only`**,
-ranked above every other flag, with the action **RELOCATE, do not delete**.
-
-Two rules follow:
-
-- **A value that depends on a tunable parameter states the parameter AND how much
-  the value moves with it.** "44.9% at ± 250 kb, 39.7% unpadded, 54.0% at ± 1 Mb"
-  is one sentence and pre-empts "why 250 kb?" at review.
-- **State the predicate**, not just the threshold. "Inside a QTL" has two equally
-  natural readings — the gene's start point contained in the interval, or its span
-  intersecting it. They disagree (one gene, 8 QTL vs 10), the headline percentage
-  was identical either way, so no numeric check could ever catch it, and a
-  reproducer is left guessing.
-
-#### What belongs where
-
-| Keep in the caption | Move to Methods | Move to Results/Discussion | Delete |
-|---|---|---|---|
-| panel letters and what each shows; visual encodings (colour, shape, line style, size); axis definitions; `n`; values that appear ONLY in the figure; a note that prevents misreading the panel ("an empty cell means no study reported a QTL there") | test names, correction procedures, software + versions, iteration/restart counts, thresholds, merge conventions, annotation-source IDs, and **any predicate a number depends on** | derived statistics the text already quotes; interpretation; generalisability caveats | only sentences duplicated near-verbatim from a body section — exactly what `body_duplication` enumerates |
-
-Worked example, a table caption 200 → 66 words: the stage list, `52.1 ± 8.5 s`,
-`~3.6× faster` and `~64× less RAM` all came out because **each is a cell in the
-table itself**; the incremental-append argument came out because it is a
-Discussion paragraph. Nothing was lost — because every token was verified present
-elsewhere first, which is the check `caption_only` automates.
-
-#### 2d-quinquies. A caption points at numbers; it does not reprint them
-
-The most common padding is a caption walking the reader through values already in
-front of them:
-
-> Gene-Miner's all-isoform Complete (C) fraction rises where the RNA-seq captures
-> alternative isoforms (rice 93.6% → 96.5%, Drosophila 96.5% → 98.9%, C. elegans
-> 95.1% → 98.3%; soybean only 91.9% → 92.1%), whereas BRAKER3's barely changes.
-
-Every one of those percentages is a cell in that same table. The caption has
-become a worse-formatted copy of the table underneath it.
-
-- **One headline value is good caption writing.** "Completeness reaches 96.5% for
-  rice" earns its place. A walk-through of eight does not.
-- **Replace the list with what to NOTICE.** The sentence above is trying to say
-  "all-isoform gains track isoform richness; BRAKER3 is flat" — say that, and let
-  the numbers stay in the table.
-- **Figures are the worse offender**, because nothing structural stops it: a
-  figure has no columns, so a caption can carry a whole mini-Results of numbers
-  and still look like a caption.
-- **Word count will not save you.** A numeric-dense caption can be short, so the
-  `long` flag stays quiet.
-
-`lint_legends` reports this as **`number_restatement`** (warn) and lists every
-offending number in `duplicated_numbers` with its source (`own_cells` vs
-`body_or_other_item`), so one editing pass clears the item. It never fires on the
-same token as `caption_only`: a parameter you must relocate and a measurement you
-should cut are different things, and the report will not ask you to do both.
-
-#### 2d-quinquies-bis. What goes in a caption, and what does not
-
-`caption` and `legend` describe what the item **shows**. Interpretation belongs
-to the body section that cites it.
-
-| field | holds |
-|---|---|
-| `title` | the short name ("Genome size by accession") |
-| `caption` | the "Figure N." sentence plus what is depicted — axes, units, `n`, normalisation, the reference the values are relative to |
-| `legend` | panel-by-panel and symbol-level detail: what A/B/C are, what the colours and shapes mean, what an empty cell means |
-| the body | what the result MEANS, what it excludes, why it matters, how it relates to the other evidence |
-
-Journals print caption and legend as one block, and the naming is not consistent
-between them — Annual Reviews says caption, Nature-family says legend, and
-"legend" also still means the key drawn inside the figure. Use the split above
-regardless of what the target journal calls it.
-
-**This is where "write from the reader's context" gets misapplied.** That rule
-says to keep the context that makes a claim checkable when you compress. It does
-NOT say to move the context into the caption — keep it, but keep it in the body.
-A caption that argues duplicates the body, and the two copies then drift apart
-under revision, which is how a manuscript ends up stating its central argument
-twice in two places that have to be kept in sync by hand.
-
-`lint_manuscript`'s `summary.clean` now covers captions and legends too, so a
-manuscript whose figure legends restate the synthesis can no longer report clean;
-`summary.body_clean` is the section-text-only answer. Both are `null` when that
-dimension had nothing in it — see the gate below.
-
-#### 2d-sexies. Describe the panel; don't argue from it
-
-The same failure in words rather than numbers. A legend says what the reader is
-looking at. The moment it says what the reader should *conclude*, that sentence
-belongs in Results.
-
-| legend text | verdict |
-|---|---|
-| "Darker shading indicates higher coverage." | fine — that IS the legend's job |
-| "The lower panel shows the same data on a log scale." | fine — describes the graphic |
-| "In rice the models are **overwhelmingly larger** than the reference." | Results |
-| "Gene-Miner **approaches** their ceiling and **matches or exceeds** BRAKER3." | Results |
-| "The novel loci are **markedly lower**." | Results |
-| "They are complete gene models, **as expected** for lineage-specific genes." | Results/Discussion |
-
-The tell is not the comparative word — legends compare all the time — it is
-**what the subject is**. When the subject is the graphic (shading, panel, bars,
-axis), a comparison describes an encoding. When the subject is a result (the
-models, the loci, the pipeline), it is a claim.
-
-`lint_legends` flags these as **`interpretive`** and puts each offending sentence
-in `interpretive_spans`. Comparisons in a sentence about the graphic are
-deliberately not flagged. One such sentence is `info`; two or more is `warn`,
-which is the signal that the legend has grown a mini-Results.
-
-### 2d-quater-bis. Korean: in a line that stands alone, keep the subject and the object
-
-Korean drops what the context restores, and in speech that is right. A
-slide title, a table-of-contents item, a question line, a table header, a
-figure title, a card's headline stand with no sentence before them — there
-is no context to restore from. "또 목적어도 주어도 없는 문장들 있네" (a user,
-on 16 of 31 slides). Keep **who / what / about what** inside the line, even
-when the previous sentence would restore it.
-
-| 나쁨 | 좋음 |
-|---|---|
-| 목록 맨 위가 실제로 맞는가 | 모델이 매긴 후보 목록의 상위 몇 개가 실제로 그 기관에서 켜지는가 |
-| 모델이 프로모터의 어디를 보고 매기는가 | 모델은 프로모터의 어느 자리를 보고 점수를 매기는가 |
-| 적응시키면 나아집니다 | 어댑터를 얹으면 프로모터를 더 잘 읽습니다 |
-| 기관에 따라 크게 다릅니다 | 발굴 정밀도는 기관에 따라 크게 다릅니다 |
-| 점수는 몇 군데가 만듭니다 | 프로모터 2 kb 중 몇 자리가 점수를 만듭니다 |
-
-The self-check: write the line alone on paper and show it to someone; if
-"무엇이?" or "무엇을?" comes back, fix it. **This rule is the pair of
-§2d-quinque's deictic rule**: deleting "그" from "그 목록의 맨 위가" and
-stopping leaves an omitted-subject line — the name the deictic pointed at
-has to go in its place ("후보 목록"). Noun-phrase titles have no predicate
-and are exempt ("우리가 틀렸던 자리 셋", "후보 목록을 만드는 절차").
-`lint_manuscript` flags a short Korean predicate line with no case particle
-as `omitted_argument`, headings included.
+Korean drops what the context restores. A title, a header, a table header, a
+figure title stands with no sentence before it, so there is nothing to
+restore from: keep who / what / about what inside the line. Read the file
+when drafting Korean of that kind.
 
 ### 2d-quinque. Name the referent, name the measurement, state the fact here
 
@@ -557,10 +423,11 @@ Never `[@key]`: that is pandoc syntax, this system does not resolve it, and it
 reads as cited on screen while exporting with no bibliography entry
 (`lint_manuscript` flags it as `foreign_citation_syntax`).
 
-Prefer `add_reference_by_doi(slug, doi)` — it fetches the metadata so nothing
-is invented. You can pre-add references via
-`mcp__scivo__add_reference(slug, citation_key=..., doi=..., title=..., authors=[...])`
-either before or after the prose — `prepare_export` will check for
+Register a reference with `add_reference_by_doi(slug, doi)` — it fetches the
+metadata, so nothing is invented, and it refuses a DOI that does not resolve.
+`add_reference` (typed by hand) is for a work that HAS no DOI, with the
+details copied from the source in front of you; never for one whose DOI you
+could look up. Before or after the prose — `prepare_export` checks for
 unresolved citations at export time.
 
 ## Formatting

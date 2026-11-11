@@ -26,7 +26,7 @@ Requires `vh` installed (see `/video-harness`), plus `edge-tts` for narration.
    `add_reference_by_doi` (CrossRef-verified). Hallucinated DOIs 404 and are
    refused. Never paste an author/journal/DOI you typed from memory.
 2. **Two independent sources** for every factual claim; prefer peer-reviewed
-   primary literature. Exclude marketing / clinic blogs. ([[factcheck-discipline]])
+   primary literature. Exclude marketing / clinic blogs.
 3. **Verify the risky claims against the primary paper** (WebFetch / PMC), not a
    single review. (Real saves: reversed a "defibrotide suppresses angiogenesis"
    claim; flagged an unresolved in-vitro-only result.)
@@ -84,12 +84,14 @@ description_block = format_description(refs) # full bibliography + DOIs for the 
 
 ### 5. Verify + upload
 Frame↔sentence mapping, audio levels (mean ≈ -20 dB / max < 0), pronunciation
-check (spell abbreviations in Hangul for the TTS). Then `add_video` →
-`youtube_upload(privacy="unlisted")   # public ONLY after the user says so — /video-publish §3` with the citation block in the description.
+check (spell abbreviations in Hangul for the TTS). Then `add_video`, with
+the citation block ready for the description — and STOP there. Uploading is
+`/video-publish`, after the user has watched it and said to: an unlisted
+upload is still a video on their channel, and it is not this skill's to
+decide.
 
 ## Related
-`[[shorts-reference-management]]`, `[[factcheck-discipline]]`. Same lineage as
-`/news-short`, `build_rank_race`, and `vh.style_gallery`.
+Same lineage as `/news-short`, `build_rank_race`, and `vh.style_gallery`.
 
 ## Assembly
 

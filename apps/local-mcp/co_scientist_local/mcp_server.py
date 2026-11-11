@@ -191,9 +191,19 @@ def build_mcp(state: State) -> FastMCP:
         return info
 
     @mcp.tool()
-    def project_guide() -> str:
+    def project_guide(briefed: bool = False, topic: str | None = None) -> str:
         """Return the current session guide (skills, tool surface, citation
         format, math mode rules, remote-job rule, image-gen tier).
+
+        `briefed=True` is for a HOST that has already made the session-start
+        calls and put their results in front of the model: the guide then
+        says what those results mean instead of listing the calls. A model
+        calling this itself leaves it False.
+
+        `topic` returns ONE part of the guide that the guide itself only
+        summarises — pipelines, study, publishing, graphs, image-generation.
+        Read the topic before the first call to that family of tools; the
+        guide says which. An unknown topic answers with the list.
 
         Lives in the installed `co_scientist_local` package so updates flow
         via `pip install --upgrade` — no need to re-download CLAUDE.md.
@@ -203,12 +213,16 @@ def build_mcp(state: State) -> FastMCP:
         directory sits below them (the case in which the host's own skill
         listing comes back empty while invocation by name still works).
         """
+        if topic:
+            from .guide import render_topic
+            return render_topic(topic)
         try:
             from .skills_install import find_installed_skills
             installed = find_installed_skills()
         except Exception:      # the guide must never fail on a filesystem quirk
             installed = None
-        return render_guide(include_video=_features.video_enabled(), installed=installed)
+        return render_guide(include_video=_features.video_enabled(), installed=installed,
+                            briefed=briefed)
 
     # ─── project memory ──────────────────────────────────────────────────────
     @mcp.tool()
@@ -3775,8 +3789,11 @@ def build_mcp(state: State) -> FastMCP:
         slide_id: str,
         regions: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        """Lay out SEVERAL images on one slide — forces the slide to
-        render_mode='hybrid'. Each region is a dict:
+        """Lay out SEVERAL images on one slide. A slide with no `code` becomes
+        render_mode='hybrid'; one that is in `code` mode or already carries a
+        snippet STAYS `code`, and its regions are the image placeholders the
+        snippet places (snapping it to hybrid would drop its text and shapes).
+        Each region is a dict:
           {render_mode: "ai-image" | "code-shape" | "paper-figure",
            x, y, w, h: floats 0..1 — fractions of the slide,
            fit: "contain" (default — letterbox, never crop; figures /
@@ -3891,9 +3908,11 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def render_deck(slug: str, deck_id: str) -> dict[str, Any]:
-        """Render every slide we can do automatically. Skips code-shape /
-        hybrid (returns them in `skipped[]` for agent follow-up). When
-        every slide has an image_blob_path, flips deck.status to 'rendered'.
+        """Render every slide we can do automatically: figure and ai-image
+        slides, and the regions of hybrid and `code` slides that are one of
+        those. `code-shape` slides and regions come back in `skipped[]` for
+        agent follow-up (`render_region`). When every slide has an
+        image_blob_path, flips deck.status to 'rendered'.
         """
         return _deck_render.render_deck(state, slug, deck_id)
 
@@ -3907,8 +3926,9 @@ def build_mcp(state: State) -> FastMCP:
         only_slides: list[int] | None = None,
     ) -> dict[str, Any]:
         """Emit a .pptx from a deck — and a sibling .pdf when LibreOffice
-        is installed (the portable fallback; Keynote sometimes rejects
-        python-pptx output).
+        is installed (for read-only sharing; the .pptx itself opens in
+        Keynote, PowerPoint and LibreOffice — the export repairs the two
+        things python-pptx leaves that Keynote refuses).
 
         Image slides embed the rendered PNG, aspect-fitted. `text` slides
         (and any slide still missing a render) become NATIVE editable

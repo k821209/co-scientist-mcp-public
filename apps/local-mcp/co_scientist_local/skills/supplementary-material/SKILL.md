@@ -61,6 +61,7 @@ mcp__scivo__add_figure(
   caption="<draft caption>",
   legend="<full legend>",
   local_path="<path to PNG>",
+  source_analysis="<analysis that made it>",   # or "manual" for a schematic
 )
 mcp__scivo__add_table(
   slug,
@@ -68,6 +69,7 @@ mcp__scivo__add_table(
   title="Full parameter set",
   content="<markdown table>",
   caption="<caption>",
+  source_analysis="<analysis that made it>",   # or "manual" for a hand-compiled table
 )
 ```
 
@@ -77,14 +79,14 @@ starting at 101.
 ### 4. Supplementary text sections
 
 For supplementary METHODS / NOTES that are prose (not a figure or
-table), add them as regular sections with a `supplementary_` key
-prefix, or append to a dedicated section the user designates:
+table), add them as a section of their own with a `supplementary_` key
+prefix, or append to a section the user designates. A new key has to be
+created before it can be updated:
 
 ```
-mcp__scivo__update_section(
-  slug, key="supplementary_methods",
-  body="<supplementary text>",
-  status="draft",
+mcp__scivo__add_section(
+  slug, key="supplementary_methods", title="Supplementary Methods",
+  sort_order=<after the last section>, body="<supplementary text>",
 )
 ```
 

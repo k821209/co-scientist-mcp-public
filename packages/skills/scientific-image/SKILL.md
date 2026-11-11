@@ -24,9 +24,10 @@ A staged pipeline around `mcp__scivo__generate_image`:
 5. **Register** as a figure on the paper (or save as asset for
    exploratory shots).
 
-`generate_image` routes through the Pro Cloud Function (gpt-image-2)
-or falls back to the user's local Gemini key for free tier — the
-skill is provider-agnostic.
+`generate_image` is a paid-plan tool: on a free plan it refuses, and there
+is no fallback inside this MCP. Check `get_plan()` before promising a
+figure; `project_guide(topic="image-generation")` says what a free-plan user
+does instead.
 
 ## Hard rules
 
@@ -283,7 +284,7 @@ download/preview button.
 Defaults that work:
 - `1:1` for single-cell schematics, isolated components
 - `16:9` for multi-stage pathways, workflows, comparisons (most common)
-- `4:3` for tree / hierarchy figures
+- `3:2` (landscape) for tree / hierarchy figures; `2:3` for a tall one
 
-Larger sizes can be requested but the Cloud Function caps at the
-model's native sizes (1024x1024 / 1536x1024 / 1024x1536).
+Only the ratios `generate_image` lists are accepted — `4:3` is not one of
+them — and the output is one of the model's native sizes whatever is asked.

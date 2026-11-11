@@ -118,7 +118,7 @@ reader looks for it and where a reviewer can argue with it.
 
 ## 6. Nothing interpretive inside a table object
 
-SKILL.md §2d-sexies already forbids this in a `caption`. It also applies to a
+`CAPTIONS-LEGENDS.md` §2d-sexies already forbids this in a `caption`. It also applies to a
 table's **`content`**: `lint_legends` checks the prose outside the pipe table
 too (`content_interpretive`), so a mini-Results moved there is caught — but it
 is caught after the fact; do not write it.

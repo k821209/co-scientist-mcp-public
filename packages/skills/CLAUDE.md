@@ -39,11 +39,22 @@ guide's section and write only what is different on this skill's surface. The
 shape to copy is `/paper-revision`'s "read `/paper-writing` §2a; here are the
 four failures specific to revising."
 
-## 3. `paper-deck` is ~1,900 lines and cannot be reviewed.
+## 3. A skill is a spine and, when it has branches, reference files.
 
-The review sampled it. Do not add to it. The next edit that touches it should
-split a core `SKILL.md` (rules) from reference documents (examples, catalogs,
-recorded cases), the way its own `reference_corpus/` already works.
+`paper-deck` reached 1,900 lines and could not be reviewed; a review sampled
+it and missed that it contradicted itself eight times. It was split on
+2026-11-11: `SKILL.md` holds what every invocation needs — the rules, the
+flow, and for each branch what it is, the rule that cannot wait, and WHEN to
+read its file — and `references/*.md` holds the branch (a helper catalog,
+worked examples, a fallback procedure). `tracked-changes-export` and
+`paper-writing` are split the same way.
+
+So: new material goes in the reference file of the branch it belongs to, not
+on the spine. A new branch is a new file plus a stub that says when to read
+it. The audit fails a spine over 40 KB, a reference file no spine points at,
+and a pointer at a file that is not there — and it reads the reference files
+as part of the skill, so a tool name or a keyword argument in one is checked
+like any other.
 
 ## 4. A rule the author cannot check on themselves wants a reader, not a reminder.
 

@@ -178,5 +178,8 @@ otherwise is the failure mode, not the check.
 
 Show the draft. Offer to save it — either as a new section
 (`add_section(slug, key='response_letter', title='Response to Reviewers',
-body=…)`) so it exports with the paper, or as a standalone file the user can
-attach to the resubmission. Default to showing it inline and asking which.
+sort_order=<after the last section>, body=…)`) so it exports with the paper
+and can be checked by `/reviewer-frame-check`, or as a standalone file the
+user can attach to the resubmission. A file you write locally reaches the
+dashboard only through `attach_export` — say which you did. Default to
+showing it inline and asking which.

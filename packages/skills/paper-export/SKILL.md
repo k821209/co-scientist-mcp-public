@@ -301,9 +301,11 @@ If `rc != 0` or stderr mentions errors, surface them. Most failures are:
   excludes them; export both files when supplementary content exists (see
   step 4).
 - "The journal also wants a marked-up / tracked-changes copy" →
-  `/tracked-changes-export`. It compares this clean `.docx` against the
-  previously submitted one with LibreOffice, so real `w:ins`/`w:del` marks land
-  in the file. Do NOT diff the markdown for this: that produces coloured
+  `/tracked-changes-export`, which marks the differences between the
+  submitted file and the revised one as real `w:ins`/`w:del` revisions. Read
+  its step 1 before assuming this export is the revised one: for a paper
+  already sent, the revision is applied to a copy of the SUBMITTED file, which
+  carries material no export can regenerate. Do NOT diff the markdown for this: that produces coloured
   strikethrough with zero revision marks, which Word's review pane cannot show
   and a reviewer cannot accept or reject.
 - **Anything you build locally is NOT uploaded.** `export_to_path` uploads its

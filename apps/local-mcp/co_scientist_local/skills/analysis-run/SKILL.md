@@ -92,14 +92,8 @@ paths relative to it (`bash run.sh`, not `bash analysis/<group>/run.sh`).
 
 Returns immediately with the PID and a generated `run_key` (in the
 returned row — you don't pass one in). The MCP wraps `subprocess.Popen`
-so your Claude Code session doesn't block. Periodically poll with the
-`run_key` from the return:
-
-```
-mcp__scivo__reap_local_run(slug, analysis, run["run_key"])
-```
-
-When `finished_at` is set, you're done.
+so your session doesn't block. Wait for it with `wait_for_run` (step 4),
+using the `run_key` from the return.
 
 ### B. Remote (registered HPC alias)
 
@@ -189,26 +183,23 @@ mcp__scivo__server_status(alias)  # is it up?
 
 ### 4. Watch + reap
 
-Local:
+Local or remote, the wait is one tool:
+
 ```
-run = mcp__scivo__reap_local_run(slug, analysis, run_key)
-# loop with a short sleep until run["finished_at"] is set
+mcp__scivo__wait_for_run(slug, analysis, run_key, timeout_s=…)
 ```
 
-Calling `reap_local_run` is the fastest way to get the result, but it's
-no longer the *only* way a run gets closed: a background reaper in the
-MCP polls launched local PIDs and auto-marks finished within ~30s, so a
-job you killed or that crashed surfaces on the dashboard's Runs tab on
-its own (jobs that died between sessions are swept at the next startup).
+Do not write the wait yourself — no sleep loop, no shell condition over a
+pidfile. The guide's "Analysis provenance" section says why;
+`wait_for_run` answers running / finished / **undetermined**, and the third
+is the one a hand-written loop cannot give.
 
-Remote:
-```
-mcp__scivo__poll_remote_pids(alias)  # PIDs still alive?
-mcp__scivo__refresh_log_tail(slug, analysis, run_key)
-# (the dashboard does this automatically every few seconds)
-```
+**Finished is not succeeded.** When it returns finished, read `exit_code`
+and the log (`refresh_log_tail`) before you use any output: non-zero, or a
+log that ends in a traceback, is a failed run and is reported as one.
 
-When done, check `exit_code`. If non-zero, surface the log tail.
+A run you did not wait for still gets closed — the job reports its own end,
+and a background reaper marks a dead local PID within about 30 s.
 
 ### 5. Register outputs as figures/tables
 
@@ -222,6 +213,7 @@ mcp__scivo__add_figure(
   title="<concise title>",
   caption="<draft 1-sentence caption>",   # full legend later
   local_path="analysis/<group>/out/<file>.png",
+  source_analysis="<group>",       # ALWAYS: the analysis that made this file
 )
 ```
 
@@ -234,8 +226,13 @@ mcp__scivo__add_table(
   title="<title>",
   content="<markdown table — convert from CSV>",
   caption="<draft caption>",
+  source_analysis="<group>",
 )
 ```
+
+`source_analysis` is what lets `prepare_export` say that a re-run left this
+figure or table behind; without it that failure is silent, and a numeric
+table without it fails `check_requirements`.
 
 Don't register every output — only those the user wants in the paper.
 The rest sit in `analysis/<group>/out/` as the audit trail.
