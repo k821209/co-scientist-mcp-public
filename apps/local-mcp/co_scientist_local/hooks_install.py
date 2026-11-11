@@ -20,8 +20,10 @@ What differs, and why this file is generated rather than copied:
   on the first launch that sees a new or changed hook file). Editing the file
   by hand invalidates that trust; regenerating it does too, on purpose.
 
-Exposed as `co-scientist-local install-hooks --host codex [--dir .]`. Claude
-Code needs no equivalent: its hooks live in `.claude/settings.json`, written by
+Exposed as `co-scientist-local install-hooks --host codex|claude [--dir .]`.
+For Claude Code only the ssh guard is installed, merged into the project's
+`.claude/settings.local.json` (see CLAUDE_GUARD). The old CLI wrote all three
+groups to `.claude/settings.json`, via
 `co-scientist link`.
 """
 from __future__ import annotations
@@ -83,6 +85,91 @@ def build_codex_hooks(source: pathlib.Path, python: str) -> dict:
     }
 
 
+# ── Claude Code ──────────────────────────────────────────────────────────
+# One hook, in the project's MACHINE-LOCAL settings. Until 2026-11-11 a project
+# set up from the dashboard for Claude Code got the skills and no guard at all:
+# "never launch a remote job with raw ssh nohup" was a sentence in the guide,
+# and nothing stopped the command. Codex had the guard, and so did the harness.
+#
+# Only the guard: Claude Code needs no session banner (CLAUDE.md does that) and
+# no PostToolUse no-op. And `.claude/settings.local.json`, not settings.json:
+# the command is an absolute interpreter and an absolute path, true on this
+# machine only, and settings.json is the file a team commits.
+CLAUDE_GUARD = ("PreToolUse", "Bash", "pretool_block_ssh_nohup", 3)
+CLAUDE_SETTINGS = pathlib.Path(".claude") / "settings.local.json"
+
+
+def _is_guard(hook: object) -> bool:
+    return isinstance(hook, dict) and f"{CLAUDE_GUARD[2]}.py" in str(hook.get("command", ""))
+
+
+def merge_claude_guard(settings: dict, source: pathlib.Path, python: str) -> dict:
+    """`settings` with the guard in it exactly once, and everything else as it was.
+
+    The file is the user's: permissions, their own hooks, an env block. A
+    guard from an earlier install (another interpreter, another path) is
+    replaced, not added to — two of them would block twice and report twice.
+    """
+    event, matcher, stem, timeout = CLAUDE_GUARD
+    hooks = settings.get("hooks")
+    if hooks is None:
+        hooks = settings["hooks"] = {}
+    if not isinstance(hooks, dict):
+        raise ValueError("`hooks` in the settings file is not an object")
+    groups = hooks.get(event) or []
+    if not isinstance(groups, list):
+        raise ValueError(f"`hooks.{event}` in the settings file is not a list")
+    kept = []
+    for group in groups:
+        if isinstance(group, dict) and isinstance(group.get("hooks"), list):
+            others = [h for h in group["hooks"] if not _is_guard(h)]
+            if not others:
+                continue                       # a group that was only the guard
+            group = {**group, "hooks": others}
+        kept.append(group)
+    kept.append({"matcher": matcher, "hooks": [
+        {"type": "command", "command": f"{python} {source / (stem + '.py')}", "timeout": timeout}]})
+    hooks[event] = kept
+    return settings
+
+
+def claude_guard_installed(project_dir: pathlib.Path | str = ".") -> bool:
+    """Is the guard wired into this project for Claude Code, at a path that exists?"""
+    root = pathlib.Path(project_dir)
+    for name in ("settings.local.json", "settings.json"):
+        try:
+            doc = json.loads((root / ".claude" / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for group in (doc.get("hooks") or {}).get(CLAUDE_GUARD[0]) or []:
+            for hook in (group.get("hooks") or []) if isinstance(group, dict) else []:
+                if _is_guard(hook) and pathlib.Path(str(hook["command"]).split(" ", 1)[-1]).is_file():
+                    return True
+    return False
+
+
+def _install_claude(project_dir: pathlib.Path, source: pathlib.Path, python: str) -> dict:
+    dest = project_dir / CLAUDE_SETTINGS
+    settings: dict = {}
+    if dest.exists():
+        try:
+            settings = json.loads(dest.read_text(encoding="utf-8") or "{}")
+            if not isinstance(settings, dict):
+                raise ValueError("not a JSON object")
+        except ValueError as exc:
+            # Never rewritten over: a file that does not parse is one a person
+            # is in the middle of editing, or one this code does not understand.
+            return {"written": None, "source": str(source),
+                    "error": f"{dest} is not valid JSON ({exc}); left untouched — fix it and re-run"}
+    try:
+        merged = merge_claude_guard(settings, source, python)
+    except ValueError as exc:
+        return {"written": None, "source": str(source), "error": f"{dest}: {exc}; left untouched"}
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return {"written": str(dest), "source": str(source), "python": python}
+
+
 def install_hooks(
     project_dir: pathlib.Path | str = ".",
     *,
@@ -90,10 +177,22 @@ def install_hooks(
     source: pathlib.Path | None = None,
     python: str | None = None,
 ) -> dict:
-    """Write `<project_dir>/.codex/hooks.json`. Returns a summary dict."""
-    if host != "codex":
-        raise ValueError(f"install-hooks supports host 'codex' only, not {host!r}")
+    """Wire the bundled hooks into a project. Returns a summary dict.
+
+    `codex`: writes `.codex/hooks.json` whole (the file is ours).
+    `claude`: merges the ssh guard into `.claude/settings.local.json`.
+    """
+    if host not in ("codex", "claude"):
+        raise ValueError(f"install-hooks supports hosts 'codex' and 'claude', not {host!r}")
     project_dir = pathlib.Path(project_dir).resolve()
+    if host == "claude":
+        source = source or find_hooks_source()
+        script = None if source is None else pathlib.Path(source) / f"{CLAUDE_GUARD[2]}.py"
+        if script is None or not script.is_file():
+            return {"written": None, "source": None if source is None else str(source),
+                    "error": "the ssh provenance guard was not found in this install "
+                             "(it will not run under Claude Code)"}
+        return _install_claude(project_dir, pathlib.Path(source).resolve(), python or sys.executable)
     source = source or find_hooks_source()
     if source is None or not _has_any_hook(pathlib.Path(source)):
         return {"written": None, "source": None,
@@ -119,11 +218,13 @@ def cli(argv: list[str]) -> int:
 
     p = argparse.ArgumentParser(
         prog="co-scientist-local install-hooks",
-        description="Write a project's .codex/hooks.json for the bundled hooks",
+        description="Wire the bundled hooks into a project: .codex/hooks.json for "
+                    "Codex, the ssh provenance guard in .claude/settings.local.json "
+                    "for Claude Code",
     )
     p.add_argument("--dir", default=".", help="project dir (default: cwd)")
-    p.add_argument("--host", default="codex", choices=["codex"],
-                   help="target host (only codex reads a hooks.json)")
+    p.add_argument("--host", default="codex", choices=["codex", "claude"],
+                   help="target host (default: codex)")
     args = p.parse_args(argv)
 
     res = install_hooks(args.dir, host=args.host)
@@ -132,5 +233,9 @@ def cli(argv: list[str]) -> int:
         return 1
     print(f"✓ Wrote {res['written']}")
     print(f"  hooks: {res['source']}  interpreter: {res['python']}")
-    print("  Codex will ask you to review and trust these hooks on the next launch.")
+    if args.host == "codex":
+        print("  Codex will ask you to review and trust these hooks on the next launch.")
+    else:
+        print("  The ssh provenance guard runs before each Bash command from the next "
+              "'claude' launch: a remote job goes through submit_remote_job, so it is recorded.")
     return 0

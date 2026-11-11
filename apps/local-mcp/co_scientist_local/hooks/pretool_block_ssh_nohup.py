@@ -194,6 +194,11 @@ def main() -> None:
         data = json.loads(sys.stdin.read())
     except (json.JSONDecodeError, Exception):
         sys.exit(0)
+    # scivo-harness enforces these rules itself, in process, and more of them.
+    # A project wired for Claude Code is often opened in the harness too; both
+    # running would refuse one command twice, in two wordings.
+    if os.environ.get("SCIVO_HARNESS"):
+        sys.exit(0)
     if data.get("tool_name") != "Bash":
         sys.exit(0)
     command = (data.get("tool_input") or {}).get("command", "").strip()

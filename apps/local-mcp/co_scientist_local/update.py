@@ -157,7 +157,7 @@ def upgrade_commands(info: dict, interpreter: str, repo: str | None = None) -> l
 
 
 def relink_commands(interpreter: str, root: pathlib.Path, hosts: list[str]) -> list[dict]:
-    """Re-link skills (and Codex's hooks) for the hosts wired into `root`.
+    """Re-link skills and hooks for the hosts wired into `root`.
 
     A new build is where new skill bundles arrive, and the symlinks in
     .claude/skills point into the package directory that was just replaced.
@@ -176,6 +176,13 @@ def relink_commands(interpreter: str, root: pathlib.Path, hosts: list[str]) -> l
             out.append({"argv": [interpreter, "-m", "co_scientist_local",
                                  "install-hooks", "--host", "codex", "--dir", str(root)],
                         "why": "Codex hooks (session banner, ssh provenance guard)"})
+        else:
+            # Also for a project wired before the guard existed for Claude
+            # Code: an update is where it arrives. Merged into the project's
+            # machine-local settings; whatever else is in that file stays.
+            out.append({"argv": [interpreter, "-m", "co_scientist_local",
+                                 "install-hooks", "--host", "claude", "--dir", str(root)],
+                        "why": "Claude Code ssh provenance guard (.claude/settings.local.json)"})
     return out
 
 
