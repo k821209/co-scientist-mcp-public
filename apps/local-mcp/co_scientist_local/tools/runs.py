@@ -525,7 +525,8 @@ GONE_NOTE = ("the process is gone; nothing recorded an exit status, so read "
 
 
 def run_notices(state: State, *, since: str | None = None,
-                client_id: str | None = None) -> dict:
+                client_id: str | None = None,
+                analyses: list | None = None) -> dict:
     """Runs THIS session launched that have closed since `since`, and how many
     of its runs are still open.
 
@@ -542,34 +543,60 @@ def run_notices(state: State, *, since: str | None = None,
 
     `still_open` is here so a caller can stop polling: no open runs of its own
     means nothing to wait for, and the cheapest poll is the one not made.
+
+    `analyses` is `[[slug, analysis], ...]` — where the caller's runs ARE. With
+    it, only those analyses are read, and in each only the runs carrying this
+    client's id. Without it every run of every analysis in the project is
+    read to find them: 800 documents a call in one real project, every thirty
+    seconds for as long as one run stayed open (measured 2026-11-11). A
+    watcher knows where it filed its runs — it made the calls — so it should
+    say. `scope` in the reply says which was done.
     """
     from . import analyses as _analyses
 
     who = client_id or CLIENT_ID
     closed: list[dict] = []
     still_open = 0
-    for slug, name in _analyses.iter_analyses(state):
-        for row in list_analysis_runs(state, slug, name):
-            if row.get("client_id") != who:
+    if analyses:
+        seen: set[tuple[str, str]] = set()
+        rows: list[dict] = []
+        for pair in analyses:
+            slug, name = str(pair[0]), str(pair[1])
+            try:
+                name = _ensure_analysis(state, slug, name)
+            except NotFound:
+                continue             # deleted since: none of its runs can be open
+            if (slug, name) in seen:
                 continue
-            when = row.get("finished_at")
-            if not when:
-                still_open += 1
-                continue
-            if since and str(when) <= str(since):
-                continue
-            notice = {
-                "slug": row.get("paper_slug"), "analysis": row.get("analysis_name"),
-                "run_key": row.get("run_key"), "host": row.get("host"),
-                "command": (row.get("command") or "")[:120],
-                "exit_code": row.get("exit_code"), "finished_at": when,
-                "log_path": row.get("log_path"), "notes": row.get("notes"),
-            }
-            if row.get("exit_code") == -2:
-                notice["caution"] = GONE_NOTE
-            closed.append(notice)
+            seen.add((slug, name))
+            rows += [data for _id, data in state.backend.query_collection(
+                _runs_path(state, slug, name), "client_id", who)]
+        scope = f"{len(seen)} analyses"
+    else:
+        rows = [row for slug, name in _analyses.iter_analyses(state)
+                for row in list_analysis_runs(state, slug, name)]
+        scope = "project"
+    for row in rows:
+        if row.get("client_id") != who:
+            continue
+        when = row.get("finished_at")
+        if not when:
+            still_open += 1
+            continue
+        if since and str(when) <= str(since):
+            continue
+        notice = {
+            "slug": row.get("paper_slug"), "analysis": row.get("analysis_name"),
+            "run_key": row.get("run_key"), "host": row.get("host"),
+            "command": (row.get("command") or "")[:120],
+            "exit_code": row.get("exit_code"), "finished_at": when,
+            "log_path": row.get("log_path"), "notes": row.get("notes"),
+        }
+        if row.get("exit_code") == -2:
+            notice["caution"] = GONE_NOTE
+        closed.append(notice)
     closed.sort(key=lambda n: str(n.get("finished_at") or ""))
-    return {"client_id": who, "now": now_iso(),
+    return {"client_id": who, "now": now_iso(), "scope": scope,
             "closed": closed, "still_open": still_open}
 
 

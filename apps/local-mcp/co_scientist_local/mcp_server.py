@@ -3260,15 +3260,21 @@ def build_mcp(state: State) -> FastMCP:
         return _ssh_ops.kill_remote_job(state, slug, analysis, run_key)
 
     @mcp.tool()
-    def run_notices(since: str | None = None) -> dict[str, Any]:
+    def run_notices(since: str | None = None,
+                    analyses: list[list[str]] | None = None) -> dict[str, Any]:
         """Which of THIS session's runs have closed since `since`, and how many
         are still open. For a client watching its own jobs without blocking:
         `wait_for_run` holds the session, this does not. Pass the previous
         call's `now` back as `since`. A closed run carries slug / analysis /
         run_key / host / command / exit_code / log_path, and `caution` when
         `exit_code` is -2 — the process is merely gone and nothing recorded
-        success. `still_open: 0` means there is nothing to poll for."""
-        return _runs.run_notices(state, since=since)
+        success. `still_open: 0` means there is nothing to poll for.
+
+        Pass `analyses=[[slug, analysis], ...]` — where you filed your runs —
+        whenever you know it: only those are read, and only this session's
+        runs in them. Without it the whole project's runs are read on every
+        call, which is hundreds of documents a poll in a project with history."""
+        return _runs.run_notices(state, since=since, analyses=analyses)
 
     @mcp.tool()
     def wait_for_run(
