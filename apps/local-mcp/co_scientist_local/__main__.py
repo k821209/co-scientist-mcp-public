@@ -285,6 +285,9 @@ def main() -> None:
     if argv and argv[0] == "update":
         from .update import cli as _update_cli
         sys.exit(_update_cli(argv[1:]))
+    if argv and argv[0] == "usage":
+        from .usage import cli as _usage_cli
+        sys.exit(_usage_cli(argv[1:]))
     if argv and argv[0] == "doctor":
         from .doctor import cli as _doctor_cli
         sys.exit(_doctor_cli(argv[1:]))

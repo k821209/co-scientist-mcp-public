@@ -102,6 +102,13 @@ def build_mcp(state: State) -> FastMCP:
     """Construct the MCP server bound to a given State (uid + backend)."""
     _reject_unknown_arguments()
     mcp = FastMCP("scivo")
+    # Which tools get called, counted locally (names only) — see usage.py.
+    try:
+        from . import usage as _usage
+        from .version_check import installed_version as _installed_version
+        _usage.count_calls(mcp, state.project_id, _installed_version() or "")
+    except Exception:  # noqa: BLE001 — a tally must never stop the server
+        pass
 
     # ─── session / identity ──────────────────────────────────────────────────
     @mcp.tool()
