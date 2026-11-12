@@ -463,10 +463,13 @@ def _render_block(doc, node: SyntaxTreeNode, asset_dir: pathlib.Path | None,
         style = "List Bullet" if t == "bullet_list" else "List Number"
         if list_level > 0:
             style = f"{style} {min(list_level + 1, 3)}"
+        num_id = None
+        if t == "ordered_list":
+            num_id = _own_numbering(doc, style, _list_start(node))
         for item in node.children:
             if item.type != "list_item":
                 continue
-            _render_list_item(doc, item, asset_dir, style, list_level)
+            _render_list_item(doc, item, asset_dir, style, list_level, num_id)
     elif t == "blockquote":
         for child in node.children:
             if child.type == "paragraph":
@@ -494,11 +497,69 @@ def _is_lone_image(inline: SyntaxTreeNode) -> bool:
     return len(kids) == 1 and kids[0].type == "image"
 
 
-def _render_list_item(doc, item: SyntaxTreeNode, asset_dir, style: str, list_level: int):
+def _list_start(node: SyntaxTreeNode) -> int:
+    """The number an ordered list opens with. Markdown records it only when it
+    is not 1 ("4. …" continues a list a paragraph interrupted)."""
+    try:
+        return max(0, int(node.attrs.get("start", 1)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _own_numbering(doc, style: str, start: int = 1) -> int | None:
+    """A numbering instance for ONE ordered list, counting from `start`.
+
+    The "List Number" style carries a single numbering instance, so every
+    numbered paragraph in the document belonged to one list: a second list
+    went on from where the first stopped, and a generated References list
+    behind three numbered plans opened at 4 while the body cited [1]–[9]
+    (feedback 863dd830e427 — nothing warned, the file looked fine). A second
+    instance of the same definition is not enough: Word keeps counting across
+    instances that share one, and restarts only on an explicit start override,
+    which is also what it writes for "Restart at 1".
+
+    Returns None when the style has no numbering to copy — the caller then
+    leaves the paragraph to its style, as before.
+    """
+    try:
+        num_pr = doc.styles[style].element.pPr.numPr
+        base = num_pr.numId.val
+        numbering = doc.part.numbering_part.element
+        abstract = numbering.num_having_numId(base).abstractNumId.val
+    except (AttributeError, KeyError):
+        return None
+    num = numbering.add_num(abstract)
+    num.add_lvlOverride(ilvl=0).add_startOverride(start)
+    return num.numId
+
+
+def _number_paragraph(paragraph, num_id: int) -> None:
+    num_pr = paragraph._p.get_or_add_pPr().get_or_add_numPr()
+    num_pr.get_or_add_ilvl().val = 0
+    num_pr.get_or_add_numId().val = num_id
+
+
+def _continuation_style(style: str) -> str:
+    """The style of an item's SECOND paragraph: indented like the item, with no
+    marker. Given the list style again, it drew a marker of its own — a second
+    number on an ordered item, so the list ran one ahead from there on."""
+    depth = style.rsplit(" ", 1)[-1]
+    return f"List Continue {depth}" if depth in ("2", "3") else "List Continue"
+
+
+def _render_list_item(doc, item: SyntaxTreeNode, asset_dir, style: str,
+                      list_level: int, num_id: int | None = None):
+    opened = False
     for child in item.children:
         if child.type == "paragraph":
             inline = child.children[0] if child.children else None
-            p = doc.add_paragraph(style=style)
+            if opened:
+                p = doc.add_paragraph(style=_continuation_style(style))
+            else:
+                p = doc.add_paragraph(style=style)
+                if num_id is not None:
+                    _number_paragraph(p, num_id)
+                opened = True
             if inline is not None:
                 _render_inline(p, inline, asset_dir)
         elif child.type in ("bullet_list", "ordered_list"):
