@@ -380,6 +380,31 @@ generic stock-image output that drags the deck down. Better to
 leave the slide text-only with strong typography than fill it with
 a weak image.
 
+### 4.9. One slide first — SHOW IT BEFORE YOU BUILD THE REST
+
+The gallery in §3 settles the theme. It does not settle what THIS deck looks
+like at this paper's density, and a deck authored in one pass comes back with
+every slide the same shape — a correction then costs all of them instead of
+one.
+
+So author **one** content slide before any other: the one that carries the
+most (a result with its figure, or the composed method diagram) — not the
+title, which every theme makes look finished. Render it with `preview_slide`,
+put the PNG in front of the user (`/show-image`), say in a line what the other
+slides will share with it, and wait for a yes or a correction.
+
+- A correction about the LOOK (density, type size, how figures sit, the
+  accent) goes into the deck's `concept` with `update_deck`, not only into
+  this slide — rule 2 above is why: the concept is what the remaining slides,
+  and the next session, are built from.
+- Then author the rest (§5). The approved slide is the bar; Read its PNG again
+  before the critique pass in §9.
+
+Skip this only when the user asked for the deck in one go without stopping,
+when nobody is there to answer (a non-interactive run), when the deck is three
+slides or fewer, or when you are revising a deck that already exists. Say in
+the summary (§8) that it was skipped and why.
+
 ### 5. Design + author each slide
 
 > **Content slides are BESPOKE by default — target ≥ 25 shapes per
@@ -600,6 +625,8 @@ lists are not a substitute for having seen it.
 - Slides whose roles follow from THIS paper's story — there is no
   standard sequence (§4) — in a number the duration supports and with no
   more result slides than the paper has figures to show
+- One content slide shown to the user and answered before the others were
+  authored (§4.9), or the summary saying why that was skipped
 - Every slide has `notes` non-empty
 - Every slide's `prompt` starts with the unity header placeholders
 - `status == "drafted"` on the deck

@@ -21,6 +21,7 @@ decisions is not a wrong one — it is one everybody still believes.
 """
 from __future__ import annotations
 
+import math
 import re
 
 from ..backends.base import NotFound
@@ -46,13 +47,22 @@ _STOP = {
     # "matched" five sections of a paper about refunds (feedback 7714d8f63c2e).
     "에서", "으로", "에게", "까지", "부터", "이다", "있다", "없다", "된다", "않는",
     "않는다", "없이", "또는", "것은", "것이", "위해", "대해", "통해", "따라",
-    "경우", "때문", "그대로",
+    "경우", "때문", "그대로", "다른", "지금처럼",
 }
+# Negation and existence, in whatever form they are conjugated: 않고, 않으면,
+# 없으면, 없이, 있으며, 있는 … Listing the forms let "않고" through, and with it
+# a decision about ssh "found" a card-review reply (2026-11-13). The first
+# syllable decides.
+_AUXILIARY_HEADS = ("않", "없", "있")
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{3,}|[\uac00-\ud7a3]{2,}")
 # A noun and the particle stuck to it are one word in Korean: "파일에",
 # "파일을", "파일의". Left whole, the decision's "파일에" does not find the
 # section's "파일을". Cut back to the stem when at least two syllables remain.
-_PARTICLES = ("에서는", "으로는", "에서", "으로", "에게", "까지", "부터", "하고", "하며",
+_PARTICLES = ("에서는", "으로는", "에서", "으로", "에게", "까지", "부터",
+              # the endings of a 하다/되다 verb: "거절하지", "거절한다" and
+              # "거절하고" are one word about one thing
+              "합니다", "하지", "한다", "하는", "하면", "하여", "해서", "했다", "하고", "하며",
+              "된다", "되는", "되면",
               "은", "는", "이", "가", "을", "를", "의", "에", "로", "와", "과", "도", "만")
 
 
@@ -75,7 +85,7 @@ def decision_terms(*parts: str | None) -> set[str]:
     for part in parts:
         for word in _WORD_RE.findall(part or ""):
             low = word.lower()
-            if low in _STOP:
+            if low in _STOP or low.startswith(_AUXILIARY_HEADS):
                 continue
             stem = _stem(low)
             if stem not in _STOP:
@@ -92,6 +102,12 @@ def _section_hits(body: str, terms: set[str]) -> list[str]:
 # words of the decision ITSELF — not of its rationale, which is a paragraph of
 # explanation and shares a word or two with anything.
 _MIN_SHARED = 2
+# …and more of them the longer the decision is. Two words out of four is half
+# of what was decided; two out of twenty is "세션" and "승인", which a reply to
+# a card company has as well. A quarter of them, never fewer than two. This is
+# a rule of thumb, not a measure of meaning: it was set on the cases in
+# tests/test_decision_reach.py and should be re-run against them when it moves.
+_SHARED_PART = 0.25
 # …and a word that most of the sections under comparison contain says nothing
 # about any one of them. Judged only when there are enough sections to judge.
 _COMMON_SHARE = 1 / 3
@@ -115,7 +131,7 @@ def sections_discussing(bodies: dict, *, text: str, rationale: str | None = None
         common = {t for t in own | wider
                   if sum(1 for low in lowered.values() if t in low) > ceiling}
         own, wider = own - common, wider - common
-    need = min(_MIN_SHARED, len(own))
+    need = min(len(own), max(_MIN_SHARED, math.ceil(len(own) * _SHARED_PART)))
     if not need:
         return {}
     out = {}

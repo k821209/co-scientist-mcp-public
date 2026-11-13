@@ -16,6 +16,8 @@ person can open it. Never a silent "looks fine".
 from __future__ import annotations
 
 import base64
+import html as _html
+import json
 import mimetypes
 import os
 import pathlib
@@ -97,6 +99,120 @@ def find_browser() -> str | None:
     return None
 
 
+# What the browser is asked about the page, beside the picture of it. Named in
+# the reply (`page_checks_run`) so "nothing found" can be told from "not
+# looked for".
+PAGE_CHECKS = ("images-loaded", "fonts-loaded", "sideways-overflow", "page-length")
+
+# The frame's own page, around the study. The dashboard shows a study in a
+# sandboxed frame that does not run its scripts until the reader switches them
+# on (ProjectStudy.tsx); a bare page run by headless Chrome DID run them, so a
+# study that builds its chart in a script previewed as a finished page and
+# opened in the tab as an empty one. The frame here is sandboxed the same way.
+# `allow-same-origin` is the one difference, and it is what lets the script
+# BELOW — outside the frame, part of the preview and not of the study — read
+# what the frame laid out: with scripts off inside, it changes nothing a study
+# can do.
+_FRAME_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;height:100%;background:#fff}
+iframe{display:block;border:0;width:100vw;height:100vh}</style></head><body>
+<iframe id="study" sandbox="allow-same-origin" srcdoc="__SRCDOC__"></iframe>
+<script type="application/json" id="scivo-page">null</script>
+<script>
+(() => {
+  const frame = document.getElementById('study');
+  const say = (o) => { document.getElementById('scivo-page').textContent =
+    JSON.stringify(o).replace(/</g, '\\u003c'); };
+  const cut = (v) => String(v || '').slice(0, 90);
+  const measure = () => {
+    const d = frame.contentDocument, root = d.documentElement;
+    const images = [...d.images];
+    const failed = images.filter((i) => !(i.complete && i.naturalWidth > 0))
+      .map((i) => ({ src: cut(i.getAttribute('src')), alt: cut(i.getAttribute('alt')) }));
+    const fonts = [...(d.fonts || [])].filter((f) => f.status === 'error').map((f) => cut(f.family));
+    const view = frame.clientWidth;
+    let widest = null, edge = view + 1;
+    for (const n of [...d.body.querySelectorAll('*')].slice(0, 4000)) {
+      const r = n.getBoundingClientRect();
+      if (r.width && r.right > edge) {
+        edge = r.right;
+        widest = n.tagName.toLowerCase() + (n.id ? '#' + n.id : '')
+          + (typeof n.className === 'string' && n.className.trim()
+             ? '.' + n.className.trim().split(/\\s+/).join('.') : '');
+      }
+    }
+    say({ images: images.length, images_failed: failed, fonts_failed: fonts,
+          scripts: d.scripts.length, view_width: view, view_height: frame.clientHeight,
+          page_width: root.scrollWidth, page_height: root.scrollHeight, widest: cut(widest) });
+  };
+  let tries = 0;
+  const wait = () => {
+    const d = frame.contentDocument;
+    if (d && d.readyState === 'complete' && d.body && (d.body.childNodes.length || tries > 20)) {
+      (d.fonts ? d.fonts.ready : Promise.resolve()).then(measure, measure);
+    } else if (tries++ < 60) setTimeout(wait, 50);
+    else say({ error: 'the frame never finished loading' });
+  };
+  wait();
+})();
+</script></body></html>"""
+
+_PAGE_JSON = re.compile(r'<script type="application/json" id="scivo-page">(.*?)</script>', re.S)
+
+
+def frame_page(wrapped: str) -> str:
+    """The study inside the frame the tab gives it, plus the page checks."""
+    return _FRAME_PAGE.replace("__SRCDOC__", _html.escape(wrapped, quote=True))
+
+
+def read_page_checks(dom: str) -> dict | None:
+    """What the frame page measured, out of a `--dump-dom`. None when it said
+    nothing — which is "not checked", never "nothing wrong"."""
+    m = _PAGE_JSON.search(dom or "")
+    if not m:
+        return None
+    try:
+        page = json.loads(_html.unescape(m.group(1)))
+    except ValueError:
+        return None
+    return page if isinstance(page, dict) and "error" not in page else None
+
+
+def page_warnings(page: dict, *, height: int) -> list[str]:
+    """Sentences for what the measurements show. Each of these was "look for
+    it in the PNG" before, and two of them cannot be seen in the PNG at all: a
+    broken image with alt text draws as a line of small text, and sideways
+    overflow is cut off at the window edge with the scrollbar hidden."""
+    out: list[str] = []
+    failed = page.get("images_failed") or []
+    if failed:
+        named = "; ".join((f.get("alt") or "(no alt)") + " ← " + (f.get("src") or "(no src)")
+                          for f in failed[:6])
+        out.append(f"{len(failed)} of {page.get('images')} image(s) did not load: {named}"
+                   + (" …" if len(failed) > 6 else ""))
+    if page.get("fonts_failed"):
+        out.append("font(s) failed to load, so the text is in a fallback face: "
+                   + ", ".join(sorted(set(page["fonts_failed"]))[:6]))
+    wide, view = page.get("page_width") or 0, page.get("view_width") or 0
+    if view and wide > view + 1:
+        out.append(f"the page scrolls sideways: {wide} px of content in a {view} px frame"
+                   + (f" — the widest element is `{page['widest']}`" if page.get("widest") else ""))
+    tall = page.get("page_height") or 0
+    if tall > height + 1:
+        out.append(f"the screenshot shows the top {height} of {tall} px "
+                   f"({round(100 * height / tall)}% of the page) — the rest was not looked at; "
+                   f"call again with height={min(tall, MAX_HEIGHT)} to see "
+                   + ("all of it" if tall <= MAX_HEIGHT else f"the first {MAX_HEIGHT} px"))
+    if page.get("scripts"):
+        out.append(f"the study has {page['scripts']} <script> element(s). The tab does not run "
+                   "scripts until the reader switches them on, and this preview shows the page "
+                   "that way — anything a script draws is missing from both")
+    return out
+
+
+MAX_HEIGHT = 16000
+
+
 def preview_study(
     state: State,
     study_id: str,
@@ -109,8 +225,10 @@ def preview_study(
     """Wrap the study as the tab does, screenshot it, return the file paths.
 
     `theme`: "light" | "dark" | "both". `height` is the viewport; the page is
-    captured at that height, so a long study is seen from the top — enough
-    to tell a wall of text from a typeset page, which is what this is for.
+    captured at that height, so a long study is seen from the top — and the
+    reply says how much of the page that was. `page` carries what the browser
+    measured (`PAGE_CHECKS`): images and fonts that did not load, sideways
+    overflow, the page's full length.
     """
     from . import studies as _studies
     doc = _studies.read_study(state, study_id)
@@ -122,7 +240,8 @@ def preview_study(
     base.mkdir(parents=True, exist_ok=True)
     browser = find_browser()
     out: dict = {"study_id": study_id, "title": doc.get("title"), "browser": browser,
-                 "html": {}, "png": {}, "warnings": []}
+                 "html": {}, "png": {}, "warnings": [], "page": None,
+                 "page_checks_run": []}
     if missing:
         out["warnings"].append(f"asset(s) not found in this project, left unresolved: {', '.join(missing)}")
     if not doc.get("html", "").strip():
@@ -134,12 +253,17 @@ def preview_study(
         out["html"][th] = str(html_path)
         if not browser:
             continue
+        # The browser is pointed at the FRAME page, not at the study: the
+        # study file above stays what a person opens.
+        frame_path = base / f"{study_id}-{th}.frame.html"
+        frame_path.write_text(frame_page(wrapped), encoding="utf-8")
         png_path = base / f"{study_id}-{th}.png"
-        cmd = [browser, "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
-               f"--window-size={width},{height}", "--virtual-time-budget=4000",
-               f"--screenshot={png_path}", html_path.as_uri()]
+        png_path.unlink(missing_ok=True)     # never report the last run's picture
+        common = [browser, "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+                  f"--window-size={width},{height}", "--virtual-time-budget=4000"]
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            r = subprocess.run([*common, f"--screenshot={png_path}", frame_path.as_uri()],
+                               capture_output=True, text=True, timeout=60)
         except (OSError, subprocess.TimeoutExpired) as e:
             out["warnings"].append(f"{th}: browser did not produce a screenshot ({e})")
             continue
@@ -147,6 +271,25 @@ def preview_study(
             out["warnings"].append(f"{th}: browser exited {r.returncode}: {(r.stderr or '')[-200:]}")
             continue
         out["png"][th] = str(png_path)
+        if out["page"] is None:
+            # Once, on the first theme that rendered: what loads and how wide
+            # the page is do not depend on the theme.
+            try:
+                d = subprocess.run([*common, "--dump-dom", frame_path.as_uri()],
+                                   capture_output=True, text=True, timeout=60)
+                out["page"] = read_page_checks(d.stdout)
+            except (OSError, subprocess.TimeoutExpired):
+                out["page"] = None
+    if out["page"] is not None:
+        out["page_checks_run"] = list(PAGE_CHECKS)
+        out["warnings"].extend(page_warnings(out["page"], height=height))
+    elif out["png"]:
+        # A picture with no measurements: say so, or an absent warning reads
+        # as "every image loaded".
+        out["warnings"].append(
+            "the page checks did not come back (" + ", ".join(PAGE_CHECKS) + ") — the "
+            "screenshot exists, but whether every image and font loaded and whether the "
+            "page overflows sideways was NOT measured; look for them in the PNG")
     # Static checks run with or without a browser: the breakages a parser
     # makes (a CDATA wrapper, an unclosed <style>) are findable without one,
     # and on a machine with no browser they were the only thing that would
@@ -167,7 +310,9 @@ def preview_study(
             "that ran: they find a parser-level breakage and two kinds of inert CSS, NOT "
             "whether the layout reads. The wrapped HTML is exactly what the tab renders — "
             "open it, or ask the user to look at the tab. Do not report the page as checked.")
-    out["next"] = ("Read the PNG(s) and look for: a wall of unstyled text, a table without rules, "
-                   "a page that scrolls sideways, an image that did not load, dark-theme colours "
-                   "that did not follow.") if out["png"] else None
+    out["next"] = ("Read the PNG(s) and look for what cannot be measured: a wall of unstyled "
+                   "text, a table without rules, dark-theme colours that did not follow. Images "
+                   "and fonts that did not load, sideways overflow and how much of the page the "
+                   "screenshot covers are in `warnings`, measured — when `page_checks_run` is "
+                   "empty they were not, and are yours to look for.") if out["png"] else None
     return out

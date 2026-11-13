@@ -1350,12 +1350,23 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """See the study as the tab shows it: the html wrapped with the same
         base sheet and theme the dashboard uses, `asset:` images inlined,
-        rendered by a headless Chrome/Chromium on this machine. Returns
-        `png` paths per theme (`theme` = light | dark | both) — Read them and
-        look for a wall of unstyled text, a table without rules, sideways
-        scroll, a missing image, a dark theme that did not follow. With no
-        browser on the machine it says so and returns the wrapped HTML path
-        instead; then ask the user to look, and do not report the page as
+        inside the same kind of frame — so a study's scripts do NOT run, as
+        they do not in the tab until the reader switches them on — rendered by
+        a headless Chrome/Chromium on this machine. Returns `png` paths per
+        theme (`theme` = light | dark | both) — Read them and look for a wall
+        of unstyled text, a table without rules, a dark theme that did not
+        follow.
+
+        What a picture cannot show is measured and reported in `warnings`:
+        images and fonts that did not load, sideways overflow (with the widest
+        element named), and how much of the page the screenshot covers —
+        `height` is the window, so a long study is seen from the top; call
+        again with the height the warning gives to see the rest.
+        `page_checks_run` names what was measured: when it is empty, none of
+        that was, and an absent warning means nothing.
+
+        With no browser on the machine it says so and returns the wrapped HTML
+        path instead; then ask the user to look, and do not report the page as
         checked."""
         return _study_preview.preview_study(
             state, study_id, theme=theme, width=width, height=height)
