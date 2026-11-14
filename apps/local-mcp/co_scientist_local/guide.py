@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-11-11"
+GUIDE_VERSION = "2026-11-14"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -86,6 +86,12 @@ _SESSION_START = """On every session start:
    carries the restore command. `install_note` is the quiet case — a
    dedicated venv running its own copy while a checkout sits elsewhere on the
    disk, by design — and needs no action.
+   **`machine.missing` → programs this machine lacks**, each with what it
+   stops and its install line (pandoc: paper exports; LibreOffice: every
+   slide preview; a headless browser: study previews). You cannot install
+   system packages, so before work that needs one, tell the user what is
+   missing and give them the line — do not start and fail. `missing: null`
+   means the check itself failed, not that nothing is missing.
    **Never edit a file under `.claude/skills/`** — it is a symlink into the
    package checkout, shared by every project on the machine, and the edit
    blocks the next update. A rule for this project goes in project memory /
@@ -170,6 +176,10 @@ what the briefing does not cover:
 - **NOT in the briefing: decks.** For any deck on a paper,
   `list_deck_comments(slug, deck_id)` — open slide comments are the deck's
   revision list; revise the slide, then `resolve_deck_comment`.
+- **Programs this machine lacks** are in the briefing when there are any
+  (`whoami().machine` otherwise). You cannot install system packages: before
+  work that needs a missing one, say what is missing and give the install
+  line, rather than starting and failing or switching method on your own.
 - **If the briefing reports a stale process or an install warning, say it to
   the user first.** A stale process means the tools being called are not the
   tools on disk until the session restarts, and until then an empty lint is
@@ -1371,12 +1381,38 @@ Hold to these whenever you write or read a check:
 5. **Derive the covered set; do not enumerate it.** An enumerated list silently
    stops covering whatever is added next, and reports a pass over it.
 
+## When something stops you
+
+A refusal, a tool or program that is not there, a host you cannot reach, a
+credential you do not hold: **stop looking for another way through, and
+report.** In this order:
+
+1. what you were doing;
+2. what stopped it — the message itself, quoted;
+3. which kind it is: a rule of this harness, something missing on this machine
+   or in this session, access, or a fault;
+4. the ways forward, including the ones only the user can take;
+5. the one you recommend, and why.
+
+Then end the turn. A substitute — another machine, another tool, a method that
+changes what the result is — is the user's to approve, not yours to try, and
+the same call reworded is the same call. One session was refused 1,129 times
+in a single turn, rewording one ssh command for five hours; the first refusal
+had already said what to do instead.
+
 ## Remote job rule
 
 **Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.
 Use `mcp__scivo__submit_remote_job` so the run is tracked in
 `analysis_runs` and visible in the dashboard. Untracked raw-ssh jobs are the #1
 reason the Runs tab is both blind to real work and cluttered with stale rows.
+
+Something that is not a job — a service to start, a one-time setup step — is
+marked with `# setup` alone on the first line of the command. Under the scivo
+harness that turns the refusal into a question for the user, who is told it
+will run with no run record; under the hook file of a plain Claude Code or
+Codex project it passes. Either way it is a statement to a person about what
+the command is, not a way through for work whose result is used.
 
 Run liveness is **heartbeat + TTL**: a run shows a live spinner only while
 `now - last_heartbeat < 4h`; past that the dashboard marks it **stale** (the

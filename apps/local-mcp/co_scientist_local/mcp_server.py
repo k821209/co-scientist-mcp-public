@@ -131,6 +131,14 @@ def build_mcp(state: State) -> FastMCP:
         running while a source checkout exists (or this project last ran an
         editable install): tell the user first, with the restore command it
         carries, before relying on any tool behaviour.
+
+        `machine` is what THIS machine lacks for the features that shell out
+        (pandoc for exports, LibreOffice for slide previews, a headless
+        browser for study previews, …): `missing` with what each stops and
+        its install line, `unknown` for what could not be checked. You cannot
+        install system packages — before work that needs a missing one, say
+        so and give the install line; `missing: null` means the check itself
+        failed (`error`), not that nothing is missing.
         """
         info: dict[str, Any] = {
             "project_id": state.project_id,
@@ -149,6 +157,8 @@ def build_mcp(state: State) -> FastMCP:
                 "this project. Treat a leak as an account leak: rotate it in the "
                 "Setup tab."),
         }
+        from .doctor import machine_report
+        info["machine"] = machine_report(video=_features.video_enabled())
         proj = None
         try:
             proj = state.backend.get_doc(f"projects/{state.project_id}")
