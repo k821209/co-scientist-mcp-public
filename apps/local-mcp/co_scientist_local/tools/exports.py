@@ -34,6 +34,7 @@ from . import display_lint as _display_lint
 from . import docx_export as _docx_export
 from . import figures as _figures
 from . import html_export as _html
+from . import label_words as _label_words
 from . import numbered_citations as _numcite
 from . import provenance as _prov
 from .figures import SUPPLEMENTARY_NUMBER_OFFSET
@@ -235,12 +236,14 @@ def _rewrite_inline_ref_tokens(text: str, *, number_supplementary: bool = True) 
     """
     off = _figures.SUPPLEMENTARY_NUMBER_OFFSET
 
+    words = _label_words.current()
+
     def repl(m: re.Match) -> str:
         noun = "Figure" if m.group(1) == "fig" else "Table"
         n = int(m.group(2))
-        if number_supplementary and _figures.is_supplementary_number(n):
-            return f"Supplementary {noun} {n - off}"
-        return f"{noun} {n}"
+        return words.reference(
+            noun, n, offset=off,
+            supplementary=number_supplementary and _figures.is_supplementary_number(n))
 
     return _REF_TOKEN_RE.sub(repl, text)
 
@@ -783,10 +786,13 @@ def _display_label(kind: str, num, *, supplementary: bool) -> str:
 
     One helper so the two cannot drift again: every label in a rendered document
     comes from here.
+
+    The WORD is the document's own too — "표 4" in a body that says 표, "Table 4"
+    otherwise (label_words). Outside an export it is always the English one,
+    which is what a warning is written in.
     """
-    if supplementary and isinstance(num, int):
-        return f"S{kind} {num - SUPPLEMENTARY_NUMBER_OFFSET}"
-    return f"{kind} {num}"
+    return _label_words.current().label(
+        kind, num, supplementary=supplementary, offset=SUPPLEMENTARY_NUMBER_OFFSET)
 
 
 def _run_output_at(run: dict) -> str | None:
@@ -1532,7 +1538,14 @@ def _strip_problem_docx_parts(path: pathlib.Path) -> bool:
 _VALID_SCOPES = {"main", "supplementary", "all"}
 
 
-def export_to_path(
+def export_to_path(state: State, slug: str, **options) -> dict:
+    """`_export_to_path`, with the document's own words for Table and Figure
+    in force for exactly as long as it runs (label_words.scope)."""
+    with _label_words.scope():
+        return _export_to_path(state, slug, **options)
+
+
+def _export_to_path(
     state: State,
     slug: str,
     *,
@@ -1630,6 +1643,11 @@ def export_to_path(
         # there is no main manuscript text — start from a heading.
         placed_figs: set[int] = set()
         placed_tbls: set[int] = set()
+        # What this document calls a table and a figure, read off its body
+        # before a single label is written. From here to the end of the export
+        # every caption, every `{tab:N}` and the appendix headings use it.
+        label_words = _label_words.choose(bundle["manuscript"])
+        _label_words.use(label_words)
         if include_main:
             manuscript_text = _escape_thematic_breaks(bundle["manuscript"])
             # Pass the FULL registered sets so a supplementary item keeps its
@@ -1645,7 +1663,9 @@ def export_to_path(
                 manuscript_text, bundle["tables"], bundle["supplementary_tables"],
                 placeable={t["table_number"] for t in (*main_tbls, *supp_tbls)},
             )
-            tbl_heading, fig_heading = "Tables", "Figures"
+            tbl_heading = label_words.heading("Tables")
+            fig_heading = label_words.heading("Figures")
+            refs_heading = "## " + label_words.heading("References")
             # Place the bibliography BEFORE the Tables/Figures appendices:
             # pandoc --citeproc fills an explicit `#refs` div in place, else it
             # appends the bibliography at document END — after Tables/Figures,
@@ -1654,7 +1674,7 @@ def export_to_path(
             # (docx_native has no citeproc); only when the paper has references.
             if engine == "pandoc" and bundle["references"]:
                 manuscript_text = _numcite.place_reference_list(
-                    manuscript_text, "::: {#refs}\n:::")
+                    manuscript_text, "::: {#refs}\n:::", heading=refs_heading)
             elif engine == "docx_native" and bundle["references"]:
                 # No citeproc here: number the citations ourselves and write
                 # the list where the format wants it.
@@ -1662,11 +1682,13 @@ def export_to_path(
                     manuscript_text, bundle["references"])
                 if cited_refs:
                     manuscript_text = _numcite.place_reference_list(
-                        manuscript_text, _numcite.reference_list_markdown(cited_refs))
+                        manuscript_text, _numcite.reference_list_markdown(cited_refs),
+                        heading=refs_heading)
                 numbered_citations = len(cited_refs)
         else:
-            manuscript_text = "# Supplementary Material\n"
-            tbl_heading, fig_heading = "Supplementary Tables", "Supplementary Figures"
+            manuscript_text = f"# {label_words.heading('Supplementary Material')}\n"
+            tbl_heading = label_words.heading("Supplementary Tables")
+            fig_heading = label_words.heading("Supplementary Figures")
 
         # Tables before figures (conventional manuscript order). Both
         # appendices carry markup the body only text-references.
@@ -1838,6 +1860,9 @@ def export_to_path(
         "csl_filename": csl_filename,
         "csl_status": csl_status,
         "numbered_citations": numbered_citations,
+        # The words the captions were written with, and how they were chosen —
+        # so "why does this say 표" has an answer in the reply, not in the code.
+        "labels": label_words.report(),
         "docx_hancom_fix": docx_hancom_fix,
         "warnings": export_warnings,
         "placeholders": bundle["placeholders"],

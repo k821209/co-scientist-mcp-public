@@ -148,11 +148,45 @@ def list_analyses(state: State, slug: str, *, status: str | None = None) -> list
     return items
 
 
-def delete_analysis(state: State, slug: str, name: str) -> bool:
+def remove_analysis(state: State, slug: str, name: str) -> dict:
+    """Delete an analysis record, and leave a line saying so.
+
+    It used to be one `delete_doc` and nothing else. When a user asked where
+    an analysis had gone (feedback 7255ed48cfd9 — it turned out to be a
+    pipeline, never an analysis), "was it deleted, and when" had no answer
+    anywhere: no tombstone, no timeline entry, and the reply was a bare
+    `{"deleted": true}`.
+
+    The runs are NOT deleted. They are documents under the analysis and a
+    document delete does not reach them, which is the right outcome for a
+    record of what was computed: they stay in the Runs tab, which reads runs
+    across the whole project. The reply counts them so that is known rather
+    than discovered.
+    """
     _ensure_paper(state, slug)
     try:
         stored = resolve_analysis(state, slug, name)
     except NotFound:
-        return False          # deleting what is not there stays a quiet False
-    state.backend.delete_doc(_analysis_path(state, slug, stored))
-    return True
+        # Deleting what is not there stays a quiet False, and writes nothing.
+        return {"deleted": False, "runs_left": 0}
+    path = _analysis_path(state, slug, stored)
+    record = state.backend.get_doc(path) or {}
+    try:
+        runs_left: int | None = len(state.backend.list_collection(f"{path}/runs"))
+    except Exception:  # noqa: BLE001 — the count is a courtesy, the delete is the job
+        runs_left = None
+    state.backend.delete_doc(path)
+    detail = {"name": stored, "runs_left": runs_left,
+              "created_at": record.get("created_at"),
+              "description": (record.get("description") or "")[:200]}
+    from .activity import log_event, log_timeline
+    if is_project_scope(slug):
+        log_timeline(state, event_type="analysis_deleted",
+                     title=f"analysis {stored} deleted", detail=detail)
+    else:
+        log_event(state, slug, action="analysis_deleted", detail=detail)
+    return {"deleted": True, "name": stored, "runs_left": runs_left}
+
+
+def delete_analysis(state: State, slug: str, name: str) -> bool:
+    return remove_analysis(state, slug, name)["deleted"]

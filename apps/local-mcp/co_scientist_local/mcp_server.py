@@ -2316,7 +2316,14 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def delete_analysis(slug: str, name: str) -> dict[str, Any]:
-        return {"deleted": _analyses.delete_analysis(state, slug, name)}
+        """Delete an analysis record. The deletion is written to the Activity
+        timeline (name, when it was created, how many runs it had).
+
+        Its RUNS are kept: `runs_left` counts them, and they stay in the Runs
+        tab as the record of what was computed. `runs_left: null` means the
+        count could not be read, not that there were none.
+        """
+        return _analyses.remove_analysis(state, slug, name)
 
     # ─── compute-server registry ─────────────────────────────────────────────
     @mcp.tool()
@@ -3455,6 +3462,13 @@ def build_mcp(state: State) -> FastMCP:
         `![](figure:N)` alone on a line where it belongs; anything not placed
         that way is collected into a Tables/Figures section at the end.
         `page_size` is "a4" (default) or "letter", for .docx output.
+
+        Captions are labelled in the words the BODY uses: a body that writes
+        "표 4" gets "표 4.", one that writes "Table 4" gets "Table 4.", and a
+        body that names none by number is labelled by its language (Korean or
+        English). `{tab:N}` / `{fig:N}` and the appendix headings follow. The
+        reply's `labels` says which words were used and why — to change them,
+        change what the prose calls its tables.
 
         `scope`: "main" (default) = manuscript + MAIN figures/tables only;
         "supplementary" = a standalone Supplementary Material file with only
