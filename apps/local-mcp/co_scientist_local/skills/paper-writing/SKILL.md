@@ -377,6 +377,34 @@ phrase. `lint_manuscript` flags the prose form as `prose_cross_reference`.
 Multi-item parentheticals are fine and expected: `(Table 1, Figure 7B)`,
 `(Figures 3A, 4, Table 1; SFigure 2)`.
 
+### 2e-bis. A number you quote is printed in the item you cite
+
+When a sentence gives a number and cites a table or a figure, that number is
+**in that table or on that figure** — the same value, not one the reader can
+get by arithmetic. "1.6-fold higher (Table 2)" beside a table of the two raw
+values, "a 23% gain", "777,389 genes across the cultivars" when the table
+lists them cultivar by cultivar: each sends the reader to the item to check
+the sentence and leaves them to divide, subtract or add up — and unable to
+tell a right derivation from a typo.
+
+So when the sentence needs a fold, a difference, a percentage or a total,
+**the item gets it first**: a column or a total row in the table, generated
+by the script that makes the table (`/result-tables` rule 2 — never typed
+in), or a label on the plot. Then the sentence quotes the cell. If the number
+is not worth a cell, it is not worth the sentence.
+
+| bad | good |
+|---|---|
+| "…yielded 1.23-fold more under drought (Table 2)" — Table 2: 2.21, 1.80 | the table gains a "fold vs reference" column holding 1.23; the sentence is unchanged |
+| "throughput rose by 40% (Table 3)" — Table 3: samples and minutes | a "samples per hour" column and the 40% beside it |
+| "the sets contained 777,389 genes (Table 3)" — sixteen rows, no total | a Total row |
+
+`lint_manuscript` checks the table half and reports it under `cited_numbers`
+— its description says which part counts and which part is only listed. It
+cannot read a plot: a number quoted beside a figure is listed for you to find
+ON the figure, and a value the reader would have to read off an axis is the
+same failure as one they would have to calculate.
+
 ### 3. Say it once (de-duplication)
 
 Each finding, definition, and background fact appears **once, in its home

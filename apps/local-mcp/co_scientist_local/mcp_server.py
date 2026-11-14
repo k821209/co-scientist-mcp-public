@@ -3006,6 +3006,17 @@ def build_mcp(state: State) -> FastMCP:
         behind it and per-rule guidance, is documented in /paper-writing
         ("Writing craft") — read that when a warning is unclear.
 
+        `cited_numbers` holds the numbers quoted in a sentence that cites a
+        table or figure, checked against that item. `derived_not_printed`
+        counts toward `total`: a fold, a percent change, or a value that IS a
+        column's total or two cells' ratio, which the table does not print —
+        the reader was left to calculate it; add the cell (generated with the
+        table) and quote that. `not_in_table` and `check_on_figure` are lists
+        to read, not verdicts: a number absent from the cited table may be a
+        parameter or cite the wrong item, and a value printed on a plot
+        cannot be read from here. `examined` says how many citing sentences
+        and numbers were looked at.
+
         Document-kind aware: a response/cover letter (own paper or section) is
         held to correspondence standards, and exemptions are returned in
         SUPPRESSED_BY_PROFILE rather than dropped — read it before treating a

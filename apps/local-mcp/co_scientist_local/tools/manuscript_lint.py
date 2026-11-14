@@ -918,6 +918,25 @@ def lint_manuscript(state, slug: str) -> dict:
         "detail": "run lint_legends(slug) for the offending sentences",
     }
 
+    # A number in a sentence that cites a table or figure is IN that item —
+    # see cited_numbers.py for the rule and for why only the provable part is
+    # counted. Letters are skipped: a response letter quotes the manuscript's
+    # numbers at a reviewer, it does not report them.
+    from . import cited_numbers as _cited_numbers
+    from . import figures as _figures_mod
+    from . import tables as _tables_mod
+    try:
+        _all_tables = _tables_mod.list_tables(state, slug, supplementary=None)
+        _all_figures = _figures_mod.list_figures(state, slug, supplementary=None)
+        cited = _cited_numbers.cited_number_findings(
+            [sec for sec in sections
+             if not _doc_profile.is_correspondence(sec.get("key", ""), paper)],
+            _all_tables, _all_figures)
+    except Exception as exc:  # noqa: BLE001 — a check that cannot run says so
+        cited = {"derived_not_printed": [], "not_in_table": [], "check_on_figure": [],
+                 "unknown_items": [], "examined": None, "total": 0,
+                 "error": f"{type(exc).__name__}: {exc}"}
+
     # Which sections are correspondence. The section KEY is checked first, but a
     # letter is often its own paper, and then its keys are structural rather than
     # type-declaring — a real response letter came back with `opening`,
@@ -1273,7 +1292,7 @@ def lint_manuscript(state, slug: str) -> dict:
     insider = insider[:_MAX_PER_KIND]
     unresolved = unresolved[:_MAX_PER_KIND]
     total = (len(duplication) + len(leakage) + len(style) + len(insider)
-             + len(defensive) + len(unresolved))
+             + len(defensive) + len(unresolved) + cited["total"])
     # Derived from the text the checks actually read, not from the stored
     # `word_count`: that is a proxy, it can be absent or stale, and counting it
     # reported "nothing was read" for sections the lint had just scanned. A
@@ -1291,6 +1310,15 @@ def lint_manuscript(state, slug: str) -> dict:
         not_assessed.append(
             "no figures or tables are registered — the caption/legend checks "
             "had nothing to read")
+    if cited.get("error"):
+        not_assessed.append(
+            f"the cited-number check did not run ({cited['error']}) — numbers quoted "
+            "beside a table or figure were NOT compared with it")
+    elif cited["check_on_figure"]:
+        not_assessed.append(
+            f"{len(cited['check_on_figure'])} number(s) cite a figure and are not in its "
+            "caption, legend or a cited table — whether each is printed on the plot cannot "
+            "be read from here; they are listed in `cited_numbers.check_on_figure`")
     return {
         "slug": slug,
         "duplication": duplication,
@@ -1324,6 +1352,13 @@ def lint_manuscript(state, slug: str) -> dict:
         # is the quiet failure this codebase keeps meeting. Summary only; the
         # per-sentence detail stays in lint_legends(slug).
         "display_items": display_items,
+        # Numbers quoted beside a table or a figure, against that item.
+        # `derived_not_printed` counts toward `total` — a fold, a percent
+        # change, or a value that IS a column's sum or two cells' ratio, and
+        # that the table does not print: the reader was left to calculate it.
+        # `not_in_table` and `check_on_figure` are lists to read, not verdicts
+        # (a parameter, a count from elsewhere; a value printed on the plot).
+        "cited_numbers": cited,
         # Recorded decisions, against the sections that predate them. The lint
         # does not judge whether the prose complies — no regex sees "this is a
         # performance claim from transformer training" — it names the pairs,
@@ -1348,6 +1383,7 @@ def lint_manuscript(state, slug: str) -> dict:
                 "insider_context": len(insider),
                 "defensive_aside": len(defensive),
                 "unresolved_tokens": len(unresolved),
+                "cited_numbers": cited["total"],
             },
             "suppressed_by_profile": len(suppressed),
             "display_items": display_items["total"],
