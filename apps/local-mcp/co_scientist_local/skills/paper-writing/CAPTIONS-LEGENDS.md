@@ -124,3 +124,25 @@ models, the loci, the pipeline), it is a claim.
 
 `lint_legends` flags these as **`interpretive`**; its description gives the
 thresholds and what is deliberately not flagged.
+
+#### 2d-septies. Say what kind of evidence a panel is
+
+A caption says whether what it shows was **measured, simulated, calculated or
+drawn**. A simulated curve beside measured points, a model's prediction, a
+schematic of a mechanism: each is named for what it is in the caption, and
+the body does not call a simulation a result of an experiment. A reviewer who
+finds out from the Methods that the "observed" trend was computed reads every
+other panel with that in mind. This is description, not interpretation, so it
+belongs in the caption under the rules above — it is the note that prevents
+misreading the panel.
+
+#### 2d-octies. The figures are read before the text
+
+An editor's second look, after the title and abstract, is the figures with
+their captions, and many reviewers start there. So the display items, read in
+order with nothing else, should let a reader in the field say what the paper
+shows — not because a caption argues (it must not: 2d-sexies), but because
+each title names what is depicted and each caption makes the panel legible.
+You cannot run that check on yourself; `/cold-read` has the run ("the display
+items alone").
+

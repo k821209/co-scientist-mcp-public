@@ -92,6 +92,29 @@ it disappears the moment you merge the reports.
 The cover letter is written to the editor's frame, not any reviewer's. Do not
 fold it into a reviewer run.
 
+### First submission — the editor's first page (`profile: first_page`)
+
+There is no decision letter yet and no submitted copy: the recipient is an
+editor who has not sent the paper anywhere, and what they hold is small.
+
+| Include | Notes |
+|---|---|
+| the title | `get_paper_state(slug)` |
+| the abstract | the section's body, as for `/cold-read` |
+| the cover letter | the `cover_letter` section |
+| the journal's name | in the prompt, so a letter addressed elsewhere is caught |
+
+**Nothing else — not the author list, not the manuscript, not the figures.**
+Write the three into one file in that order and name the seat ("an editor at
+<journal> screening submissions"). `/paper-writing`'s `EDITOR-FIRST-PAGE.md`
+says where this bundle comes from and what the three texts owe the reader.
+
+What comes back begins with `READ_AS`: the finding, why it matters and what it
+advances, in the reader's words, or `not stated`. **Put that next to what the
+authors meant and show the user both** — it is the result of this run; the
+findings under it are the detail. Each `slips` entry and each finding becomes a
+review row the usual way, anchored in the abstract or the letter.
+
 ### Getting the original submission
 
 `get_manuscript(slug)` is the manuscript as it is NOW. What the reviewers
@@ -143,7 +166,7 @@ the one thing you cannot get wrong by knowing too much.
 
 ### Always name the profile
 
-`response_letter` | `cover_letter` | `manuscript`. It is not a formality — the same
+`response_letter` | `cover_letter` | `first_page` | `manuscript`. It is not a formality — the same
 finding is a real defect in one document and correct behaviour in another, and the
 two directions are opposites:
 
@@ -152,6 +175,7 @@ two directions are opposites:
 | `manuscript` | evaluate the science | **the defect** — self-containment required |
 | `response_letter` | decide whether each point was met | **fine** — the letter says what was done and points |
 | `cover_letter` | decide whether to send it back out | fine, and tighter still |
+| `first_page` | decide whether it goes out for review at all, from title + abstract + cover letter | **the defect** in the title and abstract; in the letter, context is owed, not method |
 
 Get this wrong and the check inverts. Measured on a real revision: run without a
 profile, 17 of 38 findings were "missing premise" against a response letter, and at
@@ -217,9 +241,15 @@ Two honest limits, worth stating to the user rather than papering over:
 ### What comes back
 
 The definition fixes the shape, so you can parse it: `--- FINDINGS ---` (each with
-`kind` / `span` / `supplied` / `why`), then `--- PASSED ---`,
+`kind` / `span` / `supplied` / `why`), then `--- PASSED ---`, `--- PATTERN ---`,
 `--- WANTED_BUT_DID_NOT_OPEN ---`, `--- SUPPRESSED_BY_PROFILE ---`, and
-`--- BUNDLE_NOTE ---`.
+`--- BUNDLE_NOTE ---`. Under `profile: first_page`, `--- READ_AS ---` comes
+before all of them.
+
+**Read `PATTERN` before the findings.** A defect the reader found six times is
+one editing decision: fix the cause, then see which rows are left, rather than
+filing six. The block was missing from this reader until a trial run said so in
+its own `BUNDLE_NOTE` — eight merit adjectives had come back as separate rows.
 
 `suppressed_by_profile` is what the profile withheld. Read it: if it is large and
 the document is a letter, that is the profile working as intended; if it contains
@@ -324,6 +354,10 @@ are addressed and the letter is compiled, before it is shown as done. The
 findings then flow through the same `source='ai'` loop `/paper-revision` already
 documents: address → `resolve_paper_comment` anchored to the revised span, or
 defer → `update_review(response='…')`.
+
+**Before a first submission.** Once the title, the abstract and the cover letter
+exist, run the first-page bundle above — and after a rejection, again, with the
+new journal's name in the prompt.
 
 **In `/paper-export`, at pre-flight.** Report open frame-check findings alongside
 `prepare_export`'s warnings. Report, not refuse.

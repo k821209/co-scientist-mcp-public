@@ -59,6 +59,7 @@ Write only the content that section owns. A fact has exactly ONE home.
 
 | Section | Includes | NEVER put here |
 |---|---|---|
+| **Title** | The most essential finding or its subject, in plain words | An adjective of merit ("novel", "comprehensive"); a word the reader must look up; the method's name where the result belongs |
 | **Abstract** | 1–2 sentence background, aim, key result WITH the number, one takeaway | New info absent from the body; sentences copied verbatim from other sections |
 | **Introduction** | Context → the gap/problem → this study's aim/hypothesis | Methods detail; results; discussion of your own findings |
 | **Methods** | What you DID — materials, procedures, analyses — **past tense**, reproducible | **Any finding, statistic, p-value, or "we found/observed"**; interpretation |
@@ -321,6 +322,18 @@ Read it before writing or trimming ANY caption or legend, and whenever
 cutting anything from a caption, check that the value exists somewhere
 else.** A caption can be the sole carrier of a parameter, and the lint's
 flags all invite deletion.
+
+### 2d-quater-ter. The title, the abstract and the cover letter — `EDITOR-FIRST-PAGE.md`
+
+What an editor decides from before anyone reads the paper. Read it when the
+title or the abstract is being finalised, when a cover letter is written, and
+before the paper goes to a journal — the first time or after a rejection (it
+covers what to do with earlier reviews, and suggesting reviewers). The one
+rule that cannot wait for the file: **the letter says what the abstract has
+no room for — why it matters beyond the field and where it stands against the
+closest earlier work, named — and it agrees with the abstract on every
+number.** Whether it does is a reader's question, not yours: the file names
+the run.
 
 ### 2d-quater-bis. Korean: a line that stands alone — `KOREAN-STANDALONE-LINES.md`
 

@@ -47,6 +47,13 @@ ways, in order of preference:
    "Author Guidelines" page. Confirm the URL with the user first.
    Read the section for the specific paper type.
 
+**Read the journal's aims and scope too, and who it says its readers are.**
+Put one line of it in the spec's `notes`. Limits say whether the manuscript
+can be submitted; scope says whether it should be — and "the highest-impact
+journal that might take it" is not a fit. If you cannot say in one sentence
+why this journal's readers are this paper's readers, tell the user before
+formatting anything for it.
+
 Always read the *type-specific* numbers. Journals list a table like
 "Article: 5000 words, 8 display items; Letter: 1500 words, 3 display
 items." Pick the row for the chosen type.

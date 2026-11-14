@@ -47,7 +47,12 @@ Three virtual reviewers, run in sequence. Each writes its own findings:
    as register — the right fact in a phrasing the field would not print — is
    `/prose-review`'s rail, not this one; the two must not interleave. Use `mcp__scivo__search_works` to
    spot-check that referenced prior work exists and is correctly
-   characterized.
+   characterized. **And look for the closest earlier work yourself**: is it
+   cited where the paper makes its claim, compared with directly, and
+   described fairly — neither left out nor made smaller than it was? A paper
+   that omits or minimises the nearest work is read by that work's author, who
+   is a likely reviewer. An omission is a finding with the missing work named
+   (verified with `search_works`, never from memory).
 
 Plus a consistency pass:
 - Every `{table:N}` resolves to an actual table (`list_tables(slug)`).

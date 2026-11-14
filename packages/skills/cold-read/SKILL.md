@@ -37,6 +37,16 @@ manuscript section.
 | the seat | who reads it: "a plant genomicist who has not seen the paper," "an editor screening abstracts" — take the field from the paper's title/journal |
 | `profile: manuscript` | always; the agent's default when handed a manuscript is right, but say it |
 
+**The display items alone** is a second kind of run, for the reader who starts
+from the figures (an editor's second look, and many reviewers' first): one file
+with every figure's and table's title, caption and legend in order
+(`list_figures(slug)`, `list_tables(slug)`), the figure images named beside it
+for the reader to open, and no section text at all. Ask one question on top of
+the usual report — *from these alone, what does the paper show?* — and have the
+answer come first, in the reader's words. A panel that does not say whether it
+was measured or simulated, an encoding the caption never explains, and "I
+cannot tell what this figure is for" are the findings to expect.
+
 Not the other sections, not the figures, not the references, not anything from
 this session. For a full-manuscript read (before `/paper-export`), hand over
 `get_manuscript(slug)` written to one file — still no analysis outputs, no
@@ -56,7 +66,7 @@ Task(subagent_type="reviewer-frame-check",
 
 ## What comes back, and where it goes
 
-The same five blocks as `/reviewer-frame-check` (`--- FINDINGS ---` … `---
+The same blocks as `/reviewer-frame-check` (`--- FINDINGS ---` … `---
 BUNDLE_NOTE ---`). For a manuscript, expect mostly `missing_premise`: an
 undefined term, a number with no scale or metric, a comparison with no
 baseline, a count that does not match what was named. `absent_referent` in an
@@ -102,6 +112,8 @@ Say to the user what the reader held (the one file) so they can judge the run.
   Measured once: fifteen findings on an abstract that had passed
   `lint_manuscript` clean.
 - The introduction's first paragraph, for the same reason.
+- **The display items alone, once the figures are final** and before
+  `/paper-export` — the text was written by someone who had already seen them.
 - **Results, when the section's claims rest on comparisons** — before it is
   marked done, and before `/paper-export`. This is the section where the
   author's own eye is least useful: the person who wrote "1.6-fold higher"
