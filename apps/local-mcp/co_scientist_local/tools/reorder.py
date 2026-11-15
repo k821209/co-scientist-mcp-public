@@ -406,16 +406,17 @@ def _plan_references(state: State, slug: str, kind: str, mapping: dict[int, int]
             number = d.get(field) if isinstance(d.get(field), int) else _safe_int(did)
             if number is None:
                 continue
+            # Named by where it will BE once the numbers have moved: that is
+            # the table the reader of the report can open.
+            final = mapping.get(number, number) if own else number
             patch = {}
             for name in fields:
                 value = d.get(name)
                 if isinstance(value, str) and value:
-                    new_value = rw.text(value, f"{noun} {number} ({name})")
+                    new_value = rw.text(value, f"{noun} {final} ({name})")
                     if new_value != value:
                         patch[name] = new_value
             if patch:
-                # Where it will BE once the numbers have moved.
-                final = mapping.get(number, number) if own else number
                 items.append((coll, final, patch, f"{noun} {final}"))
 
     # Comments: the one attached to the item follows it; an anchor is rewritten
