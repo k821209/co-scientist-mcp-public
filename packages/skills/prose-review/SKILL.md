@@ -114,6 +114,14 @@ The same thing called three names across a paper — "the model" / "our
 framework" / "the pipeline". Name it once and reuse the name. Flag the paper's
 worst offender, not every instance.
 
+Start from `lint_manuscript`'s `terminology.candidates` — names that share a
+word, counted — and decide for each whether it is one thing or two; the list
+cannot. It is not a style point when a number hangs on the name: "신규
+18,934개" read as loci or as transcripts while both went by "신규 유전자", and
+the transcript count was missing from the report with nothing to show it. When
+you settle one, declare it (`set_paper_glossary`) so every later revision is
+held to it instead of to your one comment.
+
 ### 6. Deictics with no referent, coined terms, deferred facts
 
 `/paper-writing` §2d-quinque, with the before/after pairs. The author always

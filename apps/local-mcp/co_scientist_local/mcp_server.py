@@ -425,6 +425,38 @@ def build_mcp(state: State) -> FastMCP:
         )
 
     @mcp.tool()
+    def set_paper_glossary(slug: str, terms: list[dict[str, Any]]) -> dict[str, Any]:
+        """Declare which names are ONE thing, so the lint can hold the text to it.
+
+        `terms`: [{"canonical": "신규 locus", "variants": ["신규 유전자", "신규
+        후보"], "note": "a gene added where the reference had none"}, …]. The
+        whole list is replaced; `[]` clears it. A variant listed under two
+        names, or one that is another term's canonical name, is refused.
+
+        `lint_manuscript` then reports every use of a variant — section and
+        sentence, in the body, the headings, table rows, captions and legends —
+        under `terminology.variants`, counted in its total. A sentence that
+        also carries the canonical name is listed in `terminology.contrasted`
+        and not counted: that is where the two are being defined or told apart.
+        Nothing is replaced for you.
+
+        Declare a term when two names turn out to be one thing — or two
+        things that were sharing a name. `terminology.candidates` in the lint
+        lists names that share a word, as a place to look; it is not a verdict.
+
+        Returns the stored glossary and, under `now`, what the text holds
+        against it right now.
+        """
+        out = _papers.set_paper_glossary(state, slug, terms)
+        try:
+            from .tools import manuscript_lint as _lint
+            out["now"] = _lint.terminology_report(state, slug)
+        except Exception as exc:  # noqa: BLE001 — stored; the count is a courtesy
+            out["now"] = None
+            out["now_error"] = f"{type(exc).__name__}: {exc}"
+        return out
+
+    @mcp.tool()
     def delete_paper(slug: str) -> dict[str, Any]:
         """Delete a paper and all its sections/reviews/manuscript blob."""
         return {"deleted": _papers.delete_paper(state, slug)}

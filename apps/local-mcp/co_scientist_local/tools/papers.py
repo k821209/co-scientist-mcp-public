@@ -248,6 +248,22 @@ def get_paper_state(state: State, slug: str) -> dict:
     }
 
 
+def set_paper_glossary(state: State, slug: str, terms: list[dict] | None) -> dict:
+    """Declare which names are one thing (tools/terminology.py). An empty list
+    clears it. Stored on the paper, so `lint_manuscript` reads it every run."""
+    from . import terminology as _terminology
+
+    path = _paper_path(state, slug)
+    if state.backend.get_doc(path) is None:
+        raise NotFound(f"paper not found: {slug!r} in project {state.project_id!r}")
+    glossary = _terminology.clean_glossary(terms)
+    state.backend.update_doc(path, {"glossary": glossary, "updated_at": now_iso()})
+    log_event(state, slug, action="paper_glossary_set",
+              detail={"terms": len(glossary),
+                      "canonical": [entry["canonical"] for entry in glossary][:20]})
+    return {"slug": slug, "glossary": glossary}
+
+
 def update_paper(
     state: State,
     slug: str,

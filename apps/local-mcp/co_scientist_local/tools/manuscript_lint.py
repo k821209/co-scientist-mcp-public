@@ -886,6 +886,44 @@ def _decision_pairs(state, sections: list[dict]) -> dict:
     }
 
 
+def terminology_report(state, slug: str, *, bundle: dict | None = None) -> dict:
+    """One thing, one name — what a program can say about it (terminology.py).
+
+    `glossary` is None when none is declared, which is NOT "consistent": the
+    declared check did not run. `error` set means nothing here ran at all.
+    """
+    from . import figures as _figures_mod
+    from . import tables as _tables_mod
+    from . import terminology as _terminology
+
+    bundle = bundle or _papers.get_paper_state(state, slug)
+    sections = bundle["sections"]
+    glossary = (bundle.get("paper") or {}).get("glossary") or []
+    try:
+        items = []
+        for table in _tables_mod.list_tables(state, slug, supplementary=None):
+            items.append({"item": f"Table {table.get('table_number')}", "text": "\n".join(
+                str(table.get(field) or "") for field in ("title", "caption", "legend", "content"))})
+        for figure in _figures_mod.list_figures(state, slug, supplementary=None):
+            items.append({"item": f"Figure {figure.get('figure_number')}", "text": "\n".join(
+                str(figure.get(field) or "") for field in ("title", "caption", "legend"))})
+        found = _terminology.variant_findings(sections, glossary, items)
+        candidates = _terminology.candidate_groups(sections)
+    except Exception as exc:  # noqa: BLE001 — a check that cannot run says so
+        return {"glossary": len(glossary) or None, "variants": [], "contrasted": [],
+                "by_term": {}, "candidates": [], "total": 0, "examined": None,
+                "error": f"{type(exc).__name__}: {exc}"}
+    return {
+        "glossary": len(glossary) or None,
+        "variants": found["variants"],
+        "contrasted": found["contrasted"],
+        "by_term": found["by_term"],
+        "candidates": candidates,
+        "total": found["total"],
+        "examined": found["examined"],
+    }
+
+
 def lint_manuscript(state, slug: str) -> dict:
     """Return QA warnings for a paper's sections:
 
@@ -936,6 +974,10 @@ def lint_manuscript(state, slug: str) -> dict:
         cited = {"derived_not_printed": [], "not_in_table": [], "check_on_figure": [],
                  "unknown_items": [], "examined": None, "total": 0,
                  "error": f"{type(exc).__name__}: {exc}"}
+
+    # One thing under several names (terminology.py): the declared variants
+    # count; the names that merely share a word are a list.
+    terms = terminology_report(state, slug, bundle=bundle)
 
     # Which sections are correspondence. The section KEY is checked first, but a
     # letter is often its own paper, and then its keys are structural rather than
@@ -1292,7 +1334,7 @@ def lint_manuscript(state, slug: str) -> dict:
     insider = insider[:_MAX_PER_KIND]
     unresolved = unresolved[:_MAX_PER_KIND]
     total = (len(duplication) + len(leakage) + len(style) + len(insider)
-             + len(defensive) + len(unresolved) + cited["total"])
+             + len(defensive) + len(unresolved) + cited["total"] + terms["total"])
     # Derived from the text the checks actually read, not from the stored
     # `word_count`: that is a proxy, it can be absent or stale, and counting it
     # reported "nothing was read" for sections the lint had just scanned. A
@@ -1319,6 +1361,19 @@ def lint_manuscript(state, slug: str) -> dict:
             f"{len(cited['check_on_figure'])} number(s) cite a figure and are not in its "
             "caption, legend or a cited table — whether each is printed on the plot cannot "
             "be read from here; they are listed in `cited_numbers.check_on_figure`")
+    if terms.get("error"):
+        not_assessed.append(
+            f"the terminology check did not run ({terms['error']}) — whether one thing "
+            "goes by several names was NOT checked")
+    elif terms["glossary"] is None:
+        groups = len(terms["candidates"])
+        not_assessed.append(
+            "no glossary is declared (set_paper_glossary), so whether one thing goes by "
+            "several names was NOT checked — `terminology.variants` is empty because "
+            "nothing was looked for. "
+            + (f"`terminology.candidates` lists {groups} group(s) of names that share a "
+               "word, as a place to look" if groups else
+               "No two names used five times or more share a word"))
     return {
         "slug": slug,
         "duplication": duplication,
@@ -1359,6 +1414,12 @@ def lint_manuscript(state, slug: str) -> dict:
         # `not_in_table` and `check_on_figure` are lists to read, not verdicts
         # (a parameter, a count from elsewhere; a value printed on the plot).
         "cited_numbers": cited,
+        # One thing, one name. `variants` — uses of a name the author DECLARED
+        # a variant (set_paper_glossary) — count toward `total`. `candidates`
+        # — names that share a word — are a list to read: sharing a word is
+        # what different things do too. `glossary: null` means none is
+        # declared, and then nothing was checked (see `not_assessed`).
+        "terminology": terms,
         # Recorded decisions, against the sections that predate them. The lint
         # does not judge whether the prose complies — no regex sees "this is a
         # performance claim from transformer training" — it names the pairs,
@@ -1384,6 +1445,7 @@ def lint_manuscript(state, slug: str) -> dict:
                 "defensive_aside": len(defensive),
                 "unresolved_tokens": len(unresolved),
                 "cited_numbers": cited["total"],
+                "terminology": terms["total"],
             },
             "suppressed_by_profile": len(suppressed),
             "display_items": display_items["total"],
