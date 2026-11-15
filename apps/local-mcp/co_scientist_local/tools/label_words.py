@@ -27,6 +27,11 @@ The 84 others are unchanged.
 
 Not judged: a document in a language other than Korean or English gets the
 English words, as before.
+
+The dashboard shows `{tab:N}` with the same words, from its own copy of this
+rule (apps/web/src/lib/labelWords.ts). Two copies in two languages are held
+together by one file of cases, tests/data/label_words_cases.json, which both
+test suites run: change the rule here and a case there fails on the other side.
 """
 from __future__ import annotations
 

@@ -41,6 +41,20 @@ _PROSE_FIG_RE = re.compile(r"\b(?:Figure|Fig)\.?\s+(S?)(\d+)(?!\d)", re.IGNORECA
 _PROSE_STABLE_RE = re.compile(r"\bSTable\s+(\d+)(?!\d)")
 _PROSE_SFIG_RE = re.compile(r"\bS(?:Figure|Fig)\.?\s+(\d+)(?!\d)")
 
+# Korean: "표 4", "표4", "<표 4>", "그림 2". Until 2026-11-15 these were not read
+# at all, so in a Korean document this check passed without having looked — 31
+# of the account's 187 documents name their tables this way.
+#   - `(?<![가-힣])`: not the tail of 발표 / 목표 / 대표 / 좌표.
+#   - not a compound number: "표 3-1" and "표 4.2" number a chapter's tables and
+#     are not table 3. Measured before shipping: without this, five chapter
+#     documents were each told their own chapter number was a missing table.
+_KO_NUMBER = r"(\d+)(?!\d|[-–.]\d)"
+_KO_TABLE_RE = re.compile(rf"(?<![가-힣])표\s?{_KO_NUMBER}")
+_KO_FIG_RE = re.compile(rf"(?<![가-힣])그림\s?{_KO_NUMBER}")
+# "보충 표 5" — what a Korean export labels a supplementary item (label_words).
+_KO_SUPP_TABLE_RE = re.compile(rf"보충\s?표\s?{_KO_NUMBER}")
+_KO_SUPP_FIG_RE = re.compile(rf"보충\s?그림\s?{_KO_NUMBER}")
+
 # The spelled-out supplementary forms — "Supplementary Table 3",
 # "Supplementary Fig. 2" — which is what Nature's house style requires. The
 # patterns above are not anchored, so `\bTable\s+\d` matched the TAIL of these
@@ -100,6 +114,8 @@ def _split_supplementary(text: str) -> tuple[str, set[str], set[str]]:
 
     text = _SUPP_TABLE_RE.sub(lambda m: take(m, tables), text)
     text = _SUPP_FIG_RE.sub(lambda m: take(m, figures), text)
+    text = _KO_SUPP_TABLE_RE.sub(lambda m: take(m, tables), text)
+    text = _KO_SUPP_FIG_RE.sub(lambda m: take(m, figures), text)
     return text, tables, figures
 
 
@@ -179,11 +195,13 @@ def orphan_references(text: str, table_numbers, figure_numbers,
         supp_tables, supp_figs = set(), set()
     return {
         "tables": sorted(
-            (_prose_labels(text, _PROSE_TABLE_RE, _PROSE_STABLE_RE) | supp_tables)
+            (_prose_labels(text, _PROSE_TABLE_RE, _PROSE_STABLE_RE) | supp_tables
+             | set(_KO_TABLE_RE.findall(text)))
             - reg_tables,
             key=_label_sort),
         "figures": sorted(
-            (_prose_labels(text, _PROSE_FIG_RE, _PROSE_SFIG_RE) | supp_figs)
+            (_prose_labels(text, _PROSE_FIG_RE, _PROSE_SFIG_RE) | supp_figs
+             | set(_KO_FIG_RE.findall(text)))
             - reg_figs,
             key=_label_sort),
     }
