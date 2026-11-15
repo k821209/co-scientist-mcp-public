@@ -208,10 +208,24 @@ def list_tables(state: State, slug: str, *, supplementary: bool | None = False) 
     return tables
 
 
-def delete_table(state: State, slug: str, table_number: int) -> bool:
+def remove_table(state: State, slug: str, table_number: int) -> dict:
+    """Delete a table and hand back what it was.
+
+    The reply used to be `{"deleted": true}`: a table deleted by mistake — or
+    on the way to being re-added under another number, which was the only way
+    to renumber one (feedback 727b3acec9da) — took its content, caption,
+    `source_analysis` and `source_runs` with it, recoverable only from whatever
+    the session still remembered. The deleted record is the reply, so the call
+    that removed it is enough to put it back.
+    """
     _ensure_paper(state, slug)
     path = _table_path(state, slug, table_number)
-    if state.backend.get_doc(path) is None:
-        return False
+    existing = state.backend.get_doc(path)
+    if existing is None:
+        return {"deleted": False, "table": None}
     state.backend.delete_doc(path)
-    return True
+    return {"deleted": True, "table": existing}
+
+
+def delete_table(state: State, slug: str, table_number: int) -> bool:
+    return remove_table(state, slug, table_number)["deleted"]

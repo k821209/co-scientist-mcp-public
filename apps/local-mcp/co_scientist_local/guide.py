@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-11-14"
+GUIDE_VERSION = "2026-11-16"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1186,9 +1186,19 @@ DOIs CrossRef can't find (404 → almost always a hallucinated citation).
 
 A figure or a table is referred to by a token as well: `{{fig:N}}` /
 `{{tab:N}}` in prose reads as "Figure N" / "Table N" (101 and up as
-"Supplementary Figure 1" …). Use the token, not the words: `reorder_supplementary`
-rewrites tokens when the numbers move, and can only REPORT a "Figure 3" that
-was typed out.
+"Supplementary Figure 1" …). Use the token, not the words: a renumbering
+rewrites tokens exactly, and has to pattern-match a "Figure 3" that was typed out.
+
+**A table or figure never changes number by `delete_*` + `add_*`.** A delete
+discards the caption, the provenance link and (for a figure) the image.
+`reorder_tables_figures(slug, kind, move_from=, move_to=)` moves one item to
+the number it should have — to insert a table at 3, add it at the next free
+number and move it — or `order=[…]` renumbers them all; supplementary items go
+through `reorder_supplementary`. Embeds, tokens, captions, comments and deck
+slides follow in the same call, and `prose_rewritten` / `prose_left` say what
+happened to the typed-out references: read both. `prepare_export` warns when
+the numbers do not follow the order the items appear in, with the `order` that
+fixes it.
 
 Two-axis verification model — and the MCP only owns one of them:
 

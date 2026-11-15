@@ -234,3 +234,106 @@ def inline_object_warnings(body: str) -> list[str]:
             f"tracked objects (won't show in the Figures panel / can be lost otherwise)."
         )
     return out
+
+
+# ── where the items stand, against what they are numbered ────────────────────
+#
+# Feedback 727b3acec9da: seven registered tables and ten typed straight into
+# the body, numbered in no order, and nothing said so until the author asked
+# for the numbers to be put right. Each of these is decidable from the text.
+
+_EMBED_RE = re.compile(r"!\[[^\]]*\]\((figure|table):(\d+)\)")
+_CODE_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
+
+
+def placement(manuscript: str, table_numbers, figure_numbers,
+              *, number_supplementary: bool = True) -> dict:
+    """What the body's `![](table:N)` / `![](figure:N)` embeds say about the
+    registered items. Per kind:
+
+      unregistered: [N]     an embed naming an item that is not registered
+      repeated:     {N: k}  an item embedded k > 1 times — it is drawn k times
+      unplaced:     [N]     registered and not embedded, while others ARE: it
+                            falls to the end of the document, out of sequence
+      out_of_order: None, or {appear: [...], order: [...]} when the embedded
+                    items are not numbered in the order they appear; `order`
+                    is the argument that puts them right
+
+    Only EMBEDDED items are held to an order: an embed is where the reader
+    sees the table. Ordering by first MENTION instead was measured before
+    choosing — out of order in 12 of the 35 documents on the account that
+    mention two or more of their tables, most of them a forward reference in
+    Methods — against 6 of 96 for the embedded rule, each a real disorder
+    ("appear as 1, 8, 9, 10, 11, 12, 2, 3, …").
+    In a journal paper main and supplementary items are two sequences.
+    """
+    text = _CODE_RE.sub(lambda m: " " * len(m.group(0)), manuscript or "")
+    seen: dict[str, list[int]] = {"table": [], "figure": []}
+    for match in _EMBED_RE.finditer(text):
+        seen[match.group(1)].append(int(match.group(2)))
+    out = {}
+    for kind, registered in (("table", table_numbers), ("figure", figure_numbers)):
+        registered = sorted({n for n in registered if isinstance(n, int)})
+        embedded = seen[kind]
+        first: list[int] = list(dict.fromkeys(embedded))
+        known = [n for n in first if n in registered]
+        sequences = ([[n for n in known if n <= SUPPLEMENTARY_NUMBER_OFFSET],
+                      [n for n in known if n > SUPPLEMENTARY_NUMBER_OFFSET]]
+                     if number_supplementary else [known])
+        out_of_order = None
+        for index, sequence in enumerate(sequences):
+            if sequence == sorted(sequence):
+                continue
+            pool = [n for n in registered
+                    if not number_supplementary
+                    or (n > SUPPLEMENTARY_NUMBER_OFFSET) == bool(index)]
+            out_of_order = {
+                "appear": sequence,
+                "scope": "supplementary" if number_supplementary and index else "main",
+                # Embedded ones in the order they appear; the rest keep their
+                # relative order after them.
+                "order": sequence + [n for n in pool if n not in sequence],
+            }
+            break
+        out[kind] = {
+            "unregistered": sorted(set(first) - set(registered)),
+            "repeated": {n: embedded.count(n) for n in first if embedded.count(n) > 1},
+            "unplaced": [n for n in registered if n not in first] if known else [],
+            "out_of_order": out_of_order,
+            "embedded": len(known),
+            "registered": len(registered),
+        }
+    return out
+
+
+def placement_warnings(found: dict) -> list[str]:
+    """`placement` as the lines `prepare_export` prints."""
+    lines: list[str] = []
+    for kind in ("table", "figure"):
+        f = found[kind]
+        if f["unregistered"]:
+            lines.append(
+                f"the body embeds {kind} " + ", ".join(str(n) for n in f["unregistered"])
+                + f" (`![]({kind}:N)`) but no such {kind} is registered — the embed "
+                "renders as nothing")
+        if f["repeated"]:
+            lines.append(
+                "; ".join(f"{kind} {n} is embedded {k} times" for n, k in f["repeated"].items())
+                + " — it is drawn each time")
+        if f["unplaced"]:
+            lines.append(
+                f"{len(f['unplaced'])} registered {kind}(s) are not placed in the body ("
+                + ", ".join(str(n) for n in f["unplaced"][:12])
+                + ("…" if len(f["unplaced"]) > 12 else "")
+                + f") while {f['embedded']} are — they are appended at the end, after the "
+                f"others. Place each with `![]({kind}:N)` on its own line")
+        if f["out_of_order"]:
+            o = f["out_of_order"]
+            tool = ("reorder_supplementary(slug, kind, order)" if o["scope"] == "supplementary"
+                    else f"reorder_tables_figures(slug, '{kind}', order={o['order']})")
+            lines.append(
+                f"{kind} numbers do not follow the order the {kind}s appear in the body "
+                f"(they appear as {', '.join(str(n) for n in o['appear'][:20])}"
+                + ("…" if len(o["appear"]) > 20 else "")
+                + f") — {tool} renumbers them and carries every reference")
+    return lines

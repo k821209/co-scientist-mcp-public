@@ -1031,7 +1031,11 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def delete_figure(slug: str, figure_number: int) -> dict[str, Any]:
-        return {"deleted": _figures.delete_figure(state, slug, figure_number)}
+        """Delete a figure and its stored image. The reply carries the deleted
+        record under `figure` (caption, legend, prompt, provenance); the image
+        bytes are gone (`image_deleted`). To change a figure's NUMBER use
+        `reorder_tables_figures`, which keeps the image."""
+        return _figures.remove_figure(state, slug, figure_number)
 
     # ─── reference materials (project-level user-uploaded source files) ──────
     @mcp.tool()
@@ -2001,7 +2005,51 @@ def build_mcp(state: State) -> FastMCP:
 
     @mcp.tool()
     def delete_table(slug: str, table_number: int) -> dict[str, Any]:
-        return {"deleted": _tables.delete_table(state, slug, table_number)}
+        """Delete a table. The reply carries the deleted record under `table`
+        (content, caption, source_analysis, source_runs) — enough to add it
+        back. To give a table another NUMBER, do not delete it:
+        `reorder_tables_figures` moves it with everything that points at it.
+        """
+        return _tables.remove_table(state, slug, table_number)
+
+    @mcp.tool()
+    def reorder_tables_figures(
+        slug: str,
+        kind: str,
+        order: list[int] | None = None,
+        move_from: int | None = None,
+        move_to: int | None = None,
+        rewrite_prose: bool = True,
+    ) -> dict[str, Any]:
+        """Renumber the MAIN tables or figures, and carry every reference.
+
+        kind: 'table' or 'figure'. Give ONE of:
+          - `move_from`, `move_to` — one item to the number it should have;
+            the ones between shift. To insert a new table at 3: `add_table`
+            it at the next free number, then move it to 3.
+          - `order` — the current numbers in the sequence wanted; they become
+            1, 2, … and gaps close.
+
+        Nothing is deleted: the records move whole (caption, legend,
+        provenance, a figure's image and panels). In the same call, in one
+        pass so that 3→4 and 4→5 cannot collide: `{tab:N}` / `{fig:N}` and
+        `![](table:N)` / `![](figure:N)` in every section, caption, legend
+        and table cell; a comment attached to the item; the `anchor_text` of
+        a comment on a rewritten passage; a deck slide that shows the figure.
+
+        Prose — "Table 3", "표 3", "Fig. 2A" — is rewritten too, and every
+        change comes back in `prose_rewritten` with its context: READ it.
+        What is not one plain reference is left and listed in `prose_left`
+        ("Tables 3 and 4", "표 3–5") for you to fix. `rewrite_prose=False`
+        leaves all prose and lists it. Code blocks are never touched.
+
+        In a journal paper this is the main items only (supplementary ones:
+        `reorder_supplementary`); in a report every number is a main one.
+        A failure part-way puts the numbers back.
+        """
+        return _reorder.reorder_items(
+            state, slug, kind, order=order, move_from=move_from, move_to=move_to,
+            rewrite_prose=rewrite_prose)
 
     @mcp.tool()
     def reorder_supplementary(slug: str, kind: str, order: list[int]) -> dict[str, Any]:
@@ -2011,7 +2059,8 @@ def build_mcp(state: State) -> FastMCP:
         (≥101) in the desired new sequence; they are reassigned to 101,102,…
         accordingly. Moves the docs (and copies figure image blobs server-side —
         no re-upload), and auto-rewrites deterministic body refs ({fig:N}/{tab:N}
-        tokens and ![](figure:N) embeds). Freeform prose mentions
+        tokens and ![](figure:N) / ![](table:N) embeds, in sections, captions
+        and legends). Main items: `reorder_tables_figures`. Freeform prose mentions
         ("Supplementary Figure 1", "Fig. S2"…) are NOT rewritten — they're
         returned in `prose_mentions` so you can update them precisely. Returns
         {mapping, tokens_updated, embeds_updated, sections_changed,

@@ -1151,6 +1151,15 @@ def prepare_export(
             + " but no such registered figure exists (register with add_figure, "
             "or fix the reference)"
         )
+    # Where the items stand against how they are numbered (feedback
+    # 727b3acec9da): an embed of nothing, an item drawn twice, items left out
+    # of the body while others are placed, numbers out of the order of
+    # appearance — each decidable from the text, none of them said before.
+    warnings.extend(_display_lint.placement_warnings(_display_lint.placement(
+        manuscript,
+        [t["table_number"] for t in tbls + supp_tbls],
+        [f["figure_number"] for f in figs + supp_figs],
+        number_supplementary=split_supp)))
     # Legends were never scanned, and they are where the pointers rot: a
     # renumbering left seven of this paper's figure legends naming
     # pre-renumbering supplementary tables, and they were found by hand, late

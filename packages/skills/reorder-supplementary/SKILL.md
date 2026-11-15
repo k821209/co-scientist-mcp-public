@@ -10,6 +10,10 @@ a figure's image blob path embeds that number — so reordering means renumberin
 the docs and moving the blobs. `mcp__scivo__reorder_supplementary` does
 that server-side (no image re-upload) and rewrites deterministic body refs.
 
+Main tables and figures — "put this table in at 3", "표 번호 맞추자" — are
+`mcp__scivo__reorder_tables_figures`, not this flow: it rewrites the prose
+too and returns what it changed. Never renumber by deleting and re-adding.
+
 ## Flow
 
 1. List the current items: `list_figures(slug, supplementary=True)` (or

@@ -318,17 +318,28 @@ def list_figures(state: State, slug: str, *, supplementary: bool | None = False)
     return figs
 
 
-def delete_figure(state: State, slug: str, figure_number: int) -> bool:
-    """Delete the figure doc and its blob. Returns True if it existed."""
+def remove_figure(state: State, slug: str, figure_number: int) -> dict:
+    """Delete the figure doc and its blob, and hand back the record.
+
+    The record, not the image: the caption, legend, prompt and provenance come
+    back in the reply (see `tables.remove_table`), and `image_deleted` says
+    whether stored bytes went with it — those are not recoverable from here.
+    """
     _ensure_paper(state, slug)
     path = _figure_path(state, slug, figure_number)
     existing = state.backend.get_doc(path)
     if existing is None:
-        return False
-    if existing.get("blob_path"):
+        return {"deleted": False, "figure": None, "image_deleted": False}
+    had_image = bool(existing.get("blob_path"))
+    if had_image:
         state.backend.delete_blob(existing["blob_path"])
     state.backend.delete_doc(path)
-    return True
+    return {"deleted": True, "figure": existing, "image_deleted": had_image}
+
+
+def delete_figure(state: State, slug: str, figure_number: int) -> bool:
+    """Delete the figure doc and its blob. Returns True if it existed."""
+    return remove_figure(state, slug, figure_number)["deleted"]
 
 
 # ── multi-panel figures ───────────────────────────────────────────────────────
