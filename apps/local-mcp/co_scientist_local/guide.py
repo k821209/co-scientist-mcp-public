@@ -933,7 +933,7 @@ Writing and revising
 
 Readers — checks an author cannot run on their own text
 - `/paper-review [slug] [mode?]` — the science, as three reviewers
-- `/prose-review [slug]` — the prose, as the journal's copy editor
+- `/prose-review [slug]` — the prose, as the journal's copy editor, or as the office a report goes to
 - `/cold-read [slug] [section]` — a section read with nothing but itself; run before an abstract is called done
 - `/reviewer-frame-check` — a letter read with only what its recipient holds; run before a letter is final
 - `/visual-review` — anything rendered to pixels: the whole set on one sheet, then the frame

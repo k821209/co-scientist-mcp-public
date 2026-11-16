@@ -1,6 +1,6 @@
 ---
 name: prose-review
-description: Read a written manuscript as the journal's copy-editor and comment, with the replacement sentence, only where the prose does not read like a journal. Use when the user says "the writing doesn't read like a paper", "문체가 논문 같지 않다", "check the writing", "does this sound like a journal".
+description: Read a written manuscript as the journal's copy-editor — or a report, proposal or plan as the office that receives it — and comment, with the replacement sentence, only where the prose is wrong for that reader. Use when the user says "the writing doesn't read like a paper", "문체가 논문 같지 않다", "보고서 문체 봐줘", "인공지능 말투 같다", "check the writing", "does this sound like a journal".
 ---
 
 # /prose-review
@@ -12,6 +12,24 @@ description: Read a written manuscript as the journal's copy-editor and comment,
 Reads a finished draft the way a copy-editor at the journal would, and comments
 where the SENTENCE is wrong for the venue. Not what it claims — `/paper-review`
 does that.
+
+## Which reader: a journal, or the office a report goes to
+
+`get_paper_state(slug)` says which. A journal manuscript (`doc_type` `paper`)
+is read by `journal-copyedit` against §1–§6 below. **Anything else — a
+commissioned-work report, a proposal, an operating plan — is read by
+`report-copyedit`, and what to look for is `REPORT-REGISTER.md` in this
+directory, not §1–§6.** Read it before the pass.
+
+It used to be the journal reader for everything, and on a report that reads
+the wrong way: the conventions it enforces are a journal's, and what a
+report's recipient actually strikes — a sentence about what was NOT done, a
+metaphor where the form wants the plain statement — is not on its list. A
+session then checked its own report by hand, which is the one reading this
+skill exists to replace (feedback d0e961588f97).
+
+The non-negotiable rules, the cold subagent, the flow and the budget below are
+the same for both.
 
 ## What this skill is for, and what it must not become
 
@@ -156,7 +174,20 @@ a column head meaning "the distributed file". It survived five drafts, the
 `/paper-writing` rule that forbids exactly this, and `lint_legends` — because it
 was perfectly clear to everyone who had been in the room.
 
-So hand the text to the shipped reader:
+So hand the text to the shipped reader. For a report, the same call with
+`subagent_type="report-copyedit"` and, in place of venue and field, the kind
+of document and who receives it:
+
+```
+Task(subagent_type="report-copyedit",
+     prompt="""Document: 국문 용역 결과보고서.
+     Recipient: 발주처 담당 연구관 — 납품물을 검수하는 해당 분야 전문가.
+
+     The section:  /tmp/copyedit-<slug>-<key>.md
+     """)
+```
+
+For a journal manuscript:
 
 ```
 Task(subagent_type="journal-copyedit",
@@ -184,9 +215,9 @@ author's attention.
 reference form, for drafting. This skill is the pass that catches what drafting
 missed.
 
-The definition SHIPS (`packages/agents/journal-copyedit.md`, linked into
-`.claude/agents/` on MCP startup, `tools: Read`), the same way
-`reviewer-frame-check` does; a harness without a fresh-context subagent runs
+Both definitions SHIP (`packages/agents/journal-copyedit.md` and
+`report-copyedit.md`, linked into `.claude/agents/` on MCP startup,
+`tools: Read`), the same way `reviewer-frame-check` does; a harness without a fresh-context subagent runs
 the check in a separate session with only the temp file open — the isolation
 is the point, not the mechanism. Run the pass yourself, in-session, only when
 neither is possible, and say so in the summary rather than reporting a clean
@@ -197,7 +228,8 @@ result: a session checking its own register can only degrade the check.
 1. `get_paper_state(slug)` — the stored bodies, which are what anchors match.
 2. `lint_manuscript(slug)` — note every span it already flagged; those are off
    limits.
-3. `list_references(slug)` — the field's own vocabulary, for the §1 test.
+3. `list_references(slug)` — the field's own vocabulary, for the §1 test
+   (a journal manuscript only).
 4. Read **section by section, paragraphs whole.** Not sentence by sentence: §4
    only exists at paragraph scale.
 5. File each finding with `add_review`, `severity="suggestion"` by default

@@ -3,9 +3,10 @@
 Each file is a Claude Code subagent definition, linked into a project's
 `.claude/agents/` on MCP startup (`agents_install.py`). They are READERS: a
 skill hands one a bundle and it reports what the text required from outside
-that bundle, or what the venue would not print. Two exist — `reviewer-frame-check`
-(spawned by `/reviewer-frame-check` and `/cold-read`) and `journal-copyedit`
-(spawned by `/prose-review`).
+that bundle, or what its reader would not let stand. Three exist —
+`reviewer-frame-check` (spawned by `/reviewer-frame-check` and `/cold-read`),
+and the two `/prose-review` spawns by the kind of document: `journal-copyedit`
+for a manuscript, `report-copyedit` for a report, proposal or plan.
 
 What a reader definition must have, and why:
 
