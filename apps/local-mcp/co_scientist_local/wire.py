@@ -25,14 +25,17 @@ import pathlib
 import subprocess
 import sys
 
+from . import context_file
 from .hosts import host as get_host
+from .pi_direct import PI_DIRECT_TOOLS
 
 SERVER_NAME = "scivo"
 
 # Environment variable NAMES forwarded to the MCP under Codex, which hands a
-# server only HOME/PATH/LANG/… and never the shell's environment. The same list
-# lives in apps/web/src/lib/codexEnv.ts; tests/test_skill_audit.py derives the
-# truth from what the MCP source actually reads and fails if either copy drifts.
+# server only HOME/PATH/LANG/… and never the shell's environment.
+# tests/test_skill_audit.py derives the truth from what the MCP source actually
+# reads and fails if this list drifts. (The dashboard kept a second copy until
+# its by-hand steps were removed, 2026-11-16.)
 CODEX_FORWARDED_ENV = (
     "CO_SCIENTIST_CHECKOUT",
     "CO_SCIENTIST_DASHBOARD_URL",
@@ -63,20 +66,30 @@ CODEX_FORWARDED_ENV = (
 )
 
 
-def mcp_json(api_key: str, interpreter: str) -> str:
+def mcp_json(api_key: str, interpreter: str, *, host_id: str = "claude") -> str:
     """The `.mcp.json` Claude Code and Pi both read.
 
     `command` is the interpreter that HAS the package, never a bare `python3`:
     that resolves through PATH and picks a different one under another shell,
     which is the single most common way a working install stops working.
+
+    Pi's adapter reads two more keys from the same file, and without them a
+    Pi install does not work with the skills at all:
+      - `toolPrefix: "mcp"` yields `mcp__scivo__<tool>`, the name every skill
+        writes. The adapter's DEFAULT is `<server>_<tool>`.
+      - `directTools` is a LIST (pi_direct.py), not `true`.
     """
+    doc: dict = {"mcpServers": {SERVER_NAME: {
+        "type": "stdio",
+        "command": interpreter,
+        "args": ["-m", "co_scientist_local"],
+        "env": {"CO_SCIENTIST_API_KEY": api_key},
+    }}}
+    if host_id == "pi":
+        doc["directTools"] = list(PI_DIRECT_TOOLS)
+        doc["toolPrefix"] = "mcp"
     return json.dumps(
-        {"mcpServers": {SERVER_NAME: {
-            "type": "stdio",
-            "command": interpreter,
-            "args": ["-m", "co_scientist_local"],
-            "env": {"CO_SCIENTIST_API_KEY": api_key},
-        }}},
+        doc,
         indent=2,
     ) + "\n"
 
@@ -185,9 +198,12 @@ def wire(host_id: str, *, api_key: str, project: str | None, root: pathlib.Path,
                 "overwrite a config that may hold another project's key.")
     target.parent.mkdir(parents=True, exist_ok=True)
     body = (codex_toml(api_key, interpreter) if spec.config_format == "toml"
-            else mcp_json(api_key, interpreter))
+            else mcp_json(api_key, interpreter, host_id=host_id))
     target.write_text(body)
     _ignore(root, spec.config_path)
+    # The file the session reads first. Not ignored: it holds no key.
+    context = context_file.ensure(root, project, config=spec.config_path,
+                                  context=spec.context_file)
 
     # Skills, where this host looks for them — from the table, not from a
     # default here. Two bugs came out of deciding it in this function: the
@@ -206,7 +222,7 @@ def wire(host_id: str, *, api_key: str, project: str | None, root: pathlib.Path,
         linked.append({"command": " ".join(step), "ok": done.returncode == 0,
                        "detail": (done.stdout or done.stderr).strip()[-200:]})
     return {"host": host_id, "config": str(target), "rewritten": rewriting,
-            "skills": linked,
+            "context": context, "skills": linked,
             "next": [spec.sign_in, spec.start], "caveats": list(spec.caveats)}
 
 
@@ -216,7 +232,9 @@ def cli(argv: list[str]) -> int:
         description="wire this directory to an agent host, from the host table")
     parser.add_argument("--host", required=True)
     parser.add_argument("--key", help="the project API key (else $CO_SCIENTIST_API_KEY)")
-    parser.add_argument("--project", help="the project id, for the reply only")
+    parser.add_argument("--project", help="the project id — written into the context file "
+                                          "(CLAUDE.md / AGENTS.md), which is what a session "
+                                          "checks the key against")
     parser.add_argument("--dir", default=".", help="the project directory")
     parser.add_argument("--python", default=sys.executable,
                         help="the interpreter that HAS the package")
@@ -232,6 +250,18 @@ def cli(argv: list[str]) -> int:
                root=pathlib.Path(args.dir).expanduser().resolve(),
                interpreter=args.python, force=args.force)
     print(f"{'rewrote' if out['rewritten'] else 'wrote'} {out['config']}")
+    context = out["context"]
+    if context["state"] == "written":
+        print(f"wrote {context['file']}")
+    elif context["state"] == "kept":
+        print(f"kept your {context['file']}")
+    elif context["state"] == "names another project":
+        print(f"\n  !! {context['file']} exists and does not name project {args.project}.")
+        print("     It was left alone. A session here will stop at its first step, or skip")
+        print("     the check — fix the project id in it, or delete it and run this again.\n")
+    else:
+        print(f"no {context['file']} ({context['state']}) — a session has nothing to check "
+              "the key against")
     for row in out["skills"]:
         if row["ok"]:
             print(f"{row['command']}: ok")

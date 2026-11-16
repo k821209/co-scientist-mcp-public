@@ -80,7 +80,7 @@ def _warn_legacy_server_key() -> None:
             "  ╭─ ⚠  MCP server key is still `co_scientist` ───────────────────╮\n"
             f"  │  {hit[-58:]:<62} │\n"
             "  │  The skills call mcp__scivo__* now. Rename the key to `scivo`  │\n"
-            "  │  (or re-run the Setup tab script) and restart the session.     │\n"
+            "  │  (or run the Setup tab's line again) and restart the session.  │\n"
             "  ╰────────────────────────────────────────────────────────────────╯\n\n"
         )
 

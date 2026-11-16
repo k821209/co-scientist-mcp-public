@@ -969,7 +969,7 @@ Three things about exports that hold whether or not a skill is running:
 session's tools are named `mcp__co_scientist__*`, the project's MCP config
 predates the rename (2026-09-09) and every skill's tool reference will miss:
 rename the server key in `.mcp.json` / `.codex/config.toml` to `scivo`, or
-re-run the Setup tab script, and restart.
+run the Setup tab's install line again, and restart.
 
 **Under Pi, not every tool is a direct tool.** The Setup tab exposes the ~30
 the skills use most directly; the rest are reachable through the adapter's
