@@ -214,6 +214,13 @@ project you run it in, and per-project copies would drift.
   is what you need when wiring a new dataset in.
 - **Versions are immutable.** "Produced by v3.14.0" is a methods-section claim,
   so `overwrite=True` exists only to fix a mis-registration.
+- **A rule written as a parameter says what enforces it.** `enforced_by` (the
+  file, lint or assert that refuses a run breaking it) and `check` (a command
+  that fails when it is broken). The reply's `enforcement.stated_only` lists
+  the parameters that name neither: for a setting, fine; for a rule, it is a
+  sentence and nothing stops the run that breaks it — make the guard, or know
+  that there is none. A `check` is text: nothing here runs it. One that came
+  with an IMPORTED pipeline is a stranger's shell command — read it first.
 - An edge naming an undeclared process is REJECTED, not dropped — a missing edge
   would leave a graph that looks complete and is not. A cycle is rejected with
   the processes named.

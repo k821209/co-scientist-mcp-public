@@ -2504,6 +2504,17 @@ def build_mcp(state: State) -> FastMCP:
         thing the graph is for. Every other edge is still checked, so a genuine
         circular dependency is still refused.
 
+        A parameter that is a RULE — "never read the joined file before the
+        build has finished" — can say what stands behind it:
+        `{"name": …, "enforced_by": "build.py: OUT.unlink()", "check":
+        "grep -q OUT.unlink build.py"}`. `enforced_by` is what refuses a run
+        that breaks it (a file, a lint, an assert); `check` is a command that
+        fails when it is broken. The reply's `enforcement` lists the
+        parameters that name neither — fine for a setting; for a rule it means
+        it is only a sentence, and a rule kept only as a sentence here was
+        broken two hours after it was registered. `check` is stored, never run
+        by this server: run it yourself when you mean to.
+
         `commit` is the revision this version IS. `repo` names a mutable path, so
         without it the record stops describing the code that produced the result
         as soon as anyone edits the repo.

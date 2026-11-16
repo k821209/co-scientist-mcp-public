@@ -187,6 +187,17 @@ def _norm_edges(edges, process_names: set[str]) -> list[dict]:
     return out
 
 
+# What a parameter record holds. A key outside this set used to be dropped
+# without a word — including, until 2026-11-16, the two this section adds.
+PARAM_FIELDS = ("name", "default", "type", "description", "required",
+                "enforced_by", "check")
+
+
+def _text(value) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
 def _norm_params(params) -> list[dict]:
     out: list[dict] = []
     for p in params or []:
@@ -202,8 +213,57 @@ def _norm_params(params) -> list[dict]:
             "description": (str(p["description"]).strip()
                             if p.get("description") else None),
             "required": bool(p.get("required", False)),
+            # What refuses a run that breaks this — a file, a lint, an assert.
+            "enforced_by": _text(p.get("enforced_by")),
+            # A command that fails when it is broken. TEXT: nothing in this
+            # package runs it (see `enforcement`).
+            "check": _text(p.get("check")),
         })
     return out
+
+
+def enforcement(raw_params, stored: list[dict]) -> dict:
+    """Which parameters name something that enforces them, and which only say.
+
+    Most parameters in this registry are not settings. Measured on the 656
+    registered when this was written: 246, in 18 of 24 pipelines, are worded
+    as rules — "★… 금지", "must", "never". A rule written here and nowhere
+    else is a sentence: one was broken two hours after it was registered, by
+    the session that wrote it, while the same rule as a line of build.py held
+    on every build (feedback 6b469a596e2b). In the registry the two looked
+    alike.
+
+    So a parameter can say what stands behind it — `enforced_by`, `check` —
+    and registering a version answers with the ones that say nothing. It does
+    not call those wrong: `--fps 30` is a setting and needs no guard. It asks,
+    at the one moment the author is looking at the rule.
+
+    `check` is stored and never executed here. Running a command is the
+    session's act, under the session's own approval; a registry that ran what
+    it holds would run whatever an imported pipeline brought with it.
+    """
+    enforced = [p["name"] for p in stored if p.get("enforced_by") or p.get("check")]
+    stated = [p["name"] for p in stored if not (p.get("enforced_by") or p.get("check"))]
+    ignored: dict[str, list[str]] = {}
+    for p in raw_params or []:
+        if isinstance(p, dict) and str(p.get("name") or "").strip():
+            extra = sorted(k for k in p if k not in PARAM_FIELDS)
+            if extra:
+                ignored[str(p["name"]).strip()] = extra
+    notes = []
+    if stated:
+        notes.append(
+            f"{len(stated)} of {len(stored)} parameters name nothing that enforces them. "
+            "For a setting that is as it should be. For a RULE — something a run must "
+            "not do — it means nothing stops the run that breaks it: give `enforced_by` "
+            "(what refuses it: a file, a lint, an assert) or `check` (a command that "
+            "fails when it is broken), or accept that it is a sentence.")
+    if ignored:
+        notes.append(
+            "Not stored — a parameter holds " + ", ".join(PARAM_FIELDS) + ": "
+            + "; ".join(f"{name}: {', '.join(keys)}" for name, keys in ignored.items()))
+    return {"enforced": enforced, "stated_only": stated,
+            "note": " ".join(notes) or None, "ignored_fields": ignored}
 
 
 def topological_order(processes: list[dict], edges: list[dict]) -> list[str]:
@@ -308,7 +368,9 @@ def register_pipeline_version(
     state.backend.update_doc(_pipeline_path(state, pid),
                              {"latest_version": vid, "updated_at": now})
     _sync_public(state, pid)      # no-op unless published
-    return doc
+    # In the reply, not in the record: it is said once, to whoever just wrote
+    # the parameters down.
+    return {**doc, "enforcement": enforcement(params, doc["params"])}
 
 
 def list_pipelines(state: State) -> list[dict]:
@@ -615,6 +677,7 @@ def import_public_pipeline(
         },
     )
     imported = []
+    checks = 0
     for v in src.get("versions") or []:
         register_pipeline_version(
             state, target, v.get("version") or "1.0",
@@ -623,11 +686,17 @@ def import_public_pipeline(
             description=v.get("description"), overwrite=overwrite,
         )
         imported.append(v.get("version"))
+        checks += sum(1 for p in v.get("params") or [] if isinstance(p, dict) and p.get("check"))
     return {
         "name": target, "imported_versions": imported,
         "published": False, "source": public_id,
         "license": src.get("license"),
+        "checks_imported": checks,
         "note": (
+            (f"{checks} parameter(s) came with a `check` command. Each is someone else's "
+             "shell command, written for their machine: READ it before running it, and "
+             "run none of them unasked. " if checks else "")
+            +
             "Private copy. If you improve it and publish, the attribution to "
             f"{public_id} travels with it automatically (derived_from). Review "
             "`public_notes` before republishing — it is currently the ORIGINAL "
