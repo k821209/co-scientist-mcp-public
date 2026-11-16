@@ -182,8 +182,9 @@ of document and who receives it:
 Task(subagent_type="report-copyedit",
      prompt="""Document: 국문 용역 결과보고서.
      Recipient: 발주처 담당 연구관 — 납품물을 검수하는 해당 분야 전문가.
+     Rendering: generated — a script builds the submitted .hwpx from these sections.
 
-     The section:  /tmp/copyedit-<slug>-<key>.md
+     The section, titled "Ⅱ-1. 교과목 개요":  /tmp/copyedit-<slug>-<key>.md
      """)
 ```
 
@@ -201,7 +202,11 @@ Task(subagent_type="journal-copyedit",
 Give it **only** the section text written to a temp file, plus the venue and the
 field. Not the other sections, not the figures, not anything from this session —
 the isolation is what makes the pass work. Write `get_section(slug, key)`'s
-`body` to the file verbatim.
+`body` to the file verbatim, **and nothing else: no title line, no second
+section.** The title goes in the prompt. A heading you type into the file is
+read as the author's — a caller joined three sections under `##` titles of its
+own, and two readers reported the mismatch with the author's bold sub-titles
+that the caller had just made (feedback 87c137f8d07c).
 
 It returns `--- FINDINGS --- / PASSED / PATTERN / BUNDLE_NOTE`. Each finding
 carries `kind`, a verbatim `span`, and the replacement sentence, which is what

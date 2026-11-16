@@ -81,6 +81,24 @@ reads a paraphrase as not knowing the name.
   body) or from the user. Never invent the recipient: without one the reader
   cannot tell an expert office from a general one, and says so in
   `BUNDLE_NOTE`.
+- **Say how the text becomes the document the recipient opens: `Rendering:`.**
+  `as written` when they get what `/paper-export` makes of these sections;
+  `generated` when a script or a person builds the submitted file from them —
+  an .hwpx form filled by a generator, text pasted into the agency's template.
+  Whether a `##` line and a bold line print at one level is decided there, not
+  in the markdown, and both are ordinary in these documents: 98 of 714 report
+  sections in one account mark sub-titles both ways, in 47 of 126 documents
+  (2026-11-16). Do not guess. When you do not know, write `not stated`; the
+  reader then leaves heading level and indentation unjudged and says so.
+- **What the reader says under `BUNDLE_NOTE` about heading markup is not a
+  comment to file.** Look at it yourself in two places — the submitted file,
+  and the Paper tab, which is where the author reads and comments, and where a
+  mismatch that the generated file hides is still on the page — and tell the
+  user once what you found.
+- **A long report, fewer readers: several files to one reader, never one file
+  with several bodies.** List each file with its title; findings then carry
+  `section:`, which is the section to anchor the comment in. Two or three
+  adjacent sections is what has been run.
 - **`list_references` is not consulted.** The vocabulary test for a report is
   the form's own words and the recipient's field, which the reader is told.
 - **A `(삭제)` suggestion is a complete finding.** File it as written.
