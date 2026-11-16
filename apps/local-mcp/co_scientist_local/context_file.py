@@ -15,6 +15,38 @@ import pathlib
 
 DASHBOARD = "https://co-scientist-5af1a.web.app"
 
+# The server was `co_scientist` until 2026-09-09. A context file written before
+# then tells the model to call `mcp__co_scientist__whoami()` — a tool that no
+# longer exists — and the guards for the rename read the CONFIG and not this
+# file, so a project with a current .mcp.json and an old CLAUDE.md worked in
+# every way except its instructions (feedback e76efd026a3b).
+LEGACY_PREFIX = "mcp__co_scientist__"
+CURRENT_PREFIX = "mcp__scivo__"
+CONTEXT_NAMES = ("CLAUDE.md", "AGENTS.md")
+_WALK_UP = 8
+
+
+def stale_context_files(start: pathlib.Path) -> list[tuple[pathlib.Path, int]]:
+    """Context files at `start` and above that still call the old server name,
+    with how many calls each makes. A host reads the file from every parent
+    directory, so every one is looked at — a current one in the parent does
+    not excuse a stale one in the project."""
+    found: list[tuple[pathlib.Path, int]] = []
+    try:
+        start = pathlib.Path(start).resolve()
+    except OSError:
+        return found
+    for directory in [start, *start.parents][:_WALK_UP]:
+        for name in CONTEXT_NAMES:
+            path = directory / name
+            try:
+                calls = path.read_text(encoding="utf-8").count(LEGACY_PREFIX)
+            except OSError:
+                continue
+            if calls:
+                found.append((path, calls))
+    return found
+
 
 def render(project_id: str, *, config: str, context: str) -> str:
     return f"""# Scivo project
@@ -31,7 +63,10 @@ Dashboard: {DASHBOARD}/projects/{project_id}/papers
      the right project's Setup tab again, in this directory.
 2. Call `mcp__scivo__project_guide()` for the current skill list,
    tool surface, citation/math/remote conventions. The guide lives in the
-   installed package, so this file rarely needs to change. To update the
+   installed package, so this file rarely needs to change — unless a
+   session-start notice says the tool names or these calls have changed:
+   then run the Setup tab's install line again here, which brings it up to
+   date. To update the
    package, run `<python> -m co_scientist_local update` with the
    interpreter `{config}` names — it reads `install_mode` itself and
    does the matching thing (replace a `site-packages` install from git; `git
@@ -60,6 +95,11 @@ def ensure(root: pathlib.Path, project_id: str | None, *, config: str, context: 
     An existing file is the user's — it may hold their own instructions — so
     it is kept, and the reply says whether it names this project: one that
     names another means the mismatch guard will fire, or will not run.
+
+    One thing in it IS changed: a call to the server's old name. That prefix
+    can only be a call to a tool that no longer exists, the file is what tells
+    the model which tools to call, and re-running this is how an install is
+    brought up to date. Everything else in the file is left as it was.
     """
     path = root / context
     if path.exists():
@@ -67,9 +107,16 @@ def ensure(root: pathlib.Path, project_id: str | None, *, config: str, context: 
             text = path.read_text(encoding="utf-8")
         except OSError:
             text = ""
-        if project_id and project_id not in text:
-            return {"file": context, "state": "names another project"}
-        return {"file": context, "state": "kept"}
+        renamed = text.count(LEGACY_PREFIX)
+        out: dict = {"file": context}
+        if renamed:
+            text = text.replace(LEGACY_PREFIX, CURRENT_PREFIX)
+            path.write_text(text, encoding="utf-8")
+            out["renamed"] = renamed
+        out["state"] = ("names another project" if project_id and project_id not in text
+                        else "kept")
+        return {"file": out["file"], "state": out["state"],
+                **({"renamed": renamed} if renamed else {})}
     if not project_id:
         return {"file": context, "state": "not written: no --project"}
     path.write_text(render(project_id, config=config, context=context), encoding="utf-8")

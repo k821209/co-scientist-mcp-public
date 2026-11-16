@@ -91,17 +91,42 @@ def legacy_server_key_warning(cwd: Path) -> str:
                 return ""
             if "co_scientist" in servers and "scivo" not in servers:
                 return (f"\n\n⚠️  {f} still names the MCP server `co_scientist`; the skills "
-                        f"call mcp__scivo__* now. Rename the key to `scivo` (or re-run the "
-                        f"Setup tab script) and restart.")
+                        f"call mcp__scivo__* now. Rename the key to `scivo` (or run the "
+                        f"Setup tab's install line again) and restart.")
             return ""
     return ""
+
+
+def legacy_context_warning(cwd: Path) -> str:
+    """A CLAUDE.md / AGENTS.md here or above that still tells the model to call
+    `mcp__co_scientist__*`. The guard above reads the config; this is the file
+    that tells the model WHAT to call, and with a current config beside it
+    every tool works while the instructions point at none of them (feedback
+    e76efd026a3b). Every parent is looked at: the host reads them all."""
+    hits = []
+    for d in [cwd, *cwd.parents][:8]:
+        for name in ("CLAUDE.md", "AGENTS.md"):
+            f = d / name
+            try:
+                calls = f.read_text(encoding="utf-8").count("mcp__co_scientist__")
+            except OSError:
+                continue
+            if calls:
+                hits.append(f"{f} ({calls} call{'s' if calls != 1 else ''})")
+    if not hits:
+        return ""
+    return ("\n\n⚠️  " + "; ".join(hits) + " still tell" + ("s" if len(hits) == 1 else "")
+            + " you to call `mcp__co_scientist__*`. The server is `scivo` now and those tools "
+            "do not exist: wherever such a file names one, call the `mcp__scivo__` tool of the "
+            "same name instead. Tell the user to run the Setup tab's install line again in "
+            "that directory — it renames the calls in the file and keeps everything else.")
 
 
 def main() -> None:
     cwd = Path.cwd()
     paper = detect_paper(cwd)
     banner = (build_banner(paper) + version_warning() + install_mode_warning()
-              + legacy_server_key_warning(cwd))
+              + legacy_server_key_warning(cwd) + legacy_context_warning(cwd))
     # The documented shape, for BOTH hosts. Claude Code and Codex read the
     # banner from hookSpecificOutput.additionalContext; a top-level key (what
     # this printed before) reached the model only because Claude Code appends

@@ -85,6 +85,28 @@ def _warn_legacy_server_key() -> None:
         )
 
 
+def _warn_legacy_context() -> None:
+    """A CLAUDE.md / AGENTS.md that still tells the model to call
+    `mcp__co_scientist__*`. The config can be current while this is not, and
+    then every tool works and the instructions point at none of them."""
+    try:
+        from .context_file import stale_context_files
+        hits = stale_context_files(pathlib.Path.cwd())
+    except Exception:  # noqa: BLE001 — a guard must not stop the server
+        return
+    if not hits:
+        return
+    lines = "".join(f"  │  {str(path)[-52:]:<52} {calls:>3} call(s) │\n" for path, calls in hits[:4])
+    sys.stderr.write(
+        "\n"
+        "  ╭─ ⚠  a context file still calls mcp__co_scientist__* ──────────╮\n"
+        + lines +
+        "  │  Those tools are mcp__scivo__* now. Run the Setup tab's line   │\n"
+        "  │  again in that directory: it renames them and keeps the rest.  │\n"
+        "  ╰────────────────────────────────────────────────────────────────╯\n\n"
+    )
+
+
 def _check_claude_md_project_id(state: State) -> None:
     """Compare the project context file's stated project id (if any) against
     the one the MCP actually authenticated to. A mismatch usually means the
@@ -118,8 +140,8 @@ def _check_claude_md_project_id(state: State) -> None:
             f"  │  MCP authenticated as : {state.project_id:<36} │\n"
             "  │                                                                │\n"
             "  │  These should match. You probably mixed the MCP config and     │\n"
-            f"  │  {name:<9} from two different dashboard projects. Re-download │\n"
-            "  │  setup-<slug>.sh from a single project's Setup tab to fix.     │\n"
+            f"  │  {name:<9} from two different dashboard projects. Run the     │\n"
+            "  │  install line from the right project's Setup tab again here.   │\n"
             "  ╰────────────────────────────────────────────────────────────────╯\n\n"
         )
 
@@ -315,6 +337,7 @@ def main() -> None:
         )
         _check_claude_md_project_id(state)
         _warn_legacy_server_key()
+        _warn_legacy_context()
     elif os.environ.get("CO_SCIENTIST_PROJECT_ID") and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         try:
             state = _build_service_account_state()

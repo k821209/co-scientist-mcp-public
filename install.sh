@@ -91,11 +91,54 @@ if [ ! -x "$VENV/bin/python" ]; then
   say "creating $VENV"
   "$PY" -m venv "$VENV" || die "could not create $VENV (python3-venv installed?)"
 fi
+# An editable install already in this environment is about to be replaced by
+# the published build. That is what this script is for — one interpreter,
+# nothing to pull — but it used to do it without a word: a developer's checkout
+# stopped being what ran, and the first anyone heard of it was a warning in the
+# next session that guessed at "a pip install of something" (feedback
+# b105664f6828). Said here, before it happens, with the way back.
+#
+# Asked of pip's own record with the standard library only: this must not
+# depend on anything the package ships (see the note at the end).
+EDITABLE=$("$VENV/bin/python" - 2>/dev/null <<'EDITABLE_PY' || true
+import json
+from importlib import metadata
+try:
+    record = json.loads(metadata.distribution("co-scientist-local").read_text("direct_url.json") or "{}")
+except Exception:
+    record = {}
+if (record.get("dir_info") or {}).get("editable"):
+    url = str(record.get("url") or "")
+    print(url[len("file://"):] if url.startswith("file://") else url)
+EDITABLE_PY
+)
+if [ -n "$EDITABLE" ]; then
+  say "this environment runs an EDITABLE install of the MCP, from:"
+  say "    $EDITABLE"
+  say "it is being REPLACED by the published build. That checkout stops being what"
+  say "runs — edits and \`git pull\` there change nothing from now on. To go back:"
+  say "    $VENV/bin/pip install -e $EDITABLE --no-deps"
+fi
+
 say "installing the Scivo MCP"
 "$VENV/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
 "$VENV/bin/pip" install --quiet --upgrade \
   "co-scientist-local @ git+$REPO#subdirectory=apps/local-mcp" \
   || die "pip install failed — scroll up for why"
+
+if [ -n "$EDITABLE" ]; then
+  # A record the package reads: the next session's warning then names this
+  # script and the date instead of guessing at a cause.
+  SCIVO_REPLACED=$EDITABLE "$VENV/bin/python" - "$VENV/scivo-install.json" <<'MARKER_PY' || true
+import datetime
+import json
+import os
+import sys
+json.dump({"replaced_editable": os.environ.get("SCIVO_REPLACED", ""),
+           "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+           "by": "install.sh"}, open(sys.argv[1], "w"))
+MARKER_PY
+fi
 
 if [ "$HOST" = harness ]; then
   say "installing the harness"

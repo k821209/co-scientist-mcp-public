@@ -28,6 +28,7 @@ import pathlib
 
 import os
 import re
+import subprocess
 import secrets as _secrets
 import socket as _socket
 import time as _time
@@ -117,18 +118,69 @@ CLIENT_ID = os.environ.get("SCIVO_CLIENT_ID") or "%s-%d-%s" % (
     _socket.gethostname(), os.getpid(), _secrets.token_hex(3))
 
 
+def _is_editable() -> bool:
+    """Whether this package is running out of a source checkout."""
+    import pathlib as _pl
+    return (_pl.Path(__file__).resolve().parent.parent / "pyproject.toml").exists()
+
+
+def direct_url() -> dict | None:
+    """What pip recorded about where this install came from (PEP 610), or None.
+
+    For an install from a git URL that is `vcs_info.commit_id` — the commit the
+    snapshot IS. It sat in the dist-info beside the package while whoami said
+    "git_sha is lost" (feedback b105664f6828).
+    """
+    try:
+        import json
+        from importlib import metadata
+        text = metadata.distribution("co-scientist-local").read_text("direct_url.json")
+        record = json.loads(text) if text else None
+        return record if isinstance(record, dict) else None
+    except Exception:  # noqa: BLE001 — no record is an answer, not an error
+        return None
+
+
+def snapshot_commit(record: dict | None = None) -> str | None:
+    """The commit a non-editable install was built from, when pip recorded one."""
+    record = direct_url() if record is None else record
+    commit = ((record or {}).get("vcs_info") or {}).get("commit_id")
+    return commit[:8] if isinstance(commit, str) and commit else None
+
+
+def install_marker() -> dict | None:
+    """What the one-line installer left when it replaced an editable install
+    (`<venv>/scivo-install.json`), or None. It is how a warning about the
+    replacement can name its cause instead of guessing at one."""
+    try:
+        import json
+        import pathlib as _pl
+        import sys
+        record = json.loads((_pl.Path(sys.prefix) / "scivo-install.json").read_text(encoding="utf-8"))
+        return record if isinstance(record, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def git_sha() -> str | None:
-    """Short git sha of the checkout this package is installed from (editable
-    installs), else None. The pyproject version is uninformative for source
-    installs (always 0.0.1) and collides for same-day publishes — the sha
-    pins the exact build. Cached; best-effort."""
+    """The commit this package is running: HEAD of the checkout for an
+    editable install, the commit pip recorded for a snapshot installed from
+    git, else None. The pyproject version is uninformative for source installs
+    (always 0.0.1) and collides for same-day publishes — the sha pins the
+    exact build. Cached; best-effort.
+
+    Git is asked only about a CHECKOUT. A snapshot in site-packages has no
+    repository of its own, and a venv that happens to sit inside someone's
+    repository would answer with that project's HEAD."""
     global _GIT_SHA_CACHE
     if _GIT_SHA_CACHE is not False:
         return _GIT_SHA_CACHE  # type: ignore[return-value]
+    if not _is_editable():
+        _GIT_SHA_CACHE = snapshot_commit()
+        return _GIT_SHA_CACHE
     sha: str | None = None
     try:
         import pathlib
-        import subprocess
         pkg_dir = pathlib.Path(__file__).resolve().parent
         out = subprocess.run(
             ["git", "-C", str(pkg_dir), "rev-parse", "--short=8", "HEAD"],
@@ -291,7 +343,7 @@ def runtime_info() -> dict:
         if checkout is not None:
             out["checkout_on_disk"] = str(checkout)
             w = install_warning("site-packages", str(checkout), sys.executable,
-                                dedicated=out["dedicated_venv"])
+                                dedicated=out["dedicated_venv"], **snapshot_facts(str(checkout)))
             if w:
                 out["install_warning"] = w
             else:
@@ -346,9 +398,20 @@ def find_checkout() -> "pathlib.Path | None":
     return None
 
 
+def snapshot_facts(checkout: str | None) -> dict:
+    """What can be KNOWN about a snapshot that replaced a checkout: its commit,
+    the checkout's, and whether the one-line installer did it."""
+    import pathlib as _pl
+    head = None
+    if checkout:
+        head = live_git_sha(_pl.Path(checkout))
+    return {"snapshot_sha": snapshot_commit(), "checkout_sha": head, "replaced": install_marker()}
+
+
 def install_warning(install_mode: str, checkout: str | None, python: str,
                     previous_mode: str | None = None, previous_path: str | None = None,
-                    dedicated: bool = False) -> str | None:
+                    dedicated: bool = False, snapshot_sha: str | None = None,
+                    checkout_sha: str | None = None, replaced: dict | None = None) -> str | None:
     """The line whoami and the session banner print when a snapshot in
     site-packages is what runs while a source checkout sits on disk.
 
@@ -372,16 +435,38 @@ def install_warning(install_mode: str, checkout: str | None, python: str,
     if previous_mode != "editable" and (not checkout or dedicated):
         return None
     where = checkout or (previous_path and str(pathlib.Path(previous_path).parents[2])) or "<checkout>"
+    # Who did it, when that is on record. The cause used to be a guess in every
+    # case — "usually a pip install of something" — and the one time it was
+    # reported, the cause was our own installer and the guess sent the reader
+    # looking at an unrelated package (feedback b105664f6828).
+    by_installer = bool(replaced and replaced.get("by") == "install.sh")
+    when = str((replaced or {}).get("at") or "")[:10]
     flip = ""
     if previous_mode == "editable":
         flip = (f" This project last ran an EDITABLE install"
-                f"{' at ' + previous_path if previous_path else ''}; the flip was silent.")
+                f"{' at ' + previous_path if previous_path else ''}; "
+                + (f"the one-line installer replaced it{' on ' + when if when else ''}."
+                   if by_installer else "the flip was silent."))
+    # Which commit runs: said when it is known, and "not known" only then.
+    if snapshot_sha and checkout_sha and snapshot_sha == checkout_sha:
+        which = (f" The snapshot is commit {snapshot_sha}, which is also the checkout's HEAD: "
+                 "the same code, but edits to the checkout do not take effect.")
+    elif snapshot_sha and checkout_sha:
+        which = (f" The snapshot is commit {snapshot_sha}; the checkout is at {checkout_sha}. "
+                 "Edits to the checkout do not take effect.")
+    elif snapshot_sha:
+        which = (f" The snapshot is commit {snapshot_sha}. Edits to the checkout do not "
+                 "take effect.")
+    else:
+        which = (" Edits to the checkout do not take effect, and which commit the snapshot "
+                 "is could not be read (pip left no direct_url.json).")
+    cause = ("" if by_installer else
+             " Cause is usually a `pip install` of something that names the MCP's git URL, "
+             "into this environment.")
     return (f"{python} is running a site-packages SNAPSHOT of co-scientist-local while a "
-            f"source checkout exists at {where}.{flip} Edits to the checkout do not take "
-            f"effect and git_sha is lost. Restore with: "
+            f"source checkout exists at {where}.{flip}{which} Restore with: "
             f"{python} -m pip install -e {where}/apps/local-mcp --no-deps  "
-            f"(then restart the session). Cause is usually a `pip install` of something "
-            f"that names the MCP's git URL, into this environment.")
+            f"(then restart the session).{cause}")
 
 
 def fetch_latest_version(timeout: float = 2.0) -> str | None:

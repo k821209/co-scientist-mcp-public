@@ -251,6 +251,9 @@ def cli(argv: list[str]) -> int:
                interpreter=args.python, force=args.force)
     print(f"{'rewrote' if out['rewritten'] else 'wrote'} {out['config']}")
     context = out["context"]
+    if context.get("renamed"):
+        print(f"{context['renamed']} call{'s' if context['renamed'] != 1 else ''} in "
+              f"{context['file']} named the server's old name — now mcp__scivo__*")
     if context["state"] == "written":
         print(f"wrote {context['file']}")
     elif context["state"] == "kept":

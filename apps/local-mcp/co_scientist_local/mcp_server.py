@@ -170,7 +170,8 @@ def build_mcp(state: State) -> FastMCP:
         # Staleness check: nudge the user to update if this install is behind
         # the latest published build (recently-fixed bugs may already be gone).
         try:
-            from .version_check import check_version, runtime_info, install_warning
+            from .version_check import (check_version, runtime_info, install_warning,
+                                        snapshot_facts)
             info.update(check_version())
             rt = runtime_info()
             info.update(rt)
@@ -182,7 +183,8 @@ def build_mcp(state: State) -> FastMCP:
             prev_path = (proj or {}).get("last_package_path")
             w = install_warning(rt.get("install_mode", ""), rt.get("checkout_on_disk"),
                                 rt.get("python_executable", "python"), prev_mode, prev_path,
-                                dedicated=bool(rt.get("dedicated_venv")))
+                                dedicated=bool(rt.get("dedicated_venv")),
+                                **snapshot_facts(rt.get("checkout_on_disk")))
             if w:
                 info["install_warning"] = w
                 info.pop("install_note", None)
