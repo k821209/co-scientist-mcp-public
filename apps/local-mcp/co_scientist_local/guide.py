@@ -961,6 +961,9 @@ Out of the door
 - `/paper-export [docx|tex|pdf|md]` — the rendered manuscript, checked first
 - `/tracked-changes-export` — a real marked-up `.docx` against the submitted version
 
+Keeping this install current
+- `/scivo-update` — update the MCP and skills from inside a session, then say the restart it needs (the scivo harness has its own command for this, /update, which also restarts)
+
 Three things about exports that hold whether or not a skill is running:
 
 - **Only `export_to_path` uploads by itself.** Any file you build locally — a

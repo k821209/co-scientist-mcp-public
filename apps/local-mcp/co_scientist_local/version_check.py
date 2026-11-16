@@ -519,6 +519,13 @@ def update_command(python: str | None = None) -> str:
     return f"{python or sys.executable} -m co_scientist_local update"
 
 
+# How to do it without copying the command: the skill runs it, from the
+# interpreter whoami names, and says the restart. A user outside the harness
+# had only the raw command, in a hint, and read that as "there is no way to
+# update" (2026-11-16).
+UPDATE_SKILL_HINT = "`/scivo-update` runs it for you; in the scivo harness, `/update`"
+
+
 def _compare(installed: str | None, latest: str | None,
              install_mode: str | None = None, python: str | None = None) -> dict:
     """Pure staleness decision — no network, no env. Always returns a dict.
@@ -550,8 +557,8 @@ def _compare(installed: str | None, latest: str | None,
                 f"(typical of an editable/source install, where `pip install "
                 f"--upgrade` is a no-op). Latest published is {latest}. Update "
                 f"with `{update_command(python)}`{pull} — then restart this "
-                f"session. `git_sha` in whoami is the reliable identifier for "
-                f"a source install."
+                f"session ({UPDATE_SKILL_HINT}). `git_sha` in whoami is the "
+                f"reliable identifier for a source install."
             )
         return out
     update = late_d is not None and inst_d < late_d
@@ -571,7 +578,7 @@ def _compare(installed: str | None, latest: str | None,
             f"co-scientist-local is out of date (installed {installed}, "
             f"latest {latest}). Recently-reported bugs may already be fixed "
             f"upstream. Update before working: `{update_command(python)}`, "
-            f"then restart this session."
+            f"then restart this session ({UPDATE_SKILL_HINT})."
         )
     return out
 
