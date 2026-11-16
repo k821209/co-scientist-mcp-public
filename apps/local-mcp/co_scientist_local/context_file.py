@@ -48,6 +48,24 @@ def stale_context_files(start: pathlib.Path) -> list[tuple[pathlib.Path, int]]:
     return found
 
 
+def context_warning(start: pathlib.Path) -> str | None:
+    """The line whoami carries when a context file still calls the old name.
+
+    For the hosts that run no session-start hook: the first thing any session
+    does is whoami, and this is where it learns that the file telling it what
+    to call is out of date — and what to call meanwhile.
+    """
+    stale = stale_context_files(start)
+    if not stale:
+        return None
+    named = "; ".join(f"{path} ({calls} call{'s' if calls != 1 else ''})" for path, calls in stale)
+    return (f"{named} still name{'s' if len(stale) == 1 else ''} the server's old tools, "
+            f"`{LEGACY_PREFIX}*`. They do not exist: wherever such a file names one, call the "
+            f"`{CURRENT_PREFIX}` tool of the same name. Tell the user to run the Setup tab's "
+            "install line again in that directory — it renames the calls and keeps the rest "
+            "of the file.")
+
+
 def render(project_id: str, *, config: str, context: str) -> str:
     return f"""# Scivo project
 

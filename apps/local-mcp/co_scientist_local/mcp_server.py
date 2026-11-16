@@ -132,6 +132,10 @@ def build_mcp(state: State) -> FastMCP:
         editable install): tell the user first, with the restore command it
         carries, before relying on any tool behaviour.
 
+        `context_warning`, when present, means a CLAUDE.md / AGENTS.md here
+        or above still tells you to call the server's old tool names: call
+        the `mcp__scivo__` tool of the same name, and tell the user.
+
         `machine` is what THIS machine lacks for the features that shell out
         (pandoc for exports, LibreOffice for slide previews, a headless
         browser for study previews, …): `missing` with what each stops and

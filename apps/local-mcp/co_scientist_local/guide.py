@@ -79,6 +79,9 @@ _SESSION_START = """On every session start:
    with a data row printed under a callout, three days after the check that
    catches it was fixed). `git_sha` is the sha this session captured, not
    live HEAD; `stale_hint` names both when they differ.
+   **`context_warning` present → the context file is out of date**: it
+   still names tools from before the server was renamed; call the
+   `mcp__scivo__` tool of the same name and tell the user what the line says.
    **`install_warning` present → say it to the user first**: this project
    last ran an editable install and now runs a snapshot, or a snapshot runs
    in a SHARED environment beside a source checkout (a `pip install` naming

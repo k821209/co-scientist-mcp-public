@@ -331,6 +331,15 @@ def runtime_info() -> dict:
     # 46191cc75d40). `stale_process` always could see it: its first signal is a
     # module file newer than this process, which is exactly what pip leaves.
     out.update(stale_process(pkg_dir))
+    # A CLAUDE.md / AGENTS.md here or above that still calls the server's old
+    # tools. In whoami because whoami is step one for every host, hook or no.
+    try:
+        from .context_file import context_warning
+        warning = context_warning(_pl.Path.cwd())
+        if warning:
+            out["context_warning"] = warning
+    except Exception:  # noqa: BLE001 — a guard must not break whoami
+        pass
     if editable:
         # The interpreter is what .mcp.json's `command` has to name. A bare
         # `python3` resolves through PATH, so the server silently fails to start
