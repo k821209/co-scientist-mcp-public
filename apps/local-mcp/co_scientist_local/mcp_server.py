@@ -433,6 +433,11 @@ def build_mcp(state: State) -> FastMCP:
         whole list is replaced; `[]` clears it. A variant listed under two
         names, or one that is another term's canonical name, is refused.
 
+        `"abbreviations": ["신규 후보"]` on a term is a short form the DOCUMENT
+        declares ("이하 '신규 후보'는 …"): a second accepted name, counted in
+        `by_term` and never reported. Put a name there, not under `variants`,
+        when its ordinary uses are correct.
+
         `lint_manuscript` then reports every use of a variant — section and
         sentence, in the body, the headings, table rows, captions and legends —
         under `terminology.variants`, counted in its total. A sentence that

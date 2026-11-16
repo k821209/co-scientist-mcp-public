@@ -50,7 +50,16 @@ _FOLD_AFTER = re.compile(r"\s?(?:-?\s?fold\b(?!\s*(?:CV|cross))|×|x\b|배|\s?ti
 _NOT_PROSE_LINE = re.compile(r"^\s*(?:#{1,6}\s|\*\*(?:Table|Figure|Fig\.|표|그림)\s*S?\d)", re.I)
 # "§1.6", "Section 3.2", "3장": a place in the document, not a quantity.
 _SECTION_BEFORE = re.compile(r"(?:§|Sections?\s|Sec\.\s|Chapter\s|Step\s|Stage\s)$", re.I)
-_SECTION_AFTER = re.compile(r"\s?(?:장|절|항)\b")
+# In Korean the marker FOLLOWS the number and a particle follows the marker:
+# "6.3절에 적었다". This ended in `\b` until 2026-11-16, and Korean is
+# word-class to `re`, so the exclusion only worked when nothing came after —
+# every report that says "표 1 … 6.3절에" was told its section number was
+# missing from Table 1 (feedback c0b0e65d26cc). What follows is a particle and
+# then a break; "12 절차", "34 항목", "56 장비" are counts of things and stay.
+_SECTION_AFTER = re.compile(
+    r"\s?(?:장|절|항)"
+    r"(?=(?:에서는|에서|에는|에|의|은|는|이|가|을|를|과|와|로|도|까지|부터)?"
+    r"(?:[\s,.;:)\]」』]|$))")
 _PERCENT_AFTER = re.compile(r"\s?(?:%|percent\b|퍼센트|pp\b)", re.I)
 # p / q values and thresholds: "p < 0.05", "(P = 0.003)", "FDR < 0.01", "q≤0.1".
 _STAT_BEFORE = re.compile(r"(?:\b[pPqQ]|FDR|α|alpha|padj|p-?adj|p-?value)\s*[<>=≤≥]\s*$", re.I)

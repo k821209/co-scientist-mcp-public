@@ -73,6 +73,7 @@ def clean_glossary(terms) -> list[dict]:
         raise ValueError("terms must be a list of {canonical, variants}")
     out: list[dict] = []
     owner: dict[str, str] = {}
+    accepted: dict[str, str] = {}
     canonicals: dict[str, str] = {}
     for index, term in enumerate(terms, start=1):
         if not isinstance(term, dict):
@@ -98,10 +99,37 @@ def clean_glossary(terms) -> list[dict]:
                     f"{owner[_key(variant)]!r} and {canonical!r}")
             owner[_key(variant)] = canonical
             variants.append(variant)
-        if not variants:
+        # A short form the document itself declares — "이하 '신규 후보'는 신규
+        # locus 후보를 가리킨다" — is a second ACCEPTED name: counted, never a
+        # finding. Without this a declared abbreviation had to go under
+        # `variants`, and its 24 ordinary uses all became findings (feedback
+        # c0b0e65d26cc).
+        raw_short = term.get("abbreviations") or []
+        if isinstance(raw_short, str):
+            raw_short = [raw_short]
+        abbreviations: list[str] = []
+        for short in raw_short:
+            short = " ".join(str(short or "").split())
+            if not short or _key(short) == _key(canonical):
+                continue
+            if _key(short) in {_key(a) for a in abbreviations}:
+                continue
+            if _key(short) in {_key(v) for v in variants}:
+                raise ValueError(
+                    f"{short!r} is both an abbreviation and a variant of {canonical!r} — "
+                    "it is accepted or it is not")
+            if _key(short) in owner:
+                raise ValueError(
+                    f"{short!r} is an abbreviation of {canonical!r} and a variant of "
+                    f"{owner[_key(short)]!r}")
+            accepted[_key(short)] = canonical
+            abbreviations.append(short)
+        if not variants and not abbreviations:
             raise ValueError(f"{canonical!r} has no variants — there is nothing to look for")
         canonicals[_key(canonical)] = canonical
         entry = {"canonical": canonical, "variants": variants}
+        if abbreviations:
+            entry["abbreviations"] = abbreviations
         note = " ".join(str(term.get("note") or "").split())
         if note:
             entry["note"] = note
@@ -111,6 +139,10 @@ def clean_glossary(terms) -> list[dict]:
             raise ValueError(
                 f"{canonicals[variant_key]!r} is a canonical name and also a variant "
                 f"of {canonical!r}")
+        if variant_key in accepted:
+            raise ValueError(
+                f"a name is a variant of {canonical!r} and an abbreviation of "
+                f"{accepted[variant_key]!r}")
     return out
 
 
@@ -156,13 +188,20 @@ def variant_findings(sections: list[dict], glossary: list[dict],
     `variants` are the findings; `contrasted` are sentences that also carry the
     canonical name and are listed without being counted.
     """
-    terms = [(entry["canonical"], _pattern(entry["canonical"]),
+    terms = [(entry["canonical"],
+              # Longest first: an abbreviation that CONTAINS the canonical name
+              # ("추가 전사체 후보") is counted as itself, not as the name plus a word.
+              [(name, _pattern(name))
+               for name in sorted((entry["canonical"], *entry.get("abbreviations", ())),
+                                  key=len, reverse=True)],
               [(variant, _pattern(variant)) for variant in entry["variants"]])
              for entry in glossary]
     variants: list[dict] = []
     contrasted: list[dict] = []
     by_term: dict[str, dict[str, int]] = {
-        entry["canonical"]: {"canonical": 0, **{v: 0 for v in entry["variants"]}}
+        entry["canonical"]: {"canonical": 0,
+                             **{a: 0 for a in entry.get("abbreviations", ())},
+                             **{v: 0 for v in entry["variants"]}}
         for entry in glossary}
     units = 0
 
@@ -170,12 +209,19 @@ def variant_findings(sections: list[dict], glossary: list[dict],
         nonlocal units
         for unit in _units(text):
             units += 1
-            for canonical, canonical_re, names in terms:
-                hits = len(canonical_re.findall(unit))
-                by_term[canonical]["canonical"] += hits
-                # A variant inside the canonical name ("전사체 모델" in "추가
-                # 전사체 모델") is the canonical name, not a variant of it.
-                rest = canonical_re.sub(lambda m: " " * len(m.group(0)), unit)
+            for canonical, accepted_names, names in terms:
+                # The accepted names — the canonical one and any declared
+                # abbreviation — are counted and taken out of the way. A variant
+                # inside one ("전사체 모델" in "추가 전사체 모델") is that name,
+                # not a variant of it.
+                hits = 0
+                rest = unit
+                for accepted_name, accepted_re in accepted_names:
+                    found = len(accepted_re.findall(rest))
+                    hits += found
+                    key = "canonical" if accepted_name == canonical else accepted_name
+                    by_term[canonical][key] += found
+                    rest = accepted_re.sub(lambda m: " " * len(m.group(0)), rest)
                 for variant, variant_re in names:
                     found = len(variant_re.findall(rest))
                     if not found:

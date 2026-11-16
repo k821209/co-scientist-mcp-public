@@ -1766,6 +1766,13 @@ def _export_to_path(
                     f"rendered by the python-docx export ({shown}) — only <br> is "
                     f"understood (a line break, also inside a table cell); rewrite "
                     f"the rest as markdown")
+            for row in diag.get("tables_squeezed") or []:
+                export_warnings.append(
+                    f"a {row['columns']}-column table (first cell: {row['first_cell']!r}) needs "
+                    f"{row['needs_pt'] / 72 * 25.4:.0f} mm for its longest unbreakable pieces and "
+                    f"the text column is {row['has_pt'] / 72 * 25.4:.0f} mm — a long token in it "
+                    "is still cut mid-word. Shorten it, split the table, or put it on its own "
+                    "landscape page")
             if numbered_citations:
                 export_warnings.append(
                     f"report/other doc: {numbered_citations} reference(s) cited as "

@@ -608,6 +608,146 @@ def _set_table_borders(table, *, size: int = 4, color: str = "000000") -> None:
         el.set(qn("w:color"), color)
 
 
+# ── column widths ────────────────────────────────────────────────────────────
+#
+# A table was laid out with every column the same width, whatever was in it:
+# a three-column list of files gave "10", "11", "2" the same 57 mm as the file
+# names, and a name wider than that was cut in the middle of a word —
+# "lettuce_annotation_1.zi / p" — which the recipient cannot copy (feedback
+# c4b78b6d923c). There was room; it was in the wrong column.
+#
+# So each column gets at least the width of its longest piece that cannot be
+# broken, and what is left of the text column is shared by how much each
+# column has to say. Widths are estimated from character counts — there is no
+# layout engine here — with the three faces the template uses.
+
+_SQUEEZED: contextvars.ContextVar[list | None] = contextvars.ContextVar("squeezed", default=None)
+_PT = 12700                                   # EMU per point
+_CELL_PADDING_PT = 14.0                       # Word's default cell margins, and the rules
+_CJK = re.compile(r"[\u1100-\u11ff\u2e80-\u9fff\uac00-\ud7a3\uf900-\ufaff\uff00-\uffef]")
+_CELL_BREAK = re.compile(r"<br\s*/?>", re.I)
+
+
+def _segments(raw: str) -> list[tuple[str, bool]]:
+    """(text, is_code) pieces of a cell's markdown: backticks switch the face,
+    emphasis marks print nothing."""
+    out: list[tuple[str, bool]] = []
+    for index, piece in enumerate((raw or "").split("`")):
+        code = index % 2 == 1
+        out.append((piece if code else re.sub(r"\*\*|__|(?<!\w)[*_]|[*_](?!\w)", "", piece), code))
+    return out
+
+
+def _char_pt(char: str, code: bool, bold: bool) -> float:
+    if _CJK.match(char):
+        return _BODY_FONT_SIZE.pt * (1.0 if not code else 0.9)
+    if code:
+        return 9.0 * 0.55                       # the mono face, at the size inline code is set
+    return _BODY_FONT_SIZE.pt * (0.56 if bold else 0.52)
+
+
+def _cell_needs(raw: str, *, bold: bool, whole_words: bool = False) -> tuple[float, float]:
+    """(the widest piece that cannot be broken, the widest line) of one cell, in points.
+
+    A line breaks at a space and between two CJK characters, and nowhere inside
+    a run of anything else: a file name, a number with its unit, an identifier.
+    `whole_words` keeps a CJK word together as well — for the header row, where
+    "내용" set as 내 / 용 over a narrow column is what a reader sees first.
+    """
+    unbreakable = widest = 0.0
+    for line in _CELL_BREAK.split(raw or ""):
+        line_pt = run_pt = 0.0
+        for text, code in _segments(line):
+            for char in text:
+                width = _char_pt(char, code, bold)
+                line_pt += width
+                if char.isspace():
+                    run_pt = 0.0
+                elif _CJK.match(char) and not whole_words:
+                    unbreakable = max(unbreakable, width)
+                    run_pt = 0.0
+                else:
+                    run_pt += width
+                    unbreakable = max(unbreakable, run_pt)
+        widest = max(widest, line_pt)
+    return unbreakable, widest
+
+
+def column_widths(cells: list[list[str]], available_pt: float) -> tuple[list[float], dict | None]:
+    """Widths in points for a table whose cells hold this markdown, and — when
+    even the unbreakable pieces do not fit the text column — what was needed.
+
+    Every column first gets its longest unbreakable piece. What is left goes
+    to the columns whose lines would otherwise WRAP, up to their widest line —
+    a column that already holds its longest content on one line needs no more.
+    Anything still left is shared by content, so the table spans the text
+    column as it did.
+    """
+    ncols = max((len(row) for row in cells), default=0)
+    if not ncols:
+        return [], None
+    least = [0.0] * ncols
+    widest = [0.0] * ncols
+    for ri, row in enumerate(cells):
+        for ci in range(ncols):
+            # The first column is measured as bold as well as the header: the
+            # table style sets it so in LibreOffice whatever tblLook says, and a
+            # width that is right for the regular face cuts the bold one.
+            unbreakable, line = _cell_needs(row[ci] if ci < len(row) else "",
+                                            bold=ri == 0 or ci == 0, whole_words=ri == 0)
+            least[ci] = max(least[ci], unbreakable + _CELL_PADDING_PT)
+            widest[ci] = max(widest[ci], line + _CELL_PADDING_PT)
+    need = sum(least)
+    if need > available_pt:
+        # It cannot fit: something will still be cut. Shrunk in proportion, and
+        # SAID — a table that quietly cuts a file name is the report.
+        scale = available_pt / need
+        return [w * scale for w in least], {"columns": ncols, "needs_pt": round(need, 1),
+                                            "has_pt": round(available_pt, 1)}
+    spare = available_pt - need
+    wants = [max(widest[ci] - least[ci], 0.0) for ci in range(ncols)]
+    wanted = sum(wants)
+    if wanted >= spare:
+        # Not every line fits. The columns that want least are satisfied first
+        # — a label or a number stays on one line — and the long column takes
+        # what is left and wraps: sharing in proportion instead set "항목 10"
+        # on two lines to give a paragraph a few more points.
+        out = list(least)
+        left = spare
+        order = sorted(range(ncols), key=lambda ci: wants[ci])
+        for position, ci in enumerate(order):
+            share = left / (ncols - position)
+            given = min(wants[ci], share)
+            out[ci] += given
+            left -= given
+        return out, None
+    left = spare - wanted
+    total = sum(widest) or 1.0
+    return [widest[ci] + left * widest[ci] / total for ci in range(ncols)], None
+
+
+def _apply_column_widths(table, widths_pt: list[float]) -> None:
+    """Fixed layout, with the width on the grid AND on every cell: Word reads
+    the cells, LibreOffice the grid, and a width set on only one of them is
+    ignored by the other."""
+    table.autofit = False
+    for ci, width in enumerate(widths_pt):
+        emu = int(width * _PT)
+        table.columns[ci].width = emu
+        for row in table.rows:
+            row.cells[ci].width = emu
+
+
+def _keep_rows_whole(table) -> None:
+    """A row that splits across a page leaves a line of empty boxes at the top
+    of the next one, which reads as missing data. `cantSplit` is ignored only
+    for a row taller than a page."""
+    for row in table.rows:
+        tr_pr = row._tr.get_or_add_trPr()
+        if tr_pr.find(qn("w:cantSplit")) is None:
+            tr_pr.append(tr_pr.makeelement(qn("w:cantSplit"), {}))
+
+
 def _render_table(doc, node: SyntaxTreeNode, asset_dir):
     rows: list[list[SyntaxTreeNode]] = []
     for section in node.children:  # thead / tbody
@@ -637,6 +777,17 @@ def _render_table(doc, node: SyntaxTreeNode, asset_dir):
             if ri == 0:  # bold header row
                 for run in cell.paragraphs[0].runs:
                     run.bold = True
+    section = doc.sections[-1]
+    available_pt = (section.page_width - section.left_margin - section.right_margin) / _PT
+    raw = [[(cell.children[0].content if cell.children else "") for cell in cells]
+           for cells in rows]
+    widths, squeezed = column_widths(raw, available_pt)
+    _apply_column_widths(table, widths)
+    _keep_rows_whole(table)
+    if squeezed is not None:
+        noted = _SQUEEZED.get()
+        if noted is not None:
+            noted.append({**squeezed, "first_cell": (raw[0][0] if raw and raw[0] else "")[:40]})
 
 
 def render_markdown_to_docx(
@@ -653,7 +804,9 @@ def render_markdown_to_docx(
     body image embeds resolve against it. Returns the written path.
 
     `diagnostics`, if given, receives what the renderer could not render:
-    `dropped_html` = {"<span>": 3, …} — every raw HTML tag other than `<br>`.
+    `dropped_html` = {"<span>": 3, …} — every raw HTML tag other than `<br>`;
+    `tables_squeezed` = the tables whose columns could not all be given their
+    longest unbreakable piece, where something is therefore still cut.
     Nothing here raises for those; the caller decides whether to warn.
     """
     out = pathlib.Path(output_path).expanduser()
@@ -665,6 +818,8 @@ def render_markdown_to_docx(
     root = SyntaxTreeNode(tokens)
 
     dropped: dict[str, int] = {}
+    squeezed: list[dict] = []
+    squeezed_token = _SQUEEZED.set(squeezed)
     token = _DROPPED_HTML.set(dropped)
     alt_token = _IMAGE_ALTS.set(image_alts)
     try:
@@ -676,8 +831,11 @@ def render_markdown_to_docx(
     finally:
         _DROPPED_HTML.reset(token)
         _IMAGE_ALTS.reset(alt_token)
+        _SQUEEZED.reset(squeezed_token)
     _fix_drawing_ids(doc)  # non-zero visual ids so Hancom renders images (EXP-2)
     doc.save(str(out))
     if diagnostics is not None:
         diagnostics["dropped_html"] = dropped
+        # Tables whose unbreakable pieces are wider than the text column.
+        diagnostics["tables_squeezed"] = squeezed
     return out
