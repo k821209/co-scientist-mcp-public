@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 
 from . import doc_profile as _doc_profile
+from . import dollar_math as _dollar_math
 from . import papers as _papers
 from .figures import list_figures as _list_figures
 from .tables import list_tables as _list_tables
@@ -125,15 +126,16 @@ def _numbers(text: str) -> set:
 _KNOWN_TOKEN_PREFIXES = ("doi:", "cite:", "ref:", "fig:", "tab:")
 _BRACE_TOKEN = re.compile(r"\{([^{}\n]{1,120})\}")
 # Math is the one place braces are structural rather than a token — `$\frac{a}{b}$`
-# must not be read as a citation key.
-_MATH_SPAN = re.compile(r"\$\$.*?\$\$|\$[^$\n]{1,200}\$", re.S)
+# must not be read as a citation key. Which `$` open a formula is
+# `dollar_math`'s to say: taking any two for a pair dropped everything between
+# two PRICES from these checks.
 
 
 def _unresolved_tokens(body: str) -> list[str]:
     """Brace tokens in `body` that no resolver claims, in order of appearance."""
     text = re.sub(r"```.*?```", " ", body or "", flags=re.S)
     text = re.sub(r"`[^`]*`", " ", text)
-    text = _MATH_SPAN.sub(" ", text)
+    text = _dollar_math.strip(text)
     out: list[str] = []
     for m in _BRACE_TOKEN.finditer(text):
         inner = m.group(1).strip()
@@ -168,7 +170,7 @@ def _foreign_citations(body: str, tokens_used: bool) -> list[tuple[str, str]]:
     """(syntax, matched text) for citations written in another system's syntax."""
     text = re.sub(r"```.*?```", " ", body or "", flags=re.S)
     text = re.sub(r"`[^`]*`", " ", text)
-    text = _MATH_SPAN.sub(" ", text)
+    text = _dollar_math.strip(text)
     # Markdown links and images own their brackets — [text](url) and ![](figure:1)
     # are not citations.
     text = re.sub(r"!?\[[^\]]*\]\([^)]*\)", " ", text)
@@ -1000,6 +1002,7 @@ def lint_manuscript(state, slug: str) -> dict:
     # "MDSearch was not benchmarked." is four tokens and is the canonical case.
     all_sents: list[tuple[str, str, str]] = []
     unresolved: list[dict] = []
+    math_prose: list[dict] = []
     # Whether the manuscript uses the real convention ANYWHERE, which decides
     # how a bare `[12]` should be read.
     tokens_used = any(
@@ -1022,6 +1025,20 @@ def lint_manuscript(state, slug: str) -> dict:
                     "has no occurrence to check, so the paper reads as cited "
                     "and exports with no bibliography entry for it."),
             })
+        for span in _dollar_math.spans(sec.get("body", "")):
+            why = None if span.display else _dollar_math.looks_like_prose(span.content)
+            if why:
+                written = (sec.get("body") or "")[span.start:span.end]
+                math_prose.append({
+                    "kind": "prose_in_math", "section": title,
+                    "span": written if len(written) <= 160 else written[:157] + "…",
+                    "note": (
+                        f"this is printed as a formula ({why} between two `$`): italic, "
+                        "spaces removed, and any ** inside it shown as asterisks — in the "
+                        "exported file as well as on the dashboard. If the `$` are dollar "
+                        "signs, write the amounts in words (2,400달러, USD 2,400) or escape "
+                        "each sign as \\$. If it is a formula, put its words in \\text{…}"),
+                })
         for tok in _unresolved_tokens(sec.get("body", "")):
             unresolved.append({
                 "kind": "unresolved_token", "section": title, "token": tok,
@@ -1333,8 +1350,10 @@ def lint_manuscript(state, slug: str) -> dict:
     style = style[:_MAX_PER_KIND]
     insider = insider[:_MAX_PER_KIND]
     unresolved = unresolved[:_MAX_PER_KIND]
+    math_prose = math_prose[:_MAX_PER_KIND]
     total = (len(duplication) + len(leakage) + len(style) + len(insider)
-             + len(defensive) + len(unresolved) + cited["total"] + terms["total"])
+             + len(defensive) + len(unresolved) + len(math_prose)
+             + cited["total"] + terms["total"])
     # Derived from the text the checks actually read, not from the stored
     # `word_count`: that is a proxy, it can be absent or stale, and counting it
     # reported "nothing was read" for sections the lint had just scanned. A
@@ -1394,6 +1413,12 @@ def lint_manuscript(state, slug: str) -> dict:
         # call. A token no resolver handles is a reference that will be missing
         # from the finished document, and export is where that becomes permanent.
         "unresolved_tokens": unresolved,
+        # A sentence between two `$` that pandoc — and the dashboard, by the
+        # same rule — prints as a formula. Counts toward `total`: the file
+        # that is sent has it wrong. A `$` that is a dollar sign under that
+        # rule ("US$ 2,400", "$20,000 and $30,000") is not listed; it prints
+        # as written (tools/dollar_math.py).
+        "prose_in_math": math_prose,
         # Findings a document-kind profile deliberately withheld. Surfaced rather
         # than dropped: a silent exemption makes the lint unauditable, and this
         # list is exactly what you would want to see if a profile were wrong.
@@ -1444,6 +1469,7 @@ def lint_manuscript(state, slug: str) -> dict:
                 "insider_context": len(insider),
                 "defensive_aside": len(defensive),
                 "unresolved_tokens": len(unresolved),
+                "prose_in_math": len(math_prose),
                 "cited_numbers": cited["total"],
                 "terminology": terms["total"],
             },

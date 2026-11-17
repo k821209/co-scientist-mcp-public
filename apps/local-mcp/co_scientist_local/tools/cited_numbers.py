@@ -22,6 +22,8 @@ an identifier, and the display item's own number.
 from __future__ import annotations
 
 import re
+
+from . import dollar_math as _dollar_math
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, InvalidOperation
 
 # {tab:N} / {fig:N}; 101 and up are supplementary items.
@@ -34,7 +36,6 @@ _PROSE = re.compile(
     r"(?P<s>S)?(?P<n>\d{1,3})(?![\d.]\d)",
     re.I)
 _BRACE = re.compile(r"\{[^{}\n]{1,160}\}")
-_MATH = re.compile(r"\$\$.*?\$\$|\$[^$\n]{1,200}\$", re.S)
 _CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 _LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _SENTENCE_END = re.compile(r"(?<=[.!?。])\s+(?=[A-Z0-9(\"'가-힣])|\n+")
@@ -249,7 +250,8 @@ def _refs(sentence: str) -> tuple[set[int], set[int], str]:
         return " "
 
     text = _CODE.sub(" ", sentence)
-    text = _MATH.sub(" ", text)
+    # Formulas only: what stands between two dollar SIGNS is prose with numbers in it.
+    text = _dollar_math.strip(text)
     text = _TOKEN.sub(token, text)
     text = _BRACE.sub(" ", text)
     text = _LINK.sub(lambda m: m.group(1), text)

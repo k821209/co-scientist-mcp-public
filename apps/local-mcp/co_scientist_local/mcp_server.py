@@ -3116,6 +3116,11 @@ def build_mcp(state: State) -> FastMCP:
         behind it and per-rule guidance, is documented in /paper-writing
         ("Writing craft") — read that when a warning is unclear.
 
+        `prose_in_math` is a sentence caught between two `$` that the export
+        and the dashboard both print as a formula ("1,340원/US$로 … US$
+        14,400"); it counts toward `total`. A `$` that prints as a dollar
+        sign is not listed.
+
         `cited_numbers` holds the numbers quoted in a sentence that cites a
         table or figure, checked against that item. `derived_not_printed`
         counts toward `total`: a fold, a percent change, or a value that IS a

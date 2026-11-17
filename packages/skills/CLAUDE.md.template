@@ -84,5 +84,8 @@ References are auto-managed in Firestore; `prepare_export` builds the BibTeX.
 
 Use `$...$` (inline) or `$$...$$` (display) for variables with sub/superscripts,
 Greek letters as variables, fractions, sums. Leave simple equalities like
-`n = 69`, `q < 0.005`, `α-helix` (label) as plain text. `prepare_export`
-returns `math_warnings` flagging violations.
+`n = 69`, `q < 0.005`, `α-helix` (label) as plain text. A `$` is also a
+dollar sign: `US$ 2,400` prints as written, but a `$` with a letter or digit
+right after it opens a formula if a later `$` can close it. `lint_manuscript`
+reports that as `prose_in_math` — write amounts in words or escape the sign,
+`\$5`.

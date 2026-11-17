@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-11-16"
+GUIDE_VERSION = "2026-11-17"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -1365,8 +1365,16 @@ This applies across `/paper-deck`, `/paper-writing`, `/paper-revision`,
 
 Use `$...$` (inline) or `$$...$$` (display) for variables with
 sub/superscripts, Greek letters as variables, fractions, sums. Leave
-`n = 69` / `q < 0.005` / `α-helix` as plain text. `prepare_export` returns
-`math_warnings` flagging violations.
+`n = 69` / `q < 0.005` / `α-helix` as plain text.
+
+**A `$` is also money.** The export and the dashboard read it by one rule,
+pandoc's: a formula opens at a `$` with no space after it and closes at the
+next `$` with no space before it and no digit after it. So `US$ 2,400` and
+`$20,000 and $30,000` are dollar signs. But `1,340원/US$로 환산해 … 6개월이면
+US$ 14,400` is a formula from the first sign to the second — printed italic,
+its spaces gone — and `lint_manuscript` reports that as `prose_in_math`. In a
+paragraph with more than one amount, write them in words (2,400달러,
+USD 2,400) or escape the sign: `\\$5`.
 
 ## A check that cannot say it did not run is not a check
 
