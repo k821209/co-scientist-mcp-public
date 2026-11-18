@@ -121,29 +121,280 @@ export function hasOverride(command: string): boolean {
   );
 }
 
-// Backgrounding markers. The trailing-& form requires preceding whitespace so
-// that a redirect like `2>&1` does not read as backgrounding.
-const BG_RE = /\bnohup\b|\bdisown\b|\s&\s*["']?\s*$/m;
-// NOT positional. An option that takes a separate value (`-i key`, `-p 2222`,
-// `-o k=v`) defeats any "skip the flags" pattern, and the Python hook this is
-// ported from silently allowed those through until a parity test caught it. So:
-// confirm it is an ssh invocation, then look for a registered alias among all
-// tokens.
-const SSH_CMD_RE = /^\s*ssh\b/m;
+// ── what a line RUNS through ssh ─────────────────────────────────────────────
+// This used to ask two questions of the whole text: is there a line that STARTS
+// with `ssh`, and is there a `nohup` / `disown` / trailing `&` anywhere.
+// Replayed over the scenario corpus the scivo-harness guard is measured with
+// (tests/data/guard_scenarios.json, 2026-11-19) it stopped nothing it should
+// not have — and let 16 of 29 launches through: `cd x && ssh gpu "nohup …"`, a
+// launch in a loop or an `if`, behind `timeout` or an environment assignment,
+// through `bash -c`, `gcloud compute ssh`, `sshpass`, a detached tmux or
+// screen, `setsid`.
+//
+// So the line is read the way the shell reads it. This is the reader of the
+// Python hook (packages/hooks/pretool_block_ssh_nohup.py) and of the harness's
+// guardrails.py, written a third time because an extension is one file. The
+// three are held together by the corpus, and this one is also replayed
+// against the Python hook over the same lines (tests/test_pi_guard_scenarios.py).
+const REMOTE_PROGRAMS = new Set(["ssh", "autossh", "mosh"]);
+// Programs whose arguments are text to show or to look for, never to run.
+const TEXT_PROGRAMS = new Set([
+  "echo", "printf", "grep", "egrep", "fgrep", "rg", "ag", "man", "which", "type", "whatis",
+  "apropos", "apt", "apt-get", "dnf", "yum", "brew", "pip", "pip3",
+]);
+const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh"]);
+const KEYWORDS = new Set(["do", "then", "else", "elif", "if", "while", "until", "time", "!", "{", "}"]);
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const DETACHES =
+  /\bnohup\b|\bsetsid\b|\bdisown\b|\bscreen\s+-d\w*|\btmux\s+new(?:-session)?\b[^\n]*?\s-d\b|(?<![&|<>])&(?![&|>])/i;
+const NESTING_LIMIT = 4;
 const TOKEN_RE = /[A-Za-z0-9_.@-]+/g;
+// Rule 2 only: is there an ssh or a copy on the line at all.
+const SSH_CMD_RE = /^\s*ssh\b/m;
+const HEREDOC = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1(.*?)^[ \t]*\2[ \t]*$/gms;
+const SEPARATOR = /(?:\n|;|\|\||&&|\|)/;
 
-/** The ssh target to block, or null to allow.
+/** The line cannot be cut into commands with any confidence. */
+export class Unreadable extends Error {}
+
+interface Word { text: string; quoted: boolean; at: number }
+interface Command { words: Word[]; stop: number; background: boolean; inner: string[]; payload: string }
+export interface RemoteCall { remote: string; background: boolean }
+
+/** The command with the heredoc bodies it merely WRITES removed. A body fed to
+ *  ssh (`ssh host bash <<EOF … EOF`) is the remote command and stays. */
+export function executableText(command: string): string {
+  return command.replace(HEREDOC, (whole: string, _q: string, tag: string, _body: string, offset: number) => {
+    const head = command.slice(0, offset);
+    const parts = head ? head.split(SEPARATOR) : [""];
+    const last = parts[parts.length - 1];
+    return /\bssh\b/.test(last) ? whole : "<<" + tag + "\n" + tag;
+  });
+}
+
+function basename(text: string): string {
+  const cut = text.lastIndexOf("/");
+  return (cut < 0 ? text : text.slice(cut + 1)).toLowerCase();
+}
+
+/** The line as the shell would cut it: one entry per simple command. */
+function commands(line: string): Command[] {
+  const out: Command[] = [];
+  const n = line.length;
+  let i = 0;
+  let words: Word[] = [];
+  let inner: string[] = [];
+  let pending: string[] = [];          // heredoc tags opened on this line
+  let word: string[] | null = null;
+  let quoted = false;
+  let wordAt = 0;
+
+  const endWord = () => {
+    if (word !== null) words.push({ text: word.join(""), quoted, at: wordAt });
+    word = null; quoted = false;
+  };
+  const endCommand = (stop: number, background = false) => {
+    endWord();
+    if (words.length) out.push({ words, stop, background, inner, payload: "" });
+    words = []; inner = [];
+  };
+  const open = (at: number) => { if (word === null) { word = []; wordAt = at; } return word; };
+  const substitution = (at: number): number => {
+    let depth = 1;
+    let j = at;
+    while (j < n) {
+      if (line[j] === "\\") { j += 2; continue; }
+      if (line[j] === "(") depth += 1;
+      else if (line[j] === ")") { depth -= 1; if (depth === 0) return j + 1; }
+      j += 1;
+    }
+    throw new Unreadable("a $( that never closes");
+  };
+
+  while (i < n) {
+    const ch = line[i];
+    if (ch === "\\" && i + 1 < n) {
+      const w = open(i);
+      if (line[i + 1] !== "\n") w.push(line[i + 1]);
+      i += 2;
+      continue;
+    }
+    if (ch === "'") {
+      const close = line.indexOf("'", i + 1);
+      if (close < 0) throw new Unreadable("a ' that never closes");
+      open(i).push(line.slice(i + 1, close));
+      quoted = true;
+      i = close + 1;
+      continue;
+    }
+    if (ch === '"') {
+      const w = open(i);
+      quoted = true;
+      let j = i + 1;
+      for (;;) {
+        if (j >= n) throw new Unreadable('a " that never closes');
+        if (line[j] === "\\" && j + 1 < n) { w.push(line[j + 1]); j += 2; }
+        else if (line[j] === '"') break;
+        else if (line.startsWith("$(", j)) {
+          const close = substitution(j + 2);
+          inner.push(line.slice(j + 2, close - 1));
+          w.push(line.slice(j, close));
+          j = close;
+        } else if (line[j] === "`") {
+          const close = line.indexOf("`", j + 1);
+          if (close < 0) throw new Unreadable("a ` that never closes");
+          inner.push(line.slice(j + 1, close));
+          w.push(line.slice(j, close + 1));
+          j = close + 1;
+        } else { w.push(line[j]); j += 1; }
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === "#" && word === null) {
+      const stop = line.indexOf("\n", i);
+      i = stop < 0 ? n : stop;
+      continue;
+    }
+    if (line.startsWith("$(", i)) {
+      const close = substitution(i + 2);
+      inner.push(line.slice(i + 2, close - 1));
+      open(i).push(line.slice(i, close));
+      quoted = true;                     // a substituted word is not a literal one
+      i = close;
+      continue;
+    }
+    if (ch === "`") {
+      const close = line.indexOf("`", i + 1);
+      if (close < 0) throw new Unreadable("a ` that never closes");
+      inner.push(line.slice(i + 1, close));
+      open(i).push(line.slice(i, close + 1));
+      quoted = true;
+      i = close + 1;
+      continue;
+    }
+    if (line.startsWith("<<", i) && !line.startsWith("<<<", i)) {
+      const match = /^<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(line.slice(i));
+      if (match) {
+        endWord();
+        pending.push(match[2]);
+        i += match[0].length;
+        continue;
+      }
+    }
+    if (ch === "\n") {
+      if (pending.length) {
+        // The lines up to each tag are the heredoc's, not commands.
+        endWord();
+        const bodyFrom = i + 1;
+        let at = bodyFrom;
+        for (const tag of pending) {
+          const closing = new RegExp("^[ \\t]*" + tag + "[ \\t]*$", "gm");
+          closing.lastIndex = at;
+          const found = closing.exec(line);
+          if (!found) throw new Unreadable("a heredoc that never closes");
+          at = found.index + found[0].length;
+        }
+        if (words.length) out.push({ words, stop: i, background: false, inner, payload: line.slice(bodyFrom, at) });
+        words = []; inner = []; pending = [];
+        i = at;
+        continue;
+      }
+      endCommand(i);
+      i += 1;
+      continue;
+    }
+    if (ch === " " || ch === "\t") { endWord(); i += 1; continue; }
+    if (ch === ";") { endCommand(i); i += 1; continue; }
+    if (ch === "|") { endCommand(i); i += 1; continue; }
+    if (ch === "&") {
+      const before = i ? line[i - 1] : "";
+      const after = i + 1 < n ? line[i + 1] : "";
+      if (after === "&") { endCommand(i); i += 2; continue; }
+      if (before === "<" || before === ">" || after === ">") { open(i).push(ch); i += 1; continue; }
+      endCommand(i, true);
+      i += 1;
+      continue;
+    }
+    if (ch === "(" || ch === ")") { endCommand(i); i += 1; continue; }
+    open(i).push(ch);
+    i += 1;
+  }
+  if (pending.length) throw new Unreadable("a heredoc that never closes");
+  endCommand(n);
+  return out;
+}
+
+/** What this line hands to a remote machine, one entry per `ssh` it runs.
+ *  Throws `Unreadable` when it cannot tell. */
+export function remoteCalls(line: string, depth = 0): RemoteCall[] {
+  if (depth > NESTING_LIMIT) throw new Unreadable("nested too deep to follow");
+  const found: RemoteCall[] = [];
+  for (const command of commands(line)) {
+    for (const text of command.inner) found.push(...remoteCalls(text, depth + 1));
+    const words = [...command.words];
+    // `do ssh …`, `VAR=value ssh …`: the command proper starts after these.
+    while (words.length && ((KEYWORDS.has(words[0].text) && !words[0].quoted) || ASSIGNMENT.test(words[0].text))) {
+      words.shift();
+    }
+    if (!words.length) continue;
+    const program = basename(words[0].text);
+    if (SHELLS.has(program) || program === "eval") {
+      // One shell deeper: its `-c` string (or eval's arguments) is a line to read.
+      const rest = words.slice(1).map((w) => w.text);
+      const scripts = program === "eval"
+        ? rest
+        : rest.slice(0, -1).flatMap((text, k) => (/^-[a-z]*c$/.test(text) ? [rest[k + 1]] : []));
+      for (const script of scripts) found.push(...remoteCalls(script, depth + 1));
+    }
+    if (TEXT_PROGRAMS.has(program)) continue;
+    for (let position = 0; position < words.length; position++) {
+      const { text, quoted, at } = words[position];
+      if (!REMOTE_PROGRAMS.has(basename(text))) continue;
+      // As an argument, a quoted "ssh" is a string someone is passing along.
+      // As the program, quoted or not, it is what runs.
+      if (quoted && position) continue;
+      // `nohup ssh …`, `setsid ssh …`: left running from this side.
+      const ahead = words.filter((w) => w.at < at && !w.quoted).map((w) => w.text).join(" ");
+      found.push({
+        remote: line.slice(at, command.stop) + "\n" + command.payload,
+        background: command.background || /\b(nohup|setsid)\b/i.test(ahead),
+      });
+      break;
+    }
+  }
+  return found;
+}
+
+/** The registered server a launch on this line reaches, or null to allow.
  *
  *  Fail-open on an empty alias set: letting a possibly-untracked job through is
  *  a smaller harm than breaking every Bash call on a machine whose cache has not
- *  been written yet. */
+ *  been written yet. A launch on a machine that is not in the registry is not
+ *  this guard's to stop: it has no Runs tab row to be missing from. */
 export function blockedTarget(command: string, aliases: Set<string>): string | null {
   if (aliases.size === 0) return null;
   if (hasOverride(command)) return null;
-  if (!BG_RE.test(command)) return null;
-  if (!SSH_CMD_RE.test(command)) return null;
-  for (const m of command.matchAll(TOKEN_RE)) {
-    if (aliases.has(m[0])) return m[0];
+  const text = executableText(command);
+  const everywhere = text.match(TOKEN_RE) ?? [];
+  let calls: RemoteCall[];
+  try {
+    calls = remoteCalls(text);
+  } catch {
+    // A line that cannot be read, or a reader that fails: never a pass — the
+    // whole line, by the words alone.
+    if (/\bssh\b/i.test(text) && DETACHES.test(text)) {
+      return everywhere.find((token) => aliases.has(token)) ?? null;
+    }
+    return null;
+  }
+  for (const call of calls) {
+    if (!(call.background || DETACHES.test(call.remote))) continue;
+    let tokens = call.remote.match(TOKEN_RE) ?? [];
+    // `ssh $h …` in a loop names its machines somewhere else on the line.
+    if (call.remote.includes("$")) tokens = [...tokens, ...everywhere];
+    const hit = tokens.find((token) => aliases.has(token));
+    if (hit) return hit;
   }
   return null;
 }

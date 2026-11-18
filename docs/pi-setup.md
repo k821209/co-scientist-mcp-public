@@ -205,10 +205,13 @@ the prefix setting has not taken effect.
 
 ## 6. What the guard does
 
-`block-untracked-ssh` refuses a backgrounded `ssh` to a **registered** server
-(`nohup`, `disown`, or a trailing `&`) and points you at
-`submit_remote_job`, so the run lands in `analysis_runs` and shows up in the
-dashboard's Running Jobs. It reads server aliases from
+`block-untracked-ssh` refuses a job left running through `ssh` on a
+**registered** server (`nohup`, `setsid`, `disown`, a trailing `&`, a detached
+tmux or screen) and points you at `submit_remote_job`, so the run has a record
+and shows up in the dashboard's Running Jobs. It reads the line as commands:
+the `ssh` may come after `cd … &&`, inside a loop, behind `timeout` or
+`bash -c`, or through `gcloud compute ssh`; the same words inside a `grep`
+pattern or a commit message are not a launch. It reads server aliases from
 `~/.co-scientist/cache/servers.json`, which the MCP writes — no network call on
 your Bash path — and **fails open** when that file is missing, so a fresh machine
 is never blocked from working.
