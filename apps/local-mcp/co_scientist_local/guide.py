@@ -918,7 +918,7 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
 - Reconcile periodically: `list_analysis_runs` shows what's recorded;
   `scan_untracked_jobs` finds detached job-like processes with no record.
   If the user asks "which server did we run on / where's the record" and you
-  can't answer from `analysis_runs`, that's the gap this rule prevents.
+  can't answer from `list_analysis_runs`, that's the gap this rule prevents.
 
 ## Available skills
 
@@ -1434,8 +1434,8 @@ had already said what to do instead.
 ## Remote job rule
 
 **Never** launch a long-running remote job via raw `ssh <alias> "nohup ..."`.
-Use `mcp__scivo__submit_remote_job` so the run is tracked in
-`analysis_runs` and visible in the dashboard. Untracked raw-ssh jobs are the #1
+Use `mcp__scivo__submit_remote_job` so the run is recorded
+(`list_analysis_runs` shows it) and visible in the dashboard. Untracked raw-ssh jobs are the #1
 reason the Runs tab is both blind to real work and cluttered with stale rows.
 
 Something that is not a job — a service to start, a one-time setup step — is

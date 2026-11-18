@@ -259,7 +259,7 @@ without checking that this list is not hiding the answer.
 
 Read the other two as well. `wanted_but_did_not_open` turns the agent's own temptation into
 a signal — it is the clearest map of where the letter leans on context it never
-supplies. `bundle_note` is the agent telling you that what you handed it was wrong:
+supplies. `BUNDLE_NOTE` is the agent telling you that what you handed it was wrong:
 in the first live run it correctly flagged, unprompted, that the report file
 contained BOTH reviewers' reports, which violates the per-seat rule and silently
 weakens every finding. A bundle that is too WIDE does not fail loudly.
@@ -341,7 +341,7 @@ missing cannot appear in a merged run.
 
 Note this only scopes what YOU pass along. If the reviewer's report lives in one
 uploaded file containing every reviewer, the split is not real: extract that seat's
-section to its own file first, or expect the agent's `bundle_note` to tell you so.
+section to its own file first, or expect the agent's `BUNDLE_NOTE` to tell you so.
 
 ## Where it fits
 

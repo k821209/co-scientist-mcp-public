@@ -3238,8 +3238,9 @@ def build_mcp(state: State) -> FastMCP:
         """Set a paper's ordered, de-duplicated affiliation list — the numbered
         list authors reference by id (superscripts in the exported author
         block). Each entry is a dict with `text` (required) and optional `id`,
-        or a plain string. Assign ids to authors via set_paper_authors(...,
-        affiliation_ids=[...])."""
+        or a plain string. An author is given these ids in the author's own
+        entry: `set_paper_authors(slug, authors=[{"name": …, "affiliation_ids":
+        [...]}])` — it is a field of each author, not an argument of the call."""
         return _papers.set_paper_affiliations(state, slug, affiliations)
 
     @mcp.tool()

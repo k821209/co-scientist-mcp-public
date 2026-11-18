@@ -15,6 +15,16 @@ a failing suite. **It cannot catch the three things below.** Those are yours,
 every time you open one of these files — for the file you are touching, not as
 a sweep.
 
+`tests/test_doc_claims.py` gates it too (2026-11-19): **an identifier you put
+in backticks has to exist** — in the shipped code as a name or a short string
+literal, in a reader's definition, or in the skill itself (a file beside it,
+its own code fences, a variable it introduces in a formula). A docstring or a
+comment is not code for this purpose. So name a result key the way the tool
+writes it, and do not backtick an identifier you made up to explain something:
+say it in words. The guide and every tool description are held to the same,
+and to the keyword-argument check. What it cannot see is in that file's
+header — a key that exists but belongs to another tool passes.
+
 ## 0. A project's skill folder is a symlink into the package checkout.
 
 `install-skills` links `.claude/skills/<name>` to the checkout, so "editing

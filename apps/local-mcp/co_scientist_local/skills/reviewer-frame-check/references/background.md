@@ -60,7 +60,7 @@ are not rediscovered:
   call rather than hand-slicing. What nothing can enforce is the FILE side: if the
   decision letter was uploaded as one document containing every reviewer, passing
   it wholesale merges the seats no matter what the filters say. The agent's
-  `bundle_note` is the only backstop, and it is a report after the fact.
+  `BUNDLE_NOTE` is the only backstop, and it is a report after the fact.
 - **No decision-letter or cover-letter object.** The decision letter exists only
   as whatever the author pasted or uploaded to `list_materials()`, and the cover
   letter only as a section or a local file. The editor run therefore depends on
