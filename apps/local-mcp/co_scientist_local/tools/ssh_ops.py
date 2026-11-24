@@ -651,6 +651,9 @@ def submit_remote_job(
             "warnings": polite_warnings, "existing": True,
         }
 
+    # A line whose exit status is not the work's records a crash as exit 0.
+    if (masked := _launch_warning(command)):
+        polite_warnings.append(masked)
     notes = "; ".join(polite_warnings) if polite_warnings else None
     started_at = now_iso()
     code = _hash_scripts(ssh, server, remote_dir, command)
@@ -1067,6 +1070,7 @@ _WAIT_MIN_POLL_S = 5.0
 # One definition, in runs.py: `run_notices` says the same thing for the same
 # rows, and two copies of a caution drift.
 from .runs import GONE_NOTE as _GONE_NOTE  # noqa: E402
+from .exit_status import finished_caution as _finished_caution, launch_warning as _launch_warning  # noqa: E402
 
 
 def _state_once(state: State, slug: str, analysis: str, run_key: str) -> dict:
@@ -1086,6 +1090,8 @@ def _state_once(state: State, slug: str, analysis: str, run_key: str) -> dict:
                "log_path": row.get("log_path")}
         if code == -2:
             out["caution"] = _GONE_NOTE
+        elif (masked := _finished_caution(row.get("command"), code)):
+            out["caution"] = masked
         return out
 
     if run.get("finished_at"):

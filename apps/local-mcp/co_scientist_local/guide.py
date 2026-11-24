@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-11-17"
+GUIDE_VERSION = "2026-11-24"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -867,6 +867,12 @@ analysis via raw Bash/ssh and moving on leaves a permanent gap.
   exited on its first pass and a 23-minute job was reported as finished. Pass
   `timeout_s` to have it poll for you. And `finished` is not `succeeded`:
   `exit_code` -2 means only that the process is gone, so read the log.
+  Nor does exit 0 mean it worked when the line ends in `; echo done`,
+  `|| true` or `| tee log`: that 0 is the last command's, and a crash is
+  recorded as success (7% of the commands on record, measured 2026-11-24).
+  The launch says so in `warnings`, a finished row read back carries a
+  `caution`, and `update_analysis_run(..., exit_code=, notes=)` corrects a
+  row that lied — what the job reported is kept beside it.
 - **For a script-driven run the SCRIPT is the parameter set.**
   `submit_remote_job` hashes the script the command names and every sibling
   `*.sh`/`*.py`/`*.R` in the working directory, and stores `script_sha256` /

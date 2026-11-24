@@ -12,6 +12,14 @@ which the code cannot say.
 A slide in any of these lists fails regardless of how it scores on the rubric
 below. Re-render until the list is empty.
 
+**An empty list ends this section, not the review.** What the lists do not
+see: a shape drawn over text (a dot on a letter, a band over a header row —
+only text↔text and text↔its own card are checked), text clipped by a rounded
+corner, and — when `rendered_check.assessed` is false — any text outside its
+card at all, because the scan of the boxes only estimates where wrapped text
+ends. Those are found by reading each slide's PNG, which is the next section
+and is not optional.
+
 ### `overlap_warnings` — text on text (todo 016)
 
 Text rendered on top of other text, which LibreOffice will happily export.
@@ -58,6 +66,18 @@ still in the rendered deck. Every hit is real text the audience would see —
 replace it with the actual content and re-export until
 `placeholder_warnings == []`.
 
+### `layout_warnings` — text across a card's edge
+
+`inner_margin_overflow` is read from the boxes: a text box that starts inside
+a card and ends past its edge. `rendered_text_crosses_card` is read from the
+rendered PDF: a line of text actually drawn across a card's edge — over its
+border, or cut by a card drawn after it (a value label half under its bar, a
+header row dipping into the band below, a last line the card's bottom cuts).
+Both name the label, the side and the distance. Grow the card, shorten or
+shrink the text, or move one clear of the other; a caption meant to sit under
+a card needs a real gap, not a box that overlaps it. Then render again — the
+measured finding only goes away when the rendering changes.
+
 ### `layout_warnings` — images
 
 Image problems the text-overlap detector can't see: `tiny_image` (a
@@ -69,7 +89,9 @@ deck-chrome logos don't false-positive. On both `preview_slide` and the export.
 ## The rubric
 
 Each category scored 1–5; a slide passes when all are ≥ 4. Score off the
-sheet first (`preview_deck_sheet`), then the slides it flagged:
+sheet first (`preview_deck_sheet`) for what the slides share, then read EVERY
+slide — not the ones the sheet flagged. A defect on one slide (text outside
+its card, a clipped line) does not show on a tile:
 
 ```
 res = mcp__scivo__export_deck_to_pptx(slug, deck_id, output_path="<dir>/<deck>.pptx")

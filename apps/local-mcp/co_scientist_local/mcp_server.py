@@ -2941,10 +2941,17 @@ def build_mcp(state: State) -> FastMCP:
         finished_at: str | None = None,
         log_path: str | None = None,
         workdir: str | None = None,
+        exit_code: int | None = None,
     ) -> dict[str, Any]:
         """Back-fill `params` on a run recorded without them (replaces the whole
         dict), and/or append notes. See record_analysis_run for what `params`
         is for.
+
+        `exit_code` CORRECTS a closed run whose recorded code is wrong — a
+        line ending in `; echo done` exits 0 over a crash. Pass `notes` with
+        what shows it (the log line, the missing output); the code the job
+        reported is kept as `exit_code_reported`. An open run is closed with
+        mark_run_finished instead.
 
         `started_at`/`finished_at` CORRECT the times on a row already filed —
         the repair for a back-filled run stamped at insert time, which reports
@@ -2953,7 +2960,7 @@ def build_mcp(state: State) -> FastMCP:
         return _runs.update_analysis_run(
             state, slug, analysis, run_key, params=params, notes=notes,
             started_at=started_at, finished_at=finished_at,
-            log_path=log_path, workdir=workdir,
+            log_path=log_path, workdir=workdir, exit_code=exit_code,
         )
 
     @mcp.tool()
@@ -3313,7 +3320,11 @@ def build_mcp(state: State) -> FastMCP:
     ) -> dict[str, Any]:
         """Close a run. `finished_at` (ISO-8601 UTC) for work that ended
         earlier than this call — the staleness check compares against when
-        output actually appeared, not when the row was tidied."""
+        output actually appeared, not when the row was tidied.
+
+        On a run that is ALREADY closed this corrects the exit code and leaves
+        the finish time alone; the code the job reported is kept as
+        `exit_code_reported`."""
         return _runs.mark_run_finished(
             state, slug, analysis, run_key, exit_code=exit_code, notes=notes,
             finished_at=finished_at,
@@ -4020,6 +4031,13 @@ def build_mcp(state: State) -> FastMCP:
         piece (LibreOffice, PyMuPDF, a Korean font) with its install command
         and `pdf_skipped_reason` says why — tell the user, and do not report
         the slide as looked at on `layout_warnings` alone.
+
+        `layout_warnings` has two readers. The scan of the boxes estimates
+        where wrapped text ends (its distances say `measured_from` the text
+        box). `rendered_text_crosses_card` is read from the rendered PDF: a
+        line actually drawn across a card's edge. `rendered_check.assessed`
+        says whether that second reader ran; false means nothing checked
+        whether text left its card. Empty lists never replace reading the PNG.
         """
         return _deck_render.preview_slide(
             state, slug, deck_id, slide_id, output_path=output_path,
@@ -4104,6 +4122,11 @@ def build_mcp(state: State) -> FastMCP:
         PPTX only; `skip_png` keeps the PDF but skips per-slide PNGs;
         `only_slides=[N,…]` renders PNGs for just those slides. For tight
         single-slide iteration use `preview_slide` instead.
+
+        With `skip_pdf` there is no rendering to read, so `rendered_check`
+        says `assessed: false`: `rendered_text_crosses_card` (text drawn
+        across a card's edge, measured from the PDF) was not looked for, and
+        `layout_warnings` then holds only the scan of the boxes.
         """
         return _deck_render.export_deck_to_pptx(
             state, slug, deck_id, output_path=output_path,

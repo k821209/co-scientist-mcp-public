@@ -91,6 +91,15 @@ content, structure, unity header — and is the last part of this skill
    This lint is heavily invested in specifically so no overlapping band,
    footer collision, or ragged card row ever ships unseen.
 
+   **Empty lists are necessary, not sufficient.** A 20-slide deck was reported
+   done at "blocking 0" with text outside its cards on four slides. The lists
+   come from two readers: a scan of the boxes, which ESTIMATES how far text
+   wraps and passes slides it should not, and `rendered_text_crosses_card`,
+   which is measured from the rendered PDF. `rendered_check` says whether the
+   measured one ran; `assessed: false` means nothing has checked whether text
+   left its card. Either way the deck is done when every slide's PNG has been
+   read (§9) — not when the lists are empty, and not when the sheet looked fine.
+
 ## Flow
 
 ### 1. Pull paper context
@@ -596,6 +605,9 @@ every slide so it marks nothing, chrome that fades out after slide 8, two
 slides drawing the same thing differently, a density cliff in the back half.
 It renders nothing itself, so a tile captioned STALE (and `current: false`)
 means refresh that slide with `preview_slide` before scoring anything.
+The sheet shows what the slides have in common, never what one slide has
+wrong: a line 20pt outside its card is invisible on a tile. It does not stand
+in for reading each slide's PNG.
 
 **Then the automatic FAILs.** `preview_slide` and `export_deck_to_pptx` both
 return `overlap_warnings`, `bounds_warnings`, `font_warnings`,

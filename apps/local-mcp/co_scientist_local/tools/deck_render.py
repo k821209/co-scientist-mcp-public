@@ -1188,6 +1188,11 @@ _INNER_MARGIN_PT = 8   # a label closer than this to its container's inner edge 
 # card, the more certainly the card is its container. 0.7 still excludes a
 # caption that merely starts on top of a small icon (~0.6 there).
 _CONTAINER_OVERLAP = 0.7
+# How far into a card a text box must reach before it counts as IN it, and how
+# far past an edge before it counts as ACROSS it. Just over the text frame's own
+# inset (3.6pt top and bottom): a box that overlaps a card by less than that has
+# no ink in the card.
+_EDGE_DEPTH_PT = 4
 _EMU_PER_PT = 12700
 
 
@@ -1242,6 +1247,18 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
     box — that is a question about where the author put it, and judging it on
     the wrapped box would shrink the shared area as the spill grew, dropping the
     label out of its own container just as the defect got worse.
+
+    And "mostly inside" by area was the same cliff a third time: a box the
+    author placed 13pt past the bottom of its card shares 57% of its area with
+    the card and was dropped, while one 2pt past was reported — the reported
+    slide sat at "blocking 0" with a whole line printed under the card
+    (feedback 52b48b70cfb3). So a label in the card's COLUMN (its width mostly
+    within the card's) that starts inside the card is the card's, however far
+    down it runs.
+
+    What this cannot see is in `_rendered_text_crossings`: everything here is
+    read from boxes, and a box says where the author put the text, not where
+    the renderer put the ink.
     """
     try:
         from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore
@@ -1265,6 +1282,7 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                 and sw and (sw - (l + w)) < corner)
 
     slide_area = max(1, sw * sh)
+    edge_depth = int(_EDGE_DEPTH_PT * _EMU_PER_PT)
     inner_tol = int(2 * _EMU_PER_PT)          # containment slack
     inner_thr = int(_INNER_MARGIN_PT * _EMU_PER_PT)
 
@@ -1452,8 +1470,19 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                                  and ll < al + aw and lt < at + ah)
                 if starts_inside:
                     ov = _overlap_area((ll, lt, lw, lh), (al, at, aw, ah))
-                    if ov >= _CONTAINER_OVERLAP * min(child_area, a_area):
-                        cand = (-ov, a_area, (al, at, aw, ah))
+                    ix = min(ll + lw, al + aw) - max(ll, al)
+                    iy = min(lt + lh, at + ah) - max(lt, at)
+                    # Mostly inside by area: the card is its container on
+                    # every side, as it always was.
+                    by_area = ov >= _CONTAINER_OVERLAP * min(child_area, a_area)
+                    # Or in the card's column and started inside it: then the
+                    # card is its container however far DOWN the box runs. By
+                    # area, a box 13pt past the bottom of its card shares 57%
+                    # with it and was dropped, while one 2pt past was reported.
+                    in_column = (ix > edge_depth and iy > edge_depth
+                                 and ix >= _CONTAINER_OVERLAP * min(lw, aw))
+                    if by_area or in_column:
+                        cand = (-ov, a_area, (al, at, aw, ah), by_area)
                         if best_over is None or cand[:2] < best_over[:2]:
                             best_over = cand
                 fully = (starts_inside
@@ -1472,7 +1501,12 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                         "bottom": (bt + bh) - (lt + leff_h)}
 
             over = _gaps(best_over[2]) if best_over else {}
-            over = {k: v for k, v in over.items() if v < 0}
+            # A label that is the card's only by its column can be said to
+            # leave it by the bottom, and nothing else: its box being wider
+            # than the card says little — boxes are routinely declared wider
+            # than what is written in them.
+            over = {k: v for k, v in over.items() if v < 0
+                    and (best_over[3] or k in ("top", "bottom"))}
             if over:
                 side = min(over, key=over.get)
                 out_pt = round(-over[side] / _EMU_PER_PT, 1)
@@ -1481,10 +1515,16 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                     "sides": sorted(over, key=lambda k: over[k]),
                     "over_pt": out_pt,
                     "label": ltext[:40],
+                    # A distance between boxes, not a measurement of ink: the
+                    # report this came from read "7.0pt" as where the text was.
+                    "measured_from": "the text box, not the rendering",
                     "note": (f"label overruns its container's {side} edge by "
                              f"{out_pt}pt — the text renders OUTSIDE the "
                              "card/band border. Shrink the text box, cut "
-                             "content, or grow the container"),
+                             "content, or grow the container"
+                             + ("" if best_over[3] else
+                                "; if it is a caption meant to sit under the "
+                                "card, move it clear of the edge")),
                 })
                 continue  # overflow supersedes tightness on the same label
             # The same wrap, with no card edge crossed: one finding, the
@@ -1508,6 +1548,7 @@ def _scan_deck_layout(prs, sh: int) -> list[dict]:
                     "sides": sorted(tight, key=lambda k: tight[k]),
                     "gap_pt": round(tight[side] / _EMU_PER_PT, 1),
                     "label": ltext[:40],
+                    "measured_from": "the text box, not the rendering",
                     "note": (f"label sits {round(tight[side] / _EMU_PER_PT, 1)}pt "
                              f"from its container's {side} edge (< {_INNER_MARGIN_PT}"
                              "pt) — anchor labels to the band's rail/centre "
@@ -2189,6 +2230,148 @@ def _effective_text_bottom(shape, top: int, width: int, height: int) -> int:
     return declared
 
 
+_DESCENDERS = frozenset("gjpqy,;()[]{}/|_")
+
+
+def _rendered_text_crossings(prs, pdf_path) -> dict[int, list[dict]] | None:
+    """Text that crosses the edge of a filled card or band — read from the
+    RENDERED PDF, not estimated. {slide_number: [issue, …]}; None when it
+    could not be assessed (no PDF, no PyMuPDF, pages that do not match the
+    slides), which the caller must say rather than report nothing.
+
+    Why this exists beside `_scan_deck_layout`. That scan reads boxes and
+    estimates how far text wraps inside them, and over the account's real
+    decks (7,008 text boxes matched to their rendered lines, 2026-11-24) the
+    estimate undercounts the lines of 15% of the boxes that really wrap; no
+    variant of it got under 2% wrong, because it does not have the font. The
+    renderer does. A deck was reported done at "blocking 0" with text outside
+    its cards on four slides (feedback c6bfac0d3576, 52b48b70cfb3), and on the
+    same decks the PDF shows text across a card's edge on slides the scan
+    passes — a value label half under its bar, a last line cut by the card's
+    bottom, a header row dipping into the band under it.
+
+    The card rectangles come from the .pptx (exact); the text comes from the
+    PDF (what was drawn). A line's box in a PDF is its font's full height, so
+    it is first narrowed to the ink: from just under the cap height above the
+    baseline to the descender — or barely below the baseline when the line has
+    no descending letter. Lines with no letter or digit (an arrow drawn between
+    two cards, a bullet) are skipped: their box is all side bearing.
+    """
+    try:
+        import fitz  # type: ignore
+        from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore
+        from pptx.enum.dml import MSO_FILL  # type: ignore
+    except ImportError:
+        return None
+    try:
+        doc = fitz.open(str(pdf_path))
+    except Exception:
+        return None
+    if doc.page_count != len(prs.slides):
+        return None
+    sw_pt = (prs.slide_width or 0) / _EMU_PER_PT
+    sh_pt = (prs.slide_height or 0) / _EMU_PER_PT
+    slack = 1.5                      # pt on BOTH sides of an edge to count as across it
+    out: dict[int, list[dict]] = {}
+    for idx, (slide, page) in enumerate(zip(prs.slides, doc), start=1):
+        if abs(page.rect.width - sw_pt) > 1 or abs(page.rect.height - sh_pt) > 1:
+            return None              # not this deck's rendering
+        cards: list[tuple] = []
+        for shape in slide.shapes:
+            try:
+                if shape.shape_type != MSO_SHAPE_TYPE.AUTO_SHAPE or shape.fill.type != MSO_FILL.SOLID:
+                    continue
+                if shape.has_text_frame and (shape.text_frame.text or "").strip():
+                    continue         # its own text lives in it
+                w, h = shape.width / _EMU_PER_PT, shape.height / _EMU_PER_PT
+                left, top = shape.left / _EMU_PER_PT, shape.top / _EMU_PER_PT
+            except Exception:
+                continue
+            if min(w, h) <= 8:
+                continue             # a rule, an accent bar, a dot
+            cards.append((left, top, left + w, top + h))
+        issues: list[dict] = []
+        if not cards:
+            continue
+        for block in page.get_text("dict").get("blocks", []):
+            for line in block.get("lines", []):
+                spans = [sp for sp in line.get("spans", []) if (sp.get("text") or "").strip()]
+                if not spans:
+                    continue
+                text = "".join(sp.get("text") or "" for sp in line["spans"]).strip()
+                if not any(ch.isalnum() for ch in text):
+                    continue
+                size = max(sp["size"] for sp in spans)
+                base = spans[0]["origin"][1]
+                x0, _y0, x1, _y1 = line["bbox"]
+                x0, x1 = x0 + 0.04 * size, x1 - 0.04 * size
+                top = base - 0.74 * size
+                bottom = base + (0.22 if any(ch in _DESCENDERS for ch in text) else 0.08) * size
+                if x1 <= x0:
+                    continue
+                worst = None
+                for cx0, cy0, cx1, cy1 in cards:
+                    in_column = min(x1, cx1) - max(x0, cx0) >= 0.5 * min(x1 - x0, cx1 - cx0)
+                    in_row = min(bottom, cy1) - max(top, cy0) >= 0.5 * min(bottom - top, cy1 - cy0)
+                    for side, across in (
+                            ("bottom", in_column and top < cy1 - slack and bottom - cy1),
+                            ("top", in_column and bottom > cy0 + slack and cy0 - top),
+                            ("right", in_row and x0 < cx1 - slack and x1 - cx1),
+                            ("left", in_row and x1 > cx0 + slack and cx0 - x0)):
+                        if across is not False and across > slack and (worst is None or across > worst[1]):
+                            worst = (side, across)
+                if worst is not None:
+                    issues.append({
+                        "kind": "rendered_text_crosses_card",
+                        "sides": [worst[0]],
+                        "across_pt": round(worst[1], 1),
+                        "label": text[:40],
+                        "measured_from": "the rendered PDF",
+                        "note": (f"in the rendering this line is across a card's {worst[0]} edge "
+                                 f"({round(worst[1], 1)}pt past it) — text printed over the card's "
+                                 "border, or cut by a card drawn over it. Measured from the PDF, "
+                                 "not estimated: move or shorten the text, or resize the card, "
+                                 "and render again"),
+                        "severity": "blocking",
+                    })
+        if issues:
+            out[idx] = issues
+    return out
+
+
+def _with_rendered(layout: list[dict], rendered: dict[int, list[dict]] | None) -> list[dict]:
+    """The layout findings with the measured ones added to their slides, so
+    the done-gate that counts `blocking` counts them."""
+    if not rendered:
+        return layout
+    by_slide = {entry.get("slide_number"): entry for entry in layout}
+    out = list(layout)
+    for number, issues in sorted(rendered.items()):
+        entry = by_slide.get(number)
+        if entry is None:
+            entry = {"slide_number": number, "issues": [], "blocking": 0, "advisory": 0}
+            out.append(entry)
+        entry["issues"] = list(entry["issues"]) + issues
+        entry["blocking"] = entry.get("blocking", 0) + len(issues)
+    out.sort(key=lambda e: (e.get("deck_level", False), e.get("slide_number") or 0))
+    return out
+
+
+def rendered_check(rendered: dict | None, *, pdf: bool) -> dict:
+    """What to say about the measured check: that it ran, or why it did not."""
+    if rendered is not None:
+        return {"assessed": True,
+                "slides_with_findings": sorted(rendered),
+                "what": "text across a card's edge, read from the rendered PDF"}
+    return {"assessed": False,
+            "why": ("there is no rendering to read" if not pdf else
+                    "the rendering could not be read against the slides"),
+            "consequence": ("text across a card's edge is NOT checked: `layout_warnings` "
+                            "reads boxes and estimates wrapping, and passes slides whose "
+                            "rendering has text outside its card. Read every slide's PNG "
+                            "before calling the deck done")}
+
+
 def _detect_text_overlaps(slide, *, min_overlap_ratio: float = 0.2) -> list[dict]:
     """Walk `slide.shapes` and find pairs of textbox shapes whose
     bounding boxes intersect by at least `min_overlap_ratio` of the
@@ -2572,6 +2755,9 @@ def preview_slide(
         pptx_tmp = pathlib.Path(tmpd) / "preview.pptx"
         prs.save(str(pptx_tmp))
         pdf_path = _pdf_via_soffice(pptx_tmp)
+        # Read where the text actually went, while the PDF still exists.
+        rendered = _rendered_text_crossings(prs, pdf_path) if pdf_path is not None else None
+        had_pdf = pdf_path is not None
         if pdf_path is not None:
             pngs = _render_pdf_to_pngs(pdf_path, pathlib.Path(tmpd))
             if pngs:
@@ -2608,7 +2794,10 @@ def preview_slide(
         "image_placement_warnings": image_placement_warnings,
         "font_warnings": _font_warnings(fonts),
         "placeholder_warnings": _scan_deck_placeholders(prs),
-        "layout_warnings": _scan_deck_layout(prs, int(sh)),
+        # The box scan, plus what was measured in the rendering — on the same
+        # list, so a gate that counts `blocking` counts both.
+        "layout_warnings": _with_rendered(_scan_deck_layout(prs, int(sh)), rendered),
+        "rendered_check": rendered_check(rendered, pdf=had_pdf),
         "preview_png_local_path": png_local,
         "preview_png_blob_path": png_blob,
         "pdf_skipped": png_local is None,
@@ -3042,6 +3231,7 @@ def export_deck_to_pptx(
     prs.save(str(out))
     # skip_pdf skips the (dominant) LibreOffice pass — and therefore the PNGs.
     pdf_path = None if skip_pdf else _pdf_via_soffice(out)
+    rendered = _rendered_text_crossings(prs, pdf_path) if pdf_path is not None else None
 
     # Upload + index each artifact so the dashboard's Presentation tab
     # lists them.
@@ -3127,7 +3317,8 @@ def export_deck_to_pptx(
         "image_placement_warnings": image_placement_warnings,
         "font_warnings": _font_warnings(fonts),
         "placeholder_warnings": _scan_deck_placeholders(prs),
-        "layout_warnings": _scan_deck_layout(prs, int(sh)),
+        "layout_warnings": _with_rendered(_scan_deck_layout(prs, int(sh)), rendered),
+        "rendered_check": rendered_check(rendered, pdf=pdf_path is not None),
         "local_path": str(out),
         "blob_path": pptx_blob,
         "pdf_local_path": str(pdf_path) if pdf_path else None,

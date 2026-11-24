@@ -83,8 +83,9 @@ came out as text fallbacks because they weren't rendered yet — render
 those and re-export. **If `pdf_skipped` is true, read `render_missing` and
 `pdf_skipped_reason` and tell the user exactly what to install** — each
 entry names the piece and the command. Without a PNG the visual check of
-this skill cannot run; `layout_warnings` is then the only verification, and
-say so rather than reporting the deck as looked at.
+this skill cannot run; `layout_warnings` is then the only verification — and
+without a rendering it cannot see text outside its card (`rendered_check`
+says `assessed: false`). Say so rather than reporting the deck as looked at.
 
 python-pptx ships with the base install. LibreOffice (PDF, and every PNG
 comes from it), PyMuPDF (PDF → PNG; a declared dependency, so its absence

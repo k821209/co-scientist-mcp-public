@@ -106,12 +106,14 @@ h.text(slide, label_italic, left=cx_box, top=rail_y + r + Pt(8),
   whose text wraps to two or three times it, not a box placed already
   overrunning.
 
-  Both halves of this were broken until 2026-08-21. First the check
-  was inverted (overflow disqualified the card as a container, so the
-  worse the spill the quieter the lint); then the fix graded only
-  declared heights and stayed silent on wrapping, which is the common
-  case. On any build before 0.1.20260821.post1, `layout_warnings: []`
-  does not mean the text is inside its card — check the PNG.
+  This scan has been wrong three times, each time quieter the worse the
+  spill: inverted (overflow disqualified the card as a container), then
+  blind to wrapping, then — until 2026-11-24 — silent on a box placed
+  far past its card's edge, because "mostly inside the card" was judged
+  by area. It reads boxes and estimates wrapping, so `layout_warnings`
+  empty of `inner_margin_*` has never meant the text is inside its
+  card. What does is `rendered_text_crosses_card`, measured from the
+  rendered PDF, when `rendered_check.assessed` is true — and the PNG.
 
 - **Repeat-symbol clusters (I/II/III, ★/★★/★★★, N-bar marks)
   must anchor to their cluster's HORIZONTAL CENTER, not to the

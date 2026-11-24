@@ -28,6 +28,7 @@ from ..backends.base import NotFound
 from ..state import State
 from ..util import now_iso
 from ..version_check import CLIENT_ID
+from .exit_status import finished_caution, launch_warning
 from .analyses import PROJECT_SCOPE, _analysis_path, is_project_scope, iter_analyses
 
 
@@ -297,9 +298,20 @@ def update_analysis_run(
     finished_at: str | None = None,
     log_path: str | None = None,
     workdir: str | None = None,
+    exit_code: int | None = None,
 ) -> dict:
     """Back-fill `params` (replacing the whole dict) and/or append notes on an
     existing run.
+
+    `exit_code` CORRECTS the status of a run that is already closed. The code
+    on the row is whatever the launched line exited with, and a line ending in
+    `; echo done` exits 0 over a crash — a failed run then read as a successful
+    provenance record, and the only correction available was free text in
+    `notes` (feedback 99b682e3ce17). It needs `notes` saying what shows the
+    recorded code is wrong, because the next reader has only the row. What the
+    job itself reported is kept beside it (`exit_code_reported`), once: a
+    correction of a correction does not lose the original. An open run is
+    closed with `mark_run_finished`, not corrected.
 
     `log_path` and `workdir` are correctable because they were not, and a run
     whose recorded log filename never existed could only be annotated — the
@@ -328,6 +340,18 @@ def update_analysis_run(
             f"finished_at ({effective_finish}) is before started_at "
             f"({effective_start})")
     fields: dict = {}
+    if exit_code is not None:
+        if not existing.get("finished_at"):
+            raise ValueError(
+                "this run is still open: close it with mark_run_finished(exit_code=…). "
+                "update_analysis_run(exit_code=…) corrects the code of a run that is "
+                "already closed.")
+        if not (notes or "").strip():
+            raise ValueError(
+                "correcting exit_code needs `notes`: what shows that the recorded "
+                f"code ({existing.get('exit_code')!r}) is wrong — the line of the log, "
+                "the missing output. The row is all the next reader has.")
+        fields.update(_exit_correction(existing, int(exit_code)))
     if log_path is not None:
         fields["log_path"] = log_path
     if workdir is not None:
@@ -348,6 +372,18 @@ def update_analysis_run(
     if fields:
         state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
+
+
+def _exit_correction(existing: dict, exit_code: int) -> dict:
+    """The fields that change when a CLOSED run's exit code is corrected. What
+    the job reported is kept, the first time only."""
+    recorded = existing.get("exit_code")
+    if recorded == exit_code:
+        return {}
+    fields: dict = {"exit_code": exit_code, "exit_code_corrected_at": now_iso()}
+    if "exit_code_reported" not in existing:
+        fields["exit_code_reported"] = recorded
+    return fields
 
 
 def bump_heartbeat(state: State, slug: str, analysis: str, run_key: str) -> None:
@@ -414,14 +450,21 @@ def mark_run_finished(
     existing = state.backend.get_doc(path)
     if existing is None:
         raise NotFound(f"run {run_key!r} not found")
-    fields: dict = {
-        "finished_at": finished_at or now_iso(),
-        "exit_code": exit_code,
-    }
+    if existing.get("finished_at"):
+        # Already closed: this is a correction, not a finish. The time it
+        # finished stays the time it finished — stamping "now" over it made a
+        # run corrected a week later read as having produced output today —
+        # and what the job reported is kept beside the new code.
+        fields: dict = {**_exit_correction(existing, exit_code)}
+        if finished_at:
+            fields["finished_at"] = finished_at
+    else:
+        fields = {"finished_at": finished_at or now_iso(), "exit_code": exit_code}
     if notes:
         prior = existing.get("notes") or ""
         fields["notes"] = (prior + " " + notes).strip()
-    state.backend.update_doc(path, fields)
+    if fields:
+        state.backend.update_doc(path, fields)
     return state.backend.get_doc(path)
 
 
@@ -490,6 +533,9 @@ def launch_local_job(
     except (ValueError, IndexError):
         raise RuntimeError(f"could not parse PID from launcher output: {result.stdout!r}")
 
+    # Said at launch, and written on the row: a line whose exit status is not
+    # the work's will record a crash as exit 0 (exit_status.py).
+    masked = launch_warning(command)
     run = record_analysis_run(
         state, slug, analysis,
         command=command, host="local", env_name=env_name,
@@ -498,9 +544,10 @@ def launch_local_job(
         workdir=str(wd),
         run_key=run_key,
         params=params,
+        notes=masked,
     )
     _register_local_pid(slug, analysis, run_key, pid)
-    return run
+    return {**run, "warnings": [masked]} if masked else run
 
 
 def read_local_exitcode(workdir: str, run_key: str) -> int | None:
@@ -594,6 +641,8 @@ def run_notices(state: State, *, since: str | None = None,
         }
         if row.get("exit_code") == -2:
             notice["caution"] = GONE_NOTE
+        elif (masked := finished_caution(row.get("command"), row.get("exit_code"))):
+            notice["caution"] = masked
         closed.append(notice)
     closed.sort(key=lambda n: str(n.get("finished_at") or ""))
     return {"client_id": who, "now": now_iso(), "scope": scope,
