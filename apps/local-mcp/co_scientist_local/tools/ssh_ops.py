@@ -403,6 +403,8 @@ def submit_remote_job(
     force: bool = False,
     params: dict | None = None,
     datasets: list[str] | None = None,
+    pipeline: str | None = None,
+    pipeline_version: str | None = None,
 ) -> dict:
     """Politeness-checked SSH job submission with pidfile idempotency.
 
@@ -414,6 +416,10 @@ def submit_remote_job(
            If a live PID already runs the same command, return "existing".
         5. Record an analysis_runs row.
     """
+    # Before the server is touched: a pipeline name that is not registered
+    # stops the call here, not after a job is already running.
+    from . import pipelines as _pipelines
+    made_by = _pipelines.for_run(state, pipeline, pipeline_version)
     # Everything that can fail is checked BEFORE a process is spawned. It was
     # not: `record_analysis_run` is step 5, and it is what raises "analysis
     # 'x' not found" — so a submit against a typo'd or not-yet-created analysis
@@ -681,6 +687,8 @@ def submit_remote_job(
             run_key=run_key,
             report_token=report_token if self_reporting else None,
             process_group=own_group,
+            pipeline=made_by.get("pipeline"),
+            pipeline_version=made_by.get("pipeline_version"),
             # ONE dict, not five keywords — `**code` was a splat that worked
             # only while the probe found nothing, so the feature was broken in
             # exactly the case it exists for (feedback 75d99ef71d98,

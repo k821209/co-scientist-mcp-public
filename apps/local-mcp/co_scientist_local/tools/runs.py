@@ -172,6 +172,12 @@ def record_analysis_run(
     # indistinguishable — and "which bytes did this run read" is the question a
     # reviewer actually asks (feedback 22147cb7e721).
     datasets: list[str] | None = None,
+    # The registered pipeline this run was made by, and which version of it.
+    # The registry said "which version produced this figure" was its purpose,
+    # and no run could name one (2026-11-26). `pipeline_version` defaults to
+    # the newest registered; the version's commit is copied onto the row.
+    pipeline: str | None = None,
+    pipeline_version: str | None = None,
 ) -> dict:
     """Insert a new analysis_runs doc. Used by `launch_local_job` and
     `submit_remote_job`.
@@ -234,6 +240,8 @@ def record_analysis_run(
             "mtime": ds.get("mtime"),
             "host": ds.get("host"),
         })
+    from . import pipelines as _pipelines
+    made_by = _pipelines.for_run(state, pipeline, pipeline_version)
     doc = {
         # First, so a key the caller spells wrong cannot shadow a real field.
         **{k: v for k, v in (code or {}).items()
@@ -281,8 +289,10 @@ def record_analysis_run(
         # ecba6396d9b4). The MCP process is the session, so its id is the
         # address. Not a secret and not an identity check: a label.
         "client_id": CLIENT_ID,
+        **made_by,
     }
     state.backend.set_doc(_run_path(state, slug, analysis, run_key), doc)
+    _pipelines.note_use(state, made_by)
     return doc
 
 
@@ -299,9 +309,15 @@ def update_analysis_run(
     log_path: str | None = None,
     workdir: str | None = None,
     exit_code: int | None = None,
+    pipeline: str | None = None,
+    pipeline_version: str | None = None,
 ) -> dict:
     """Back-fill `params` (replacing the whole dict) and/or append notes on an
     existing run.
+
+    `pipeline` / `pipeline_version` name the registered pipeline a run already
+    on record was made by — the back-fill for runs filed before a run could
+    say so. A run that already names a version is not counted twice.
 
     `exit_code` CORRECTS the status of a run that is already closed. The code
     on the row is whatever the launched line exited with, and a line ending in
@@ -340,6 +356,11 @@ def update_analysis_run(
             f"finished_at ({effective_finish}) is before started_at "
             f"({effective_start})")
     fields: dict = {}
+    made_by: dict = {}
+    if pipeline is not None or pipeline_version is not None:
+        from . import pipelines as _pipelines
+        made_by = _pipelines.for_run(state, pipeline or existing.get("pipeline"), pipeline_version)
+        fields.update(made_by)
     if exit_code is not None:
         if not existing.get("finished_at"):
             raise ValueError(
@@ -371,6 +392,9 @@ def update_analysis_run(
         fields["notes"] = (prior + " " + notes).strip()
     if fields:
         state.backend.update_doc(path, fields)
+    if made_by and (made_by["pipeline"], made_by["pipeline_version"]) != (
+            existing.get("pipeline"), existing.get("pipeline_version")):
+        _pipelines.note_use(state, made_by)
     return state.backend.get_doc(path)
 
 
@@ -478,6 +502,8 @@ def launch_local_job(
     env_name: str | None = None,
     conda_root: str | None = None,
     params: dict | None = None,
+    pipeline: str | None = None,
+    pipeline_version: str | None = None,
 ) -> dict:
     """Spawn `command` on the user's laptop, detached, log streamed to file.
 
@@ -491,6 +517,10 @@ def launch_local_job(
     recover it once the PID is gone.
     """
     analysis = _ensure_analysis(state, slug, analysis)
+    # Before anything is started: a pipeline name that is not registered stops
+    # the call, rather than leaving a running job whose row could not be written.
+    from . import pipelines as _pipelines
+    made_by = _pipelines.for_run(state, pipeline, pipeline_version)
     wd = pathlib.Path(workdir).expanduser().resolve()
     if not wd.is_dir():
         raise FileNotFoundError(f"workdir not found: {wd}")
@@ -545,6 +575,8 @@ def launch_local_job(
         run_key=run_key,
         params=params,
         notes=masked,
+        pipeline=made_by.get("pipeline"),
+        pipeline_version=made_by.get("pipeline_version"),
     )
     _register_local_pid(slug, analysis, run_key, pid)
     return {**run, "warnings": [masked]} if masked else run

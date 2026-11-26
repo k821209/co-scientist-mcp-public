@@ -10,7 +10,7 @@ only) and refers the agent here on every session start.
 """
 from __future__ import annotations
 
-GUIDE_VERSION = "2026-11-24"
+GUIDE_VERSION = "2026-11-26"
 
 
 def installed_skills_block(inv: dict | None) -> str:
@@ -240,6 +240,15 @@ project you run it in, and per-project copies would drift.
   known limitations. Set it when you publish — a pipeline published with nothing
   said to whoever picks it up is usually an oversight, and publish_pipeline says
   so in its reply.
+- **Before RUNNING something, look at your own.** `whoami()["pipelines"]` (or
+  `list_pipelines()`) is the index: name, what it is for, newest version, and
+  whether this project has run it. `get_pipeline(name)` is then the procedure.
+  `pipeline=` (and `pipeline_version=`, default the newest) on
+  `submit_remote_job` / `launch_local_job` / `record_analysis_run` puts the
+  version — and its `commit` — on the run row; `update_analysis_run(pipeline=)`
+  back-fills a run already filed. A name that is not registered is refused
+  before anything is launched. A version that runs name can no longer be
+  overwritten: register a new one.
 - **Before building a workflow, look for one.**
   `search_public_pipelines("rnaseq star")` matches the name, repo, description and
   every process/tool name, so it finds a pipeline whose graph contains the step
@@ -259,9 +268,22 @@ _STUBS['pipelines'] = """## Pipelines — workflows, ACCOUNT-wide and versioned
 
 A workflow — nextflow, snakemake, a plain script — is registered once per
 account and versioned: `register_pipeline` is the identity,
-`register_pipeline_version` the immutable graph. **Before building one, look
-for one**: `search_public_pipelines(...)`. Publishing copies `public_notes`
-and never `notes`. Edges and their formats, the two kinds of note, importing
+`register_pipeline_version` the immutable graph.
+
+**The account's pipelines are in `whoami()["pipelines"]`, one line each — read
+that index the way you read the skill list.** When a request is something one
+of them produces ("make today's forecast clip", "call the species for these
+reads"), `get_pipeline(name)` BEFORE running or writing anything: it is the
+procedure — the steps, the format between them, the parameters and what went
+wrong before. Then pass `pipeline=name` to `submit_remote_job` /
+`launch_local_job` / `record_analysis_run`, so the run says which version made
+the result; the Runs tab and `prepare_export` read it from there. Measured
+before this was said (2026-11-26): 31 pipelines registered, and in 95 turns
+that launched a job none looked at them — they were opened only when the user
+said the word "pipeline".
+
+**Before building one, look for one**: `search_public_pipelines(...)`.
+Publishing copies `public_notes` and never `notes`. Edges and their formats, the two kinds of note, importing
 and republishing someone else's — `project_guide(topic="pipelines")`, read
 before the first pipeline call."""
 

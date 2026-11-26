@@ -129,6 +129,13 @@ not `TAIR pangenome SNP analysis (v2)`.
 
 ### 2. Decide / write the script
 
+**First: is there a registered pipeline for this?** The index is in
+`whoami()["pipelines"]` (and `list_pipelines()`), one line each. If one covers
+what was asked, `mcp__scivo__get_pipeline(name)` is the procedure to follow —
+do not draft a new `run.sh` for something already registered — and in step 3
+pass `pipeline="<name>"` to the run tool so the run records which version made
+it. The guide's Pipelines section has the rule; nothing below changes.
+
 By convention, scripts live in `analysis/<group>/`:
 
 ```

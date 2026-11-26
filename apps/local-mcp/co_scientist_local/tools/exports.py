@@ -947,7 +947,7 @@ BUNDLE_FIELDS = (
     "tables", "supplementary_tables", "references", "bibtex", "placeholders",
     "legend_warnings", "unresolved_citations", "doiless_uncited_refs",
     "csl_filename", "csl_slug", "csl_source", "csl_status", "requirements_check",
-    "review_triage", "datasets", "warnings",
+    "review_triage", "datasets", "pipelines", "warnings",
 )
 
 
@@ -964,6 +964,33 @@ def numbers_supplementary(paper: dict) -> bool:
 
 
 from . import manuscript_lint as _manuscript_lint  # noqa: E402
+
+
+def _pipelines_for_paper(state: State, slug: str) -> dict:
+    """The registered pipeline versions this paper's runs name, with the
+    analyses each was used in — and how many runs name none."""
+    from . import runs as _runs
+    used: dict[tuple, dict] = {}
+    not_named = 0
+    try:
+        names = [name for name, _ in state.backend.list_collection(
+            state.project_path("papers", slug, "analyses"))]
+    except Exception:
+        return {"versions": [], "not_named": None, "error": "could not read the analyses"}
+    for name in names:
+        for run in _runs.list_analysis_runs(state, slug, name):
+            if not run.get("pipeline"):
+                not_named += 1
+                continue
+            key = (run["pipeline"], run.get("pipeline_version"))
+            entry = used.setdefault(key, {
+                "pipeline": run["pipeline"], "version": run.get("pipeline_version"),
+                "commit": run.get("pipeline_commit"), "analyses": [], "runs": 0})
+            entry["runs"] += 1
+            if name not in entry["analyses"]:
+                entry["analyses"].append(name)
+    return {"versions": sorted(used.values(), key=lambda e: (e["pipeline"], str(e["version"]))),
+            "not_named": not_named}
 
 
 def prepare_export(
@@ -1196,6 +1223,7 @@ def prepare_export(
     # changed was absent from the preview, so any preview-based check would have
     # passed too).
     linked_datasets = _datasets.datasets_for_paper(state, slug)
+    pipelines_used = _pipelines_for_paper(state, slug)
 
     # A figure registered with no image is a PLACEHOLDER waiting to be filled.
     # It is a deliberate, useful state — the body and the numbering get written
@@ -1351,6 +1379,12 @@ def prepare_export(
         # materials" statement is written FROM, instead of being reassembled by
         # hand at submission time (feedback 68c41dc91fef).
         "datasets": linked_datasets,
+        # Which registered pipeline versions made this paper's runs — what a
+        # Methods sentence ("processed with X v3.14.0, commit abc1234") is
+        # written FROM. Only runs that named a pipeline are here; `not_named`
+        # counts the paper's other runs, so an empty list is not read as "no
+        # pipeline was used".
+        "pipelines": pipelines_used,
         "warnings": warnings,
     }
     if fields:

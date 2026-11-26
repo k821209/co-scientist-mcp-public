@@ -143,6 +143,11 @@ def build_mcp(state: State) -> FastMCP:
         install system packages — before work that needs a missing one, say
         so and give the install line; `missing: null` means the check itself
         failed (`error`), not that nothing is missing.
+
+        `pipelines` is the account's registered pipelines, one line each (what
+        each is for, its newest version, whether this project has run it).
+        Read it as you read the skill list: when a request is something one
+        of them produces, `get_pipeline(name)` before running anything.
         """
         info: dict[str, Any] = {
             "project_id": state.project_id,
@@ -163,6 +168,14 @@ def build_mcp(state: State) -> FastMCP:
         }
         from .doctor import machine_report
         info["machine"] = machine_report(video=_features.video_enabled())
+        # What is registered to run, one line each — in front of the session
+        # from its first call, the way a skill's description is. Left out
+        # when it cannot be read, and said so: an absent index must not read
+        # as "nothing is registered".
+        try:
+            info["pipelines"] = _pipelines.pipeline_index(state)
+        except Exception as e:
+            info["pipelines"] = {"count": None, "error": f"could not read the registry: {e}"}
         proj = None
         try:
             proj = state.backend.get_doc(f"projects/{state.project_id}")
@@ -2610,9 +2623,16 @@ def build_mcp(state: State) -> FastMCP:
             state, public_id, name=name, overwrite=overwrite)
 
     @mcp.tool()
-    def list_pipelines() -> list[dict[str, Any]]:
-        """Every pipeline registered on this account."""
-        return _pipelines.list_pipelines(state)
+    def list_pipelines(detail: bool = False) -> list[dict[str, Any]]:
+        """Every pipeline registered on this account, as one line each: `name`,
+        what it is `for`, `latest_version`, and `used_here` (when this project
+        last ran it — those come first). This is the list to look at before
+        running or building an analysis: if one covers the request,
+        `get_pipeline(name)` is the procedure — steps, formats, parameters and
+        what went wrong before — and `pipeline=name` on the run tool records
+        which version made the result. `detail=True` returns the full records
+        with their private notes (large)."""
+        return _pipelines.list_pipelines(state, detail=detail)
 
     @mcp.tool()
     def list_pipeline_versions(name: str) -> list[dict[str, Any]]:
@@ -2873,8 +2893,15 @@ def build_mcp(state: State) -> FastMCP:
         # an ANALYSIS, so two runs of one analysis against different input
         # files were indistinguishable (feedback 22147cb7e721).
         datasets: list[str] | None = None,
+        pipeline: str | None = None,
+        pipeline_version: str | None = None,
     ) -> dict[str, Any]:
         """Insert a run record (provenance for a command you ran yourself).
+
+        `pipeline`: the registered pipeline this run was made by (see the
+        index in whoami / list_pipelines); `pipeline_version` defaults to its
+        newest version. The row then says which version made the result, and
+        the pipeline says this project runs it. An unregistered name is refused.
 
         A local run (`host="local"`) records THIS machine's name as `hostname`
         automatically — "local" alone does not say which laptop or workstation,
@@ -2913,6 +2940,7 @@ def build_mcp(state: State) -> FastMCP:
             notes=notes, params=params, code=code, hostname=hostname,
             started_at=started_at, finished_at=finished_at, exit_code=exit_code,
             datasets=datasets,
+            pipeline=pipeline, pipeline_version=pipeline_version,
         )
 
     @mcp.tool()
@@ -2942,10 +2970,15 @@ def build_mcp(state: State) -> FastMCP:
         log_path: str | None = None,
         workdir: str | None = None,
         exit_code: int | None = None,
+        pipeline: str | None = None,
+        pipeline_version: str | None = None,
     ) -> dict[str, Any]:
         """Back-fill `params` on a run recorded without them (replaces the whole
         dict), and/or append notes. See record_analysis_run for what `params`
         is for.
+
+        `pipeline` / `pipeline_version` say which registered pipeline a run
+        already on record was made by.
 
         `exit_code` CORRECTS a closed run whose recorded code is wrong — a
         line ending in `; echo done` exits 0 over a crash. Pass `notes` with
@@ -2961,6 +2994,7 @@ def build_mcp(state: State) -> FastMCP:
             state, slug, analysis, run_key, params=params, notes=notes,
             started_at=started_at, finished_at=finished_at,
             log_path=log_path, workdir=workdir, exit_code=exit_code,
+            pipeline=pipeline, pipeline_version=pipeline_version,
         )
 
     @mcp.tool()
@@ -3339,13 +3373,18 @@ def build_mcp(state: State) -> FastMCP:
         env_name: str | None = None,
         conda_root: str | None = None,
         params: dict[str, Any] | None = None,
+        pipeline: str | None = None,
+        pipeline_version: str | None = None,
     ) -> dict[str, Any]:
         """Spawn a long-running local job (detached). Returns run row with pid + log_path.
         `params`: the arguments that define the run, as a dict — see
-        record_analysis_run. `slug` may be `"_project"` for a paper-less project."""
+        record_analysis_run. `slug` may be `"_project"` for a paper-less project.
+        `pipeline` / `pipeline_version`: the registered pipeline this run is
+        made by — checked before anything is started; see record_analysis_run."""
         return _runs.launch_local_job(
             state, slug, analysis, command=command, workdir=workdir,
             env_name=env_name, conda_root=conda_root, params=params,
+            pipeline=pipeline, pipeline_version=pipeline_version,
         )
 
     @mcp.tool()
@@ -3399,18 +3438,23 @@ def build_mcp(state: State) -> FastMCP:
         force: bool = False,
         params: dict[str, Any] | None = None,
         datasets: list[str] | None = None,
+        pipeline: str | None = None,
+        pipeline_version: str | None = None,
     ) -> dict[str, Any]:
         """Politeness-checked SSH job submission (rsync + nohup, pidfile-idempotent).
         `slug` may be `"_project"` for a project with no paper (create the
         analysis with that slug first).
         Runs in `<project root>/analysis/<analysis>` on the server — see
         remote_workdir for the root rule. `params`: the arguments that define
-        the run, as a dict — see record_analysis_run."""
+        the run, as a dict — see record_analysis_run. `pipeline` /
+        `pipeline_version`: the registered pipeline this run is made by —
+        checked before the server is touched; see record_analysis_run."""
         return _ssh_ops.submit_remote_job(
             state, slug, analysis, command=command, server_alias=server_alias,
             env_name=env_name, workers=workers, local_dir=local_dir,
             sync_files=sync_files, force=force, params=params,
             datasets=datasets,
+            pipeline=pipeline, pipeline_version=pipeline_version,
         )
 
     @mcp.tool()
@@ -3552,6 +3596,10 @@ def build_mcp(state: State) -> FastMCP:
         bundle exceeds the reply limit and spills to a file. An unknown key
         raises. `stage_dir` also writes every figure's image blob there and adds
         `local_path` to each figure, for assembling a document yourself.
+
+        `pipelines` lists the registered pipeline versions this paper's runs
+        name (`versions`: pipeline, version, commit, analyses) — what a Methods
+        sentence is written from — and `not_named`, the runs that name none.
         """
         return _exports.prepare_export(state, slug, fields=fields,
                                        stage_dir=stage_dir)

@@ -35,6 +35,12 @@ from ..util import now_iso, slugify
 EXECUTORS = ("nextflow", "snakemake", "script", "wdl", "cwl", "make", "other")
 
 
+# Fields of the pipeline record that `register_pipeline` does not set and must
+# not drop: the newest version (written when a version is registered) and the
+# projects it has been run in (written when a run names it).
+_NOT_IDENTITY = ("latest_version", "used_in")
+
+
 def _pipelines_path(state: State) -> str:
     return f"users/{state.owner_uid}/pipelines"
 
@@ -115,6 +121,13 @@ def register_pipeline(
         "created_at": (existing or {}).get("created_at", now),
         "updated_at": now,
     }
+    # What this call does not own, kept. The record is rewritten whole from the
+    # arguments above, so a field written by something else — the newest
+    # version, where it has been run — went with the next edit of the notes:
+    # 24 of 31 pipelines on record had no `latest_version` (2026-11-26).
+    for kept in _NOT_IDENTITY:
+        if existing and kept in existing:
+            doc[kept] = existing[kept]
     state.backend.set_doc(path, doc)
     if doc["published"]:
         _sync_public(state, pid)
@@ -335,6 +348,13 @@ def register_pipeline_version(
             f"version {vid!r} of {pid!r} already exists — versions are immutable "
             f"so a recorded run keeps meaning what it meant; pass overwrite=True "
             f"only to fix a mis-registration")
+    if existing is not None and (existing.get("run_count") or 0) > 0:
+        # The rule the docstring always stated, now that a run CAN name a
+        # version: what those runs were made by must not change under them.
+        raise ValueError(
+            f"version {vid!r} of {pid!r} is named by {existing['run_count']} run(s) "
+            f"(last {existing.get('last_run_at')}) — it cannot be overwritten. "
+            f"Register a new version; the runs keep meaning what they meant.")
 
     procs = _norm_processes(processes)
     edge_list = _norm_edges(edges, {p["name"] for p in procs})
@@ -373,10 +393,100 @@ def register_pipeline_version(
     return {**doc, "enforcement": enforcement(params, doc["params"])}
 
 
-def list_pipelines(state: State) -> list[dict]:
+def _one_line(text: str | None, limit: int = 110) -> str:
+    """The first line of a description, cut at a sentence when it is long."""
+    line = next((ln.strip() for ln in (text or "").splitlines() if ln.strip()), "")
+    if len(line) <= limit:
+        return line
+    cut = line[:limit]
+    stop = max(cut.rfind(". "), cut.rfind("。"), cut.rfind("다. "))
+    return (cut[:stop + 1] if stop > limit * 0.5 else cut.rstrip() + "…")
+
+
+def _latest_version(state: State, doc: dict) -> str | None:
+    """The newest registered version, from the record — or, for a record that
+    lost the field, from its versions, written back so this is asked once."""
+    if "latest_version" in doc:
+        return doc["latest_version"]
+    versions = list_pipeline_versions(state, doc["name"])
+    latest = versions[0]["version"] if versions else None
+    try:
+        state.backend.update_doc(_pipeline_path(state, doc["name"]), {"latest_version": latest})
+    except Exception:
+        pass        # the answer is still right; it is just asked again next time
+    doc["latest_version"] = latest
+    return latest
+
+
+def summarize(state: State, doc: dict) -> dict:
+    """What a session needs to decide whether this pipeline is the one: its
+    name, what it is for, the version it would get, and whether this project
+    has run it. Not the notes and not the graph — `get_pipeline` has those."""
+    used = (doc.get("used_in") or {}).get(state.project_id)
+    return {
+        "name": doc.get("name"),
+        "for": _one_line(doc.get("description")),
+        "executor": doc.get("executor"),
+        "latest_version": _latest_version(state, doc),
+        "used_here": used,              # when this project last ran it, or None
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+def list_pipelines(state: State, *, detail: bool = False) -> list[dict]:
+    """The account's pipelines. A summary of each by default — one line of what
+    it is for — because the full records are what made looking expensive: 118 KB
+    for 31 pipelines, 90 KB of it private notes (measured 2026-11-26), read to
+    answer "is there one for this?". `detail=True` is the records as stored."""
     rows = [d for _, d in state.backend.list_collection(_pipelines_path(state))]
     rows.sort(key=lambda d: d.get("updated_at") or "", reverse=True)
-    return rows
+    if detail:
+        return rows
+    out = [summarize(state, d) for d in rows]
+    # What this project has run comes first, most recently run at the top: it
+    # is the likeliest answer. The rest stay in order of last change.
+    here = sorted((r for r in out if r["used_here"]), key=lambda r: r["used_here"], reverse=True)
+    return here + [r for r in out if not r["used_here"]]
+
+
+# How many pipelines the index spells out. Past it the rest are named, so that
+# none is invisible, and `list_pipelines()` has their lines.
+INDEX_LINES = 40
+
+
+def pipeline_index(state: State) -> dict:
+    """The index a session starts with: what is registered, in a form short
+    enough to be in front of the model for the whole conversation.
+
+    A skill is matched to a request because its one-line description is always
+    in context. A pipeline was in a registry nobody had been told to open, so
+    it was opened when the user said the word "pipeline" and at no other time.
+    """
+    rows = list_pipelines(state)
+    shown, rest = rows[:INDEX_LINES], rows[INDEX_LINES:]
+    return {
+        "count": len(rows),
+        # Only what decides "is this the one": the index is carried by every
+        # session from its first call, so each field in it is paid for 31 times.
+        "pipelines": [{k: r[k] for k in ("name", "for", "latest_version", "used_here")} for r in shown],
+        "also_registered": [r["name"] for r in rest],
+        "how": ("Before running or building something one of these covers, "
+                "get_pipeline(name): the steps, the format between them, and the "
+                "parameters with what went wrong before. Then pass pipeline=name to "
+                "the run tool, so the run says which version made it.") if rows else None,
+    }
+
+
+def index_lines(index: dict) -> list[str]:
+    """The index as the lines a briefing prints."""
+    lines = []
+    for r in index.get("pipelines") or []:
+        version = f" · v{r['latest_version']}" if r.get("latest_version") else " · no version registered"
+        here = " · run in this project" if r.get("used_here") else ""
+        lines.append(f"- `{r['name']}` — {r.get('for') or '(no description)'}{version}{here}")
+    if index.get("also_registered"):
+        lines.append("- also registered: " + ", ".join(f"`{n}`" for n in index["also_registered"]))
+    return lines
 
 
 def list_pipeline_versions(state: State, name: str) -> list[dict]:
@@ -402,6 +512,63 @@ def get_pipeline(state: State, name: str, version: str | None = None) -> dict:
         if current is None:
             raise NotFound(f"version {version!r} of {pid!r} not found")
     return {**doc, "versions": [v["version"] for v in versions], "current": current}
+
+
+def for_run(state: State, pipeline: str | None, version: str | None = None) -> dict:
+    """The fields a run record carries when it was made by a registered
+    pipeline — checked BEFORE anything is launched, so a misspelt name stops
+    the call instead of producing a run that names nothing.
+
+    `version` defaults to the newest registered one. The version's `commit` is
+    copied onto the run: the registry can gain versions, the run cannot.
+    """
+    if not pipeline:
+        if version:
+            raise ValueError("pipeline_version without pipeline: say which pipeline")
+        return {}
+    pid = _norm(pipeline, "pipeline")
+    doc = state.backend.get_doc(_pipeline_path(state, pid))
+    if doc is None:
+        known = [d.get("name") for _, d in state.backend.list_collection(_pipelines_path(state))]
+        near = [n for n in known if n and (pid in n or n in pid)]
+        raise NotFound(
+            f"pipeline not found: {pid!r}"
+            + (f" — did you mean {near}?" if near else f" — registered: {sorted(n for n in known if n)[:20]}")
+            + " Nothing was launched. Pass a registered name, or leave pipeline= out.")
+    if version is None:
+        latest = _latest_version(state, doc)
+        if latest is None:
+            raise NotFound(
+                f"pipeline {pid!r} has no registered version, so there is nothing for "
+                f"this run to name — register_pipeline_version first. Nothing was launched.")
+        version = latest
+    vkey = slugify(str(version)) or str(version)
+    ver = state.backend.get_doc(_version_path(state, pid, vkey))
+    if ver is None:
+        have = [v["version"] for v in list_pipeline_versions(state, pid)]
+        raise NotFound(f"version {version!r} of {pid!r} not found — registered: {have}. Nothing was launched.")
+    return {"pipeline": pid, "pipeline_version": ver["version"], "pipeline_commit": ver.get("commit")}
+
+
+def note_use(state: State, link: dict) -> None:
+    """A run was recorded as made by this pipeline version: count it there, and
+    note on the pipeline that this project runs it. Best effort — the run is
+    the record; these are what make it findable from the other side."""
+    if not link.get("pipeline"):
+        return
+    pid, version = link["pipeline"], link["pipeline_version"]
+    now = now_iso()
+    try:
+        vpath = _version_path(state, pid, slugify(str(version)) or str(version))
+        ver = state.backend.get_doc(vpath) or {}
+        state.backend.update_doc(vpath, {"run_count": int(ver.get("run_count") or 0) + 1,
+                                         "last_run_at": now})
+        ppath = _pipeline_path(state, pid)
+        doc = state.backend.get_doc(ppath) or {}
+        state.backend.update_doc(ppath, {"used_in": {**(doc.get("used_in") or {}),
+                                                     state.project_id: now}})
+    except Exception:
+        pass
 
 
 def delete_pipeline_version(state: State, name: str, version: str) -> bool:
